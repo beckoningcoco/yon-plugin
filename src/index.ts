@@ -29,6 +29,9 @@ import { createDataSourceStore } from './host/datasource-store.ts'
 import { createDataSourceRunner } from './host/datasource-probe.ts'
 import { createYonDataSourcesService, type YonDataSourcesService } from './host/datasource-service.ts'
 import { DATASOURCE_TOOL_NAMES, registerYonDataSourceTools } from './host/datasource-tools.ts'
+import { createWikiStore } from './host/wiki-store.ts'
+import { createYonWikiService, type YonWikiService } from './host/wiki-service.ts'
+import { registerYonWikiTools, WIKI_TOOL_NAMES } from './host/wiki-tools.ts'
 
 export { DOMAIN_NAME, YON_DOMAIN } from './host/domain.ts'
 export { SKILL_DOMAIN_NAME, YON_SKILL_DOMAIN } from './host/skill-domain.ts'
@@ -42,6 +45,14 @@ export { YON_TOOL_NAMES, YON_WRITE_TOOL_NAMES } from './host/tools.ts'
 export { DataSourceError } from './host/datasource-service.ts'
 export type { YonDataSourcesService } from './host/datasource-service.ts'
 export { DATASOURCE_TOOL_NAMES } from './host/datasource-tools.ts'
+export { WikiError } from './host/wiki-service.ts'
+export { WIKI_TOOL_NAMES } from './host/wiki-tools.ts'
+export { defaultWikiStorePath } from './host/wiki-store.ts'
+export { guessVaults } from './host/wiki-index.ts'
+export type {
+  WikiHit, WikiLookupResult, WikiMatch, WikiPageContent, WikiVaultView, YonWikiService,
+} from './host/wiki-service.ts'
+export type { WikiIndex, WikiPage, WikiVault } from './host/wiki-index.ts'
 export { defaultStorePath } from './host/datasource-store.ts'
 export type {
   CreateProjectInput, DataSourceBinding, DataSourceListPayload, DataSourceProbeResult,
@@ -57,6 +68,8 @@ declare module '@deepseek-ai/cordis' {
     yonSkills: YonSkillsService
     /** The operator's database connections, and the runner that tries them. */
     yonDataSources: YonDataSourcesService
+    /** The operator's Obsidian knowledge base, read through its own tools. */
+    yonWiki: YonWikiService
   }
 }
 
@@ -113,6 +126,17 @@ export async function apply(ctx: Context): Promise<void> {
     () => registerYonDataSourceTools(ctx, dataSources.service),
     'yon-panel: datasource tools',
   )
+
+  // The knowledge base: one small document listing the operator's Obsidian
+  // vaults, and two read-only tools over the entity index each vault caches for
+  // itself. Nothing here writes into a vault, and nothing here needs Obsidian to
+  // be installed — a vault is a directory of markdown files.
+  const wikiStore = createWikiStore()
+  const wiki = createYonWikiService(wikiStore)
+  ctx.effect(() => wiki.dispose, 'yon-panel: wiki service')
+  ctx.provide('yonWiki', wiki)
+
+  ctx.effect(() => registerYonWikiTools(ctx, wiki), 'yon-panel: wiki tools')
 
   // A skill registered through the registry exists exactly as long as this
   // plugin does, which is what makes these skills shippable without ever

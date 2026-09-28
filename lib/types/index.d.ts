@@ -19,6 +19,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import { type YonProjectsService } from './host/service.ts';
 import { type YonSkillsService } from './host/skill-registry.ts';
 import { type YonDataSourcesService } from './host/datasource-service.ts';
+import { type YonWikiService } from './host/wiki-service.ts';
 export { DOMAIN_NAME, YON_DOMAIN } from './host/domain.ts';
 export { SKILL_DOMAIN_NAME, YON_SKILL_DOMAIN } from './host/skill-domain.ts';
 export { SkillError, YON_SKILL_SOURCE } from './host/skill-registry.ts';
@@ -31,6 +32,12 @@ export { YON_TOOL_NAMES, YON_WRITE_TOOL_NAMES } from './host/tools.ts';
 export { DataSourceError } from './host/datasource-service.ts';
 export type { YonDataSourcesService } from './host/datasource-service.ts';
 export { DATASOURCE_TOOL_NAMES } from './host/datasource-tools.ts';
+export { WikiError } from './host/wiki-service.ts';
+export { WIKI_TOOL_NAMES } from './host/wiki-tools.ts';
+export { defaultWikiStorePath } from './host/wiki-store.ts';
+export { guessVaults } from './host/wiki-index.ts';
+export type { WikiHit, WikiLookupResult, WikiMatch, WikiPageContent, WikiVaultView, YonWikiService, } from './host/wiki-service.ts';
+export type { WikiIndex, WikiPage, WikiVault } from './host/wiki-index.ts';
 export { defaultStorePath } from './host/datasource-store.ts';
 export type { CreateProjectInput, DataSourceBinding, DataSourceListPayload, DataSourceProbeResult, DataSourceView, JsonValue, ProjectDetail, ProjectSummary, ProjectStatus, SaveDataSourceInput, SkillDetail, SkillView, UpdateProjectInput, } from './shared/types.ts';
 declare module '@deepseek-ai/cordis' {
@@ -41,6 +48,8 @@ declare module '@deepseek-ai/cordis' {
         yonSkills: YonSkillsService;
         /** The operator's database connections, and the runner that tries them. */
         yonDataSources: YonDataSourcesService;
+        /** The operator's Obsidian knowledge base, read through its own tools. */
+        yonWiki: YonWikiService;
     }
 }
 /**
