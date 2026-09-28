@@ -1,5 +1,5 @@
 /**
- * yon_btn panel, browser half: one action at the sidebar foot, directly above
+ * Yon panel, browser half: one action at the sidebar foot, directly above
  * the settings row — the trigger plus the panel chrome — that declares the
  * `yon.panel.item` seat every feature package contributes its buttons to. This
  * plugin owns the surface and its open state only; what a button does belongs
@@ -24,7 +24,7 @@ export type { YonPanelKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
-    /** The yon_btn panel's copy. */
+    /** The Yon panel's copy. */
     yonPanel: YonPanelKey
   }
 }

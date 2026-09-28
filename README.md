@@ -1,6 +1,6 @@
 # dsh-plugin-yon-panel
 
-DSH（DeepSeek Harness）Web GUI 的 **yon_btn 按钮面板** 插件，带一个**项目存储**。
+DSH（DeepSeek Harness）Web GUI 的 **Yon 按钮面板** 插件，带一个**项目存储**。
 
 | 半边 | 做什么 |
 |---|---|

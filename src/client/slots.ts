@@ -1,4 +1,4 @@
-/** Slot contract this package owns: the button seat inside the yon_btn panel. */
+/** Slot contract this package owns: the button seat inside the Yon panel. */
 
 // Type-only: ui-sidebar's SlotMap merge — the `sidebar.footer.action` seat this
 // entry occupies, rendered at the sidebar foot directly above the settings row.
@@ -53,7 +53,7 @@ export interface YonPanelItemOwnerProps {
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     /**
-     * One button inside the yon_btn panel. A list seat: each feature package
+     * One button inside the Yon panel. A list seat: each feature package
      * claims a fresh `id` and orders itself with `order`, and the panel renders
      * every live entry without addressing any specific one.
      */

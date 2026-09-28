@@ -8,8 +8,8 @@
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export declare const zh: {
     'trigger.label': string;
+    'trigger.aria': string;
     'panel.title': string;
-    'panel.close': string;
     'item.project': string;
     'project.title': string;
     'project.close': string;
@@ -75,8 +75,8 @@ export type YonPanelKey = keyof typeof zh;
 /** English dictionary, checked complete against the zh key set. */
 export declare const en: {
     'trigger.label': string;
+    'trigger.aria': string;
     'panel.title': string;
-    'panel.close': string;
     'item.project': string;
     'project.title': string;
     'project.close': string;

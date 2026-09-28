@@ -68,8 +68,8 @@ function harness(renderSlot = vi.fn(() => <span>contributed</span>), wide = true
   return { store, renderSlot, ...render(<Panel {...props} />) }
 }
 
-/** The trigger's accessible name, which is the panel's own name. */
-const TRIGGER = 'yon 面板'
+/** The trigger's accessible name, which is also the panel's. */
+const TRIGGER = 'Yon 按钮面板'
 
 describe('yon panel surface', () => {
   it('renders the closed mark trigger and no panel', () => {
@@ -101,12 +101,16 @@ describe('yon panel surface', () => {
     expect(renderSlot).toHaveBeenCalledWith('yon.panel.item', { open: true })
   })
 
-  it('closes from the panel close control', () => {
+  it('closes from the trigger itself, since the panel has no header', () => {
     harness()
-    fireEvent.click(screen.getByRole('button', { name: TRIGGER }))
+    const trigger = screen.getByRole('button', { name: TRIGGER })
 
-    fireEvent.click(screen.getByRole('button', { name: '关闭面板' }))
+    // The title row and its close button are gone: the panel's name already sits
+    // on the trigger, so the trigger is the control that closes it.
+    fireEvent.click(trigger)
+    expect(screen.getByRole('dialog')).toBeTruthy()
 
+    fireEvent.click(trigger)
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
@@ -178,10 +182,11 @@ describe('yon panel surface', () => {
     }
     render(<Panel {...props} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'yon panel' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Yon button panel' }))
 
-    expect(screen.getByRole('dialog', { name: 'yon panel' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Close panel' })).toBeTruthy()
+    expect(screen.getByRole('dialog', { name: 'Yon button panel' })).toBeTruthy()
+    // The headerless panel owns no close control of its own.
+    expect(screen.queryByRole('button', { name: 'Close panel' })).toBeNull()
   })
 })
 

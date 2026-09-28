@@ -8,9 +8,9 @@
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
-  'trigger.label': 'yon 面板',
-  'panel.title': 'yon 面板',
-  'panel.close': '关闭面板',
+  'trigger.label': 'Yon',
+  'trigger.aria': 'Yon 按钮面板',
+  'panel.title': 'Yon 按钮面板',
   'item.project': '项目管理',
 
   'project.title': '项目管理',
@@ -78,9 +78,9 @@ export type YonPanelKey = keyof typeof zh
 
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
-  'trigger.label': 'yon panel',
-  'panel.title': 'yon panel',
-  'panel.close': 'Close panel',
+  'trigger.label': 'Yon',
+  'trigger.aria': 'Yon button panel',
+  'panel.title': 'Yon button panel',
   'item.project': 'Project management',
 
   'project.title': 'Projects',

@@ -1,5 +1,5 @@
 /**
- * yon_btn panel, host half: opens the project domain, publishes the store as
+ * Yon panel, host half: opens the project domain, publishes the store as
  * `ctx.yonProjects`, offers it to the agent as tools, and — where a web server
  * exists — serves it over `/yon/api`.
  *

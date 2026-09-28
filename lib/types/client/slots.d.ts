@@ -1,4 +1,4 @@
-/** Slot contract this package owns: the button seat inside the yon_btn panel. */
+/** Slot contract this package owns: the button seat inside the Yon panel. */
 import type { ProjectApi } from './project/api.ts';
 /**
  * Data face the panel's built-in entry receives: the project API, closed over the
@@ -44,7 +44,7 @@ export interface YonPanelItemOwnerProps {
 declare module '@deepseek-ai/dsh-client-ui-slots' {
     interface SlotMap {
         /**
-         * One button inside the yon_btn panel. A list seat: each feature package
+         * One button inside the Yon panel. A list seat: each feature package
          * claims a fresh `id` and orders itself with `order`, and the panel renders
          * every live entry without addressing any specific one.
          */

@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-yon-panel",
   "version": "0.1.0",
-  "description": "yon_btn button panel for the DSH web client: a sidebar-foot action (above Settings) opening a panel of buttons contributed by other plugins",
+  "description": "Yon button panel for the DSH web client: a sidebar-foot action (above Settings) opening a panel of buttons contributed by other plugins",
   "keywords": [
     "dsh",
     "deepseek-harness",

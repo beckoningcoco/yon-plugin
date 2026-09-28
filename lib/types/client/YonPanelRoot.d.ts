@@ -1,4 +1,4 @@
-/** The yon_btn sidebar-foot action and the panel it opens above itself. */
+/** The Yon sidebar-foot action and the panel it opens above itself. */
 import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import type { YonPanelRootFace } from './slots.ts';
 /** Composed props of the sidebar footer-action entry: all four shares, all derived. */

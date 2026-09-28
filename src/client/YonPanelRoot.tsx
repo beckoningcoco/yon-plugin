@@ -1,4 +1,4 @@
-/** The yon_btn sidebar-foot action and the panel it opens above itself. */
+/** The Yon sidebar-foot action and the panel it opens above itself. */
 
 import { useEffect, useRef, type CSSProperties } from 'react'
 import {
@@ -89,29 +89,23 @@ export function YonPanelRoot({ usePanel, onToggle, onSetOpen, renderSlot, t }: Y
           role="dialog"
           aria-label={t('panel.title')}
         >
-          <header className={css.header}>
-            <span className={css.title}>{t('panel.title')}</span>
-            <button
-              type="button"
-              className={css.close}
-              aria-label={t('panel.close')}
-              onClick={() => { onSetOpen(false) }}
-            >
-              ×
-            </button>
-          </header>
+          {/* No header bar. The panel's own name already sits on the trigger
+              beside it, so a title row only repeats it — and on a 280px surface
+              it costs a whole row of buttons. Escape, a click outside, or the
+              trigger itself close the panel; the accessible name above keeps it
+              announceable. */}
           <div className={css.body}>
             {renderSlot('yon.panel.item', { open })}
           </div>
         </section>
       )}
-      <Tooltip label={t('panel.title')} side="right" delayMs={400}>
+      <Tooltip label={t('trigger.label')} side="right" delayMs={400}>
         <button
           type="button"
           className={css.trigger}
           data-active={open ? '' : undefined}
           aria-expanded={open}
-          aria-label={t('trigger.label')}
+          aria-label={t('trigger.aria')}
           onClick={onToggle}
         >
           <YonMark />

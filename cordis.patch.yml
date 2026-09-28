@@ -1,4 +1,4 @@
-# Loader patch layer for the yon_btn panel.
+# Loader patch layer for the Yon panel.
 #
 # `dsh plugin --profile <name> add dsh-plugin-yon-panel` appends this package to
 # the profile's `dsh.profile.bundles`, and this file is the layer it contributes:
