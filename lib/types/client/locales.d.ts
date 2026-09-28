@@ -13,6 +13,7 @@ export declare const zh: {
     'item.project': string;
     'item.skills': string;
     'item.datasource': string;
+    'item.wiki': string;
     'project.title': string;
     'project.close': string;
     'project.list': string;
@@ -149,6 +150,18 @@ export declare const zh: {
     'datasource.partial': string;
     'datasource.pathHint': string;
     'datasource.seeded': string;
+    'wiki.title': string;
+    'wiki.close': string;
+    'wiki.loading': string;
+    'wiki.empty': string;
+    'wiki.pages': string;
+    'wiki.indexedAt': string;
+    'wiki.neverIndexed': string;
+    'wiki.notReady': string;
+    'wiki.rebuild': string;
+    'wiki.rebuilding': string;
+    'wiki.rebuildAll': string;
+    'wiki.refresh': string;
 };
 /** The yonPanel namespace key union. */
 export type YonPanelKey = keyof typeof zh;
@@ -160,6 +173,7 @@ export declare const en: {
     'item.project': string;
     'item.skills': string;
     'item.datasource': string;
+    'item.wiki': string;
     'project.title': string;
     'project.close': string;
     'project.list': string;
@@ -296,4 +310,16 @@ export declare const en: {
     'datasource.partial': string;
     'datasource.pathHint': string;
     'datasource.seeded': string;
+    'wiki.title': string;
+    'wiki.close': string;
+    'wiki.loading': string;
+    'wiki.empty': string;
+    'wiki.pages': string;
+    'wiki.indexedAt': string;
+    'wiki.neverIndexed': string;
+    'wiki.notReady': string;
+    'wiki.rebuild': string;
+    'wiki.rebuilding': string;
+    'wiki.rebuildAll': string;
+    'wiki.refresh': string;
 };

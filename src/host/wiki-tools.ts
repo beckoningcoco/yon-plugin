@@ -87,7 +87,7 @@ const READ_VALUE = {
     vault: { type: 'string' },
     vaultLabel: { type: 'string' },
     page: { type: 'string' },
-    uri: { type: ['string', 'null'] },
+    uri: { oneOf: [{ type: 'string' }, { type: 'null' }] },
     version: { type: 'string' },
     status: { type: 'string' },
     verified: { type: 'string' },

@@ -24,14 +24,16 @@ import { createYonPanelStore } from './panel-store.ts'
 import { createDataSourceApi } from './datasource/api.ts'
 import { createProjectApi } from './project/api.ts'
 import { createSkillApi } from './skill/api.ts'
+import { createWikiApi } from './wiki/api.ts'
 import { DataSourceItem } from './DataSourceItem.tsx'
 import { ProjectItem } from './ProjectItem.tsx'
 import { SkillItem } from './SkillItem.tsx'
+import { WikiItem } from './WikiItem.tsx'
 import { YonPanelRoot } from './YonPanelRoot.tsx'
 import { en, zh, type YonPanelKey } from './locales.ts'
 
 export type { YonPanelItemOwnerProps, YonPanelRootFace, YonPanelSnapshot } from './slots.ts'
-export type { DataSourceItemFace, ProjectItemFace, SkillItemFace } from './slots.ts'
+export type { DataSourceItemFace, ProjectItemFace, SkillItemFace, WikiItemFace } from './slots.ts'
 export type { YonPanelKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -61,6 +63,7 @@ export function apply(ctx: ClientContext): void {
   const projectApi = createProjectApi()
   const skillApi = createSkillApi()
   const dataSourceApi = createDataSourceApi()
+  const wikiApi = createWikiApi()
 
   // A fresh list id adds this action beside the shipped footer actions, above
   // the settings row; the children table declares (and thereby authorizes) the
@@ -122,4 +125,15 @@ export function apply(ctx: ClientContext): void {
       pushOverlay: () => panel.pushOverlay(),
     }),
   }, DataSourceItem))
+
+  // The knowledge base cell, fourth. It borrows nothing from its siblings: the
+  // vaults are its own list, and the surface reports on them rather than editing
+  // them, so a machine path is never typed into a browser field.
+  ctx.slots.inject('yon.panel.item', () => ctx.slots.register({
+    name: 'yon.panel.item',
+    id: 'wiki',
+    order: 40,
+    locale: NS,
+    inject: () => ({ ...wikiApi, pushOverlay: () => panel.pushOverlay() }),
+  }, WikiItem))
 }

@@ -14,6 +14,7 @@ export const zh = {
   'item.project': '项目管理',
   'item.skills': 'YONSKILL',
   'item.datasource': '数据源',
+  'item.wiki': '知识库',
 
   'project.title': '项目管理',
   'project.close': '关闭项目管理',
@@ -153,6 +154,19 @@ export const zh = {
   'datasource.partial': '配置文件无法解析，列表可能不完整。',
   'datasource.pathHint': '读取自 {path}',
   'datasource.seeded': '首次运行：已从 {path} 导入已有的数据源。',
+
+  'wiki.title': '知识库',
+  'wiki.close': '关闭知识库面板',
+  'wiki.loading': '读取中…',
+  'wiki.empty': '还没有登记知识库',
+  'wiki.pages': '{count} 页',
+  'wiki.indexedAt': '索引于',
+  'wiki.neverIndexed': '尚未建索引',
+  'wiki.notReady': '路径不可用',
+  'wiki.rebuild': '重建索引',
+  'wiki.rebuilding': '重建中…',
+  'wiki.rebuildAll': '全部重建',
+  'wiki.refresh': '刷新',
 } satisfies Record<string, string>
 
 /** The yonPanel namespace key union. */
@@ -166,6 +180,7 @@ export const en = {
   'item.project': 'Project management',
   'item.skills': 'YONSKILL',
   'item.datasource': 'Data sources',
+  'item.wiki': 'Knowledge base',
 
   'project.title': 'Projects',
   'project.close': 'Close project management',
@@ -305,4 +320,17 @@ export const en = {
   'datasource.partial': 'The configuration file could not be parsed, so this list may be incomplete.',
   'datasource.pathHint': 'Read from {path}',
   'datasource.seeded': 'First run: adopted the data sources already in {path}.',
+
+  'wiki.title': 'Knowledge base',
+  'wiki.close': 'Close the knowledge base panel',
+  'wiki.loading': 'Loading…',
+  'wiki.empty': 'No knowledge base registered yet',
+  'wiki.pages': '{count} pages',
+  'wiki.indexedAt': 'Indexed',
+  'wiki.neverIndexed': 'not indexed yet',
+  'wiki.notReady': 'path unavailable',
+  'wiki.rebuild': 'Rebuild index',
+  'wiki.rebuilding': 'Rebuilding…',
+  'wiki.rebuildAll': 'Rebuild all',
+  'wiki.refresh': 'Refresh',
 } satisfies Record<YonPanelKey, string>

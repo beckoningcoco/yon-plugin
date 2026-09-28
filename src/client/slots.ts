@@ -6,6 +6,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { DataSourceApi } from './datasource/api.ts'
 import type { ProjectApi } from './project/api.ts'
 import type { SkillApi } from './skill/api.ts'
+import type { WikiApi } from './wiki/api.ts'
 
 /**
  * Data face the panel's built-in entry receives: the project API, closed over the
@@ -54,6 +55,21 @@ export type DataSourceItemFace = DataSourceApi & {
   listProjects: ProjectApi['listProjects']
   /**
    * Announce a layer standing above the panel (the datasource surface).
+   * @returns the release for that layer.
+   */
+  pushOverlay(): () => void
+}
+
+/**
+ * Data face the panel's knowledge base entry receives: the wiki API plus the same
+ * panel-level gesture.
+ *
+ * No sibling operation is borrowed here, unlike the datasource entry: a vault is
+ * addressed by its own id, and the knowledge base knows nothing of projects.
+ */
+export type WikiItemFace = WikiApi & {
+  /**
+   * Announce a layer standing above the panel (the knowledge base surface).
    * @returns the release for that layer.
    */
   pushOverlay(): () => void
