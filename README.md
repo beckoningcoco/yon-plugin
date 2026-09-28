@@ -97,6 +97,24 @@ const stop = ctx.yonProjects.subscribe(() => {   // 变更通知（来自 domain
 
 侧栏底部的 `Y` 图标点开是面板；面板内目前有一个内建格子「项目管理面板」（图标 + 悬停显示完整描述）。
 
+### 项目管理面板怎么用
+
+点开格子里的图标，弹出一个浮层（不是挤在 280px 的面板里）：
+
+| 操作 | 怎么做 |
+|---|---|
+| 新建项目 | 左栏顶部填「名称」（必填）+「编码」，回车或点「新建项目」 |
+| 选项目 | 点左栏列表里的一项，右栏显示它的动态字段 |
+| 改字段值 | 直接在右边输入框里改，**失焦即存**（回车等于失焦）；值是 JSON 就按 JSON 存，否则按文本存 |
+| 加字段 | 右栏底部填「字段名」+「值」→「新增字段」。字段名随便起，中文、带空格、带斜杠都行；后续要加「环境信息new」就这么加 |
+| 删字段 | 字段行右侧 `×` |
+| 归档 / 恢复 | 右栏「归档」，归档后默认列表里不再出现，勾上「显示已归档」可以找回来 |
+| 彻底删除 | 右栏「彻底删除」，**点一次变成「彻底删除?」，再点一次才真删**（连同它的所有字段行） |
+
+浮层支持点外面或按 `Esc` 关闭。左栏每行末尾的「N 个字段」是主表里算出来的**字段个数**，用来扫一眼哪个项目有料。
+
+架构上有一条硬规矩：**组件不取数、不订阅**。`createProjectApi()` 在 `apply` 里建一次，通过条目的 inject face 投影进去，组件拿到的是一组回调 —— 所以组件测试可以完全脱开 host 跑。
+
 给面板加按钮（本插件不用改）：
 
 ```ts
@@ -112,7 +130,7 @@ ctx.slots.inject('yon.panel.item', () => ctx.slots.register({
 ```sh
 pnpm install
 pnpm typecheck   # tsc --noEmit（host + client + tests）
-pnpm test        # vitest（38 个用例）
+pnpm test        # vitest（54 个用例）
 pnpm build       # tsc 出 host 半（ESM），tsdown 出浏览器半（loader factory）
 pnpm verify      # 产物自检：loader 契约、externals、样式注入、host ESM、patch 层
 pnpm pack        # 打包，prepack 会先 build
@@ -135,8 +153,8 @@ pnpm pack        # 打包，prepack 会先 build
 
 ## 已知限制
 
-- **前端界面还没做**：项目管理面板目前只是面板里的一个图标入口，点开还没有列表/编辑界面；数据层与 API 已经可用
-- **无焦点管理**：面板是带标签的对话框，但打开时焦点不进入、关闭时也不回到触发按钮
+- **无焦点管理**：浮层是带标签的对话框，但打开时焦点不进入、关闭时也不回到触发按钮
+- **字段值只能手输**：没有类型选择器/富编辑，复杂结构要靠手写 JSON 文本
 - **无跨记录事务**：原子性单位是一条记录。`create({ name, fields })` 是「主表 1 写 + 子表 N 写」，中途失败可能留下缺字段的项目（字段缺失可容忍，面板显示为空）
 - **领域版本不是迁移器**：改主表 schema 后旧记录会被校验拒绝、导致领域打不开；演进时请升 `version` 并把旧记录缺的字段声明为 optional
 - **无二级索引**：按字段筛选/排序只能在应用层做（数据全量在内存；这类需求出现时说明该字段该「转正」成主表列，或改用 SQLite 关系表）
@@ -150,7 +168,9 @@ pnpm pack        # 打包，prepack 会先 build
 | `src/host/service.ts` | 项目存储服务：主子表聚合、级联删除、写入校验、变更订阅 |
 | `src/host/http.ts` | `/yon/api` 前缀路由与错误映射 |
 | `src/shared/types.ts` | 前后端共用的数据契约 |
-| `src/client/index.ts` | 浏览器半入口：席位注册、面板 store、内建条目 |
+| `src/client/index.ts` | 浏览器半入口：席位注册、面板 store、内建条目、API 客户端的注入面 |
 | `src/client/YonPanelRoot.tsx` | 侧栏底部触发按钮、面板外壳、关闭行为 |
-| `src/client/ProjectItem.tsx` | 内建的「项目管理面板」条目 |
+| `src/client/ProjectItem.tsx` | 内建的「项目管理面板」条目（图标格子 + 浮层开合） |
+| `src/client/project/api.ts` | `/yon/api` 的瘦封装：组件唯一的数据入口 |
+| `src/client/project/ProjectManager.tsx` | 项目管理浮层：列表、详情、动态字段的增删改 |
 | `src/client/slots.ts` / `panel-store.ts` / `locales.ts` | 席位与 inject face 类型 / 开合状态 / 词典 |

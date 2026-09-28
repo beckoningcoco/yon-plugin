@@ -14,6 +14,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: the renderer-owned slots service.
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { createYonPanelStore } from './panel-store.ts'
+import { createProjectApi } from './project/api.ts'
 import { ProjectItem } from './ProjectItem.tsx'
 import { YonPanelRoot } from './YonPanelRoot.tsx'
 import { en, zh, type YonPanelKey } from './locales.ts'
@@ -43,6 +44,9 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'yon-panel: dictionaries')
 
   const panel = createYonPanelStore()
+  // One API client per apply: components receive its operations through the
+  // entry's inject face below, so no component builds a URL or fetches.
+  const projectApi = createProjectApi()
 
   // A fresh list id adds this action beside the shipped footer actions, above
   // the settings row; the children table declares (and thereby authorizes) the
@@ -72,5 +76,6 @@ export function apply(ctx: ClientContext): void {
     id: 'project',
     order: 10,
     locale: NS,
+    inject: () => ({ ...projectApi }),
   }, ProjectItem))
 }

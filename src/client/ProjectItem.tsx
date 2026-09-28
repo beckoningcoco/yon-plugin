@@ -1,16 +1,26 @@
-/** The panel's built-in Project management entry: one icon cell, described on hover. */
-
+/**
+ * The panel's built-in entry: one icon cell that opens the project surface.
+ *
+ * The surface is a fixed-position overlay rather than a region of the panel body
+ * — a 280px strip cannot hold a list plus an editable field table — and this
+ * entry owns it, so opening it needs no cross-seat coordination.
+ */
+import { useState } from 'react'
 import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type {
+  InjectFace, PropsLocale, PropsRuntime,
+} from '@deepseek-ai/dsh-client-ui-slots'
+import type { ProjectItemFace } from './slots.ts'
+import { ProjectManager } from './project/ProjectManager.tsx'
 import css from './ProjectItem.module.css'
 
 /**
- * Composed props of one panel button seat. The owner share carries the panel's
- * live open state; this entry is interactive chrome for the section it will
- * open, so it renders its own label instead of the panel's copy.
+ * Composed props of this panel button seat: the owner share carries the panel's
+ * live open state, and the inject face carries the project operations.
  */
 export type ProjectItemProps =
   PropsRuntime<'yon.panel.item'>
+  & InjectFace<ProjectItemFace>
   & PropsLocale<'yonPanel'>
 
 /**
@@ -42,22 +52,28 @@ function FolderMark() {
 }
 
 /**
- * Render the Project management entry: an icon cell whose full description
- * arrives on hover and as the accessible name, so the panel stays a compact
- * grid of glyphs while every entry stays identifiable.
+ * Render the entry cell and, while open, the project surface.
  * @param props - composed slot props.
- * @returns the entry button.
+ * @returns the cell, plus the overlay when it is showing.
  */
-export function ProjectItem({ t }: ProjectItemProps) {
+export function ProjectItem({ t, ...api }: ProjectItemProps) {
+  const [open, setOpen] = useState(false)
+
   return (
-    <Tooltip label={t('item.project')} side="bottom" delayMs={300}>
-      <button
-        type="button"
-        className={css.item}
-        aria-label={t('item.project')}
-      >
-        <FolderMark />
-      </button>
-    </Tooltip>
+    <>
+      <Tooltip label={t('item.project')} side="bottom" delayMs={300}>
+        <button
+          type="button"
+          className={css.item}
+          data-active={open ? '' : undefined}
+          aria-label={t('item.project')}
+          aria-expanded={open}
+          onClick={() => { setOpen(value => !value) }}
+        >
+          <FolderMark />
+        </button>
+      </Tooltip>
+      {open && <ProjectManager t={t} onClose={() => { setOpen(false) }} {...api} />}
+    </>
   )
 }

@@ -15,7 +15,8 @@
   cursor: pointer;
 }
 
-.item:hover {
+.item:hover,
+.item[data-active] {
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
 }

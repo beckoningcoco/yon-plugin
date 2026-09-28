@@ -1,16 +1,13 @@
-/** The panel's built-in Project management entry: one icon cell, described on hover. */
-import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
+import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
+import type { ProjectItemFace } from './slots.ts';
 /**
- * Composed props of one panel button seat. The owner share carries the panel's
- * live open state; this entry is interactive chrome for the section it will
- * open, so it renders its own label instead of the panel's copy.
+ * Composed props of this panel button seat: the owner share carries the panel's
+ * live open state, and the inject face carries the project operations.
  */
-export type ProjectItemProps = PropsRuntime<'yon.panel.item'> & PropsLocale<'yonPanel'>;
+export type ProjectItemProps = PropsRuntime<'yon.panel.item'> & InjectFace<ProjectItemFace> & PropsLocale<'yonPanel'>;
 /**
- * Render the Project management entry: an icon cell whose full description
- * arrives on hover and as the accessible name, so the panel stays a compact
- * grid of glyphs while every entry stays identifiable.
+ * Render the entry cell and, while open, the project surface.
  * @param props - composed slot props.
- * @returns the entry button.
+ * @returns the cell, plus the overlay when it is showing.
  */
-export declare function ProjectItem({ t }: ProjectItemProps): import("react").JSX.Element;
+export declare function ProjectItem({ t, ...api }: ProjectItemProps): import("react").JSX.Element;

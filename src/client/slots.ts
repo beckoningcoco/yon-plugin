@@ -3,6 +3,14 @@
 // Type-only: ui-sidebar's SlotMap merge — the `sidebar.footer.action` seat this
 // entry occupies, rendered at the sidebar foot directly above the settings row.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import type { ProjectApi } from './project/api.ts'
+
+/**
+ * Data face the panel's built-in entry receives: the project API, closed over the
+ * apply world. The component calls these operations; it never builds a URL, never
+ * fetches, and never subscribes.
+ */
+export type ProjectItemFace = ProjectApi
 
 /**
  * Bare observable source: the getSnapshot/subscribe pair the DSH renderer binds

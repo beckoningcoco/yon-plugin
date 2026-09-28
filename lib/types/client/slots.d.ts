@@ -1,4 +1,11 @@
 /** Slot contract this package owns: the button seat inside the yon_btn panel. */
+import type { ProjectApi } from './project/api.ts';
+/**
+ * Data face the panel's built-in entry receives: the project API, closed over the
+ * apply world. The component calls these operations; it never builds a URL, never
+ * fetches, and never subscribes.
+ */
+export type ProjectItemFace = ProjectApi;
 /**
  * Bare observable source: the getSnapshot/subscribe pair the DSH renderer binds
  * into a \`use<Name>\` selector hook. Declared here rather than imported, so this
