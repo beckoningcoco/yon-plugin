@@ -53,6 +53,16 @@ const CSS_VIRTUAL_PREFIX = '\0yon-css:'
 const CSS_VIRTUAL_SUFFIX = '.mjs'
 
 /**
+ * Order two CSS-module export entries by their local name.
+ * @param left - one `[local, export]` entry.
+ * @param right - the other entry.
+ * @returns a negative, zero, or positive number, as `left` sorts first.
+ */
+function byLocalName([left]: [string, unknown], [right]: [string, unknown]): number {
+  return left < right ? -1 : left > right ? 1 : 0
+}
+
+/**
  * Compile one `.module.css` into a class map plus a plugin-owned style tag.
  * @param fileId - absolute path of the stylesheet being loaded.
  * @returns module source exporting the hashed class map.
@@ -66,7 +76,13 @@ async function stylesheetModule(fileId: string): Promise<string> {
     minify: true,
   })
   const classMap: Record<string, string> = {}
-  for (const [local, value] of Object.entries(exports ?? {})) classMap[local] = value.name
+  // Sorted, because lightningcss hands its export map back in an order that
+  // varies between runs: without this, rebuilding unchanged styles reorders the
+  // class map and every build shows up as a diff against a committed artifact
+  // that is in fact identical. The hashes themselves are already stable.
+  for (const [local, value] of Object.entries(exports ?? {}).sort(byLocalName)) {
+    classMap[local] = value.name
+  }
   const tagId = `${ID}/${basename(fileId)}`
   return [
     `const css = ${JSON.stringify(code.toString())};`,
