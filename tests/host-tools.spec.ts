@@ -11,7 +11,8 @@
 import { Context } from '@deepseek-ai/cordis'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  isYonWriteTool, previewWrite, registerYonProjectTools, YON_TOOL_NAMES, YON_WRITE_TOOL_NAMES,
+  isYonWriteTool, needsApproval, previewWrite, registerYonProjectTools, YON_TOOL_NAMES,
+  YON_WRITE_TOOL_NAMES,
   type YonToolDefinition, type YonToolExecution,
 } from '../src/host/tools.ts'
 import { createYonProjectsService, type YonProjectsService } from '../src/host/service.ts'
@@ -148,31 +149,45 @@ describe('project tools', () => {
     expect(await gate('project_read', { project: 'anything' })).toEqual({ kind: 'allow' })
   })
 
-  it('asks before a write, with the change written out', async () => {
+  it('lets an additive change run without asking', async () => {
     const { gate, seed } = bench()
     await seed('用友 NCC 客开', 'NCC-1', { '环境信息': '10.0.0.1' })
+
+    // Renaming and writing a field add and update; nothing is destroyed, and the
+    // result lists what changed instead of stopping for a confirmation.
+    expect(await gate('project_update', {
+      project: '用友 NCC 客开',
+      set_fields: { '环境信息': '10.0.0.9' },
+      name: '用友 NCC',
+    })).toEqual({ kind: 'allow' })
+
+    expect(await gate('project_create', { name: '新项目' })).toEqual({ kind: 'allow' })
+  })
+
+  it('asks before a write that destroys something, with the change written out', async () => {
+    const { gate, seed } = bench()
+    await seed('用友 NCC 客开', 'NCC-1', { '环境信息': '10.0.0.1', '旧字段': 'x' })
 
     const decision = await gate('project_update', {
       project: '用友 NCC 客开',
       set_fields: { '环境信息': '10.0.0.9' },
-      name: '用友 NCC',
+      remove_fields: ['旧字段'],
     })
 
     expect(decision.kind).toBe('ask')
     expect(decision.reason).toContain('修改项目「用友 NCC 客开」')
-    expect(decision.reason).toContain('名称：「用友 NCC 客开」→「用友 NCC」')
     expect(decision.reason).toContain('字段「环境信息」：「10.0.0.1」→「10.0.0.9」')
+    expect(decision.reason).toContain('删除字段「旧字段」（原值 x）')
   })
 
-  it('separates a real change from a call that repeats what is stored', async () => {
+  it('treats archiving as destructive', async () => {
     const { gate, seed } = bench()
     await seed('proj', '')
 
-    const adding = await gate('project_update', { project: 'proj', set_fields: { '环境信息': '10.0.0.1' } })
-    expect(adding.reason).toContain('新增字段「环境信息」')
+    const decision = await gate('project_update', { project: 'proj', archived: true })
 
-    const noop = await gate('project_update', { project: 'proj', name: 'proj' })
-    expect(noop.reason).toBe('项目「proj」没有任何改动。')
+    expect(decision.kind).toBe('ask')
+    expect(decision.reason).toContain('归档这个项目')
   })
 
   it('names the field it would delete, with its current value', async () => {
@@ -365,5 +380,35 @@ describe('write previews', () => {
 
     expect(preview).toContain('…')
     expect(preview?.length).toBeLessThan(long.length)
+  })
+
+  it('says when a call would change nothing', () => {
+    const preview = previewWrite(service, 'project_update', {
+      project: '用友 NCC 客开',
+      name: '用友 NCC 客开',
+    })
+
+    expect(preview).toBe('项目「用友 NCC 客开」没有任何改动。')
+  })
+})
+
+describe('when a write needs approval', () => {
+  it('covers exactly the destructive shapes', () => {
+    // Reads and additive writes run straight through.
+    expect(needsApproval('project_list', {})).toBe(false)
+    expect(needsApproval('project_read', { project: 'x' })).toBe(false)
+    expect(needsApproval('project_create', { name: 'x' })).toBe(false)
+    expect(needsApproval('project_update', { project: 'x', set_fields: { a: 1 } })).toBe(false)
+    expect(needsApproval('project_update', { project: 'x', name: 'y', code: 'z', status: 'done' })).toBe(false)
+    expect(needsApproval('project_update', { project: 'x', remove_fields: [] })).toBe(false)
+    expect(needsApproval('project_update', { project: 'x', remove_fields: ['  '] })).toBe(false)
+
+    // Anything that destroys something stops to ask.
+    expect(needsApproval('project_update', { project: 'x', archived: false })).toBe(true)
+    expect(needsApproval('project_update', { project: 'x', remove_fields: ['a'] })).toBe(true)
+    expect(needsApproval('project_delete', { project: 'x' })).toBe(true)
+
+    // Unreadable arguments are not a licence to write without asking.
+    expect(needsApproval('project_update', 'nonsense')).toBe(true)
   })
 })

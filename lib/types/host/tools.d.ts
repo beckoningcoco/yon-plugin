@@ -95,6 +95,22 @@ export declare const YON_TOOL_NAMES: readonly ["project_list", "project_read", "
 /** The subset that changes stored data; each one is gated behind an approval. */
 export declare const YON_WRITE_TOOL_NAMES: readonly ["project_create", "project_update", "project_delete"];
 /**
+ * Whether one write must wait for the operator's approval.
+ *
+ * The operator asked for this split deliberately: a change that only adds or
+ * updates something is cheap to make and cheap to notice — the tool result lists
+ * exactly what changed — while a change that destroys something (removing a
+ * field, deleting a project, archiving it out of the default list) is neither.
+ * Creating a project destroys nothing, so it runs straight through.
+ *
+ * A deployment that wants every write confirmed changes this one function to
+ * return `true`; the preview below is already written for that case.
+ * @param name - the tool being called.
+ * @param args - the arguments of that call.
+ * @returns true when the call must be approved before it runs.
+ */
+export declare function needsApproval(name: string, args: unknown): boolean;
+/**
  * Explain one write in the terms a person checks before approving it.
  *
  * This is the whole preview: the approval card shows this text, so an update
