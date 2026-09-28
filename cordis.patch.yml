@@ -1,0 +1,9 @@
+# Loader patch layer for the yon_btn panel.
+#
+# `dsh plugin --profile <name> add dsh-plugin-yon-panel` appends this package to
+# the profile's `dsh.profile.bundles`, and this file is the layer it contributes:
+# one insert row that mounts the plugin. The package name is resolved from the
+# profile's node_modules, so no path is written here.
+- insert:
+    - id: yon-panel
+      name: dsh-plugin-yon-panel
