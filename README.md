@@ -5,7 +5,7 @@ DSH（DeepSeek Harness）Web GUI 的 **yon_btn 按钮面板** 插件，带一个
 | 半边 | 做什么 |
 |---|---|
 | 浏览器半 | 侧栏底部、设置按钮**上方**一个 `Y` 图标 → 点开是按钮面板；面板里的按钮由任意插件通过 `yon.panel.item` 席位贡献 |
-| Host 半 | 「项目」存储（主表 + 动态字段子表），同时以 `ctx.yonProjects` 服务（同进程）和 `/yon/api` HTTP 路由（任何前端）对外提供 |
+| Host 半 | 「项目」存储（主表 + 动态字段子表），以三种方式对外开放：`ctx.yonProjects` 服务（同进程插件）、`project_*` agent 工具（在对话里说人话改配置）、`/yon/api` HTTP 路由（任何前端） |
 
 **安装不需要改动 DSH 仓库**：UI 占用 ui-sidebar 已声明的 `sidebar.footer.action` 席位，数据落在 DSH 自带的 storage 子系统上。
 
@@ -195,7 +195,7 @@ ctx.slots.inject('yon.panel.item', () => ctx.slots.register({
 ```sh
 pnpm install
 pnpm typecheck   # tsc --noEmit（host + client + tests）
-pnpm test        # vitest（92 个用例）
+pnpm test        # vitest（101 个用例）
 pnpm build       # tsc 出 host 半（ESM），tsdown 出浏览器半（loader factory）
 pnpm verify      # 产物自检：loader 契约、externals、样式注入、host ESM、patch 层
 pnpm pack        # 打包，prepack 会先 build
@@ -220,7 +220,7 @@ pnpm pack        # 打包，prepack 会先 build
 
 - **agent 工具依赖部署**：模型那一步由 DSH 的 agent loop 负责，所以所在 profile 需要有 `tools` 服务与可用的模型凭据。缺凭据的环境（例如没配 key 的 `headless` profile）里界面照常可用，但"说人话改配置"这条路径走不通
 - **字段名不能改名**：字段名就是这条记录的身份键，改名等于「写新键 + 删旧键」两次写，中途失败会留下两个字段。要改就删掉重建
-- **删除没有撤销**：归档可以恢复，删字段/删项目不行（删除前会确认，但确认之后就没了）
+- **删除没有撤销**：归档可以恢复，删字段/删项目不行。界面里的删除有小对话框 / 风险确认；agent 工具的删除是否确认取决于会话权限档（见上文）——**完全权限档下会直接删掉，不再询问**
 - **值只能手输**：没有类型选择器或富编辑，结构化值要自己写 JSON 文本
 - **无跨记录事务**：原子性单位是一条记录。`create({ name, fields })` 是「主表 1 写 + 子表 N 写」，中途失败可能留下缺字段的项目（字段缺失可容忍，界面显示为空）
 - **领域版本不是迁移器**：改主表 schema 后旧记录会被校验拒绝、导致领域打不开；演进时请升 `version` 并把旧记录缺的字段声明为 optional
@@ -233,7 +233,7 @@ pnpm pack        # 打包，prepack 会先 build
 | `src/index.ts` | Host 入口：打开领域、发布 `ctx.yonProjects`、挂 `/yon/api` |
 | `src/host/domain.ts` | 领域与两张表的 zod schema、路径安全的记录键编码 |
 | `src/host/service.ts` | 项目存储服务：主子表聚合、级联删除、写入校验、变更订阅、按 id/名称/编码定位 |
-| `src/host/tools.ts` | 面向 agent 的工具：5 个 `project_*` 工具 + 写操作的确认预览闸门 |
+| `src/host/tools.ts` | 面向 agent 的工具：5 个 `project_*` 工具 + 跟随会话权限档的写操作闸门（拒绝 / 直写 / 确认） |
 | `src/host/http.ts` | `/yon/api` 前缀路由与错误映射（没有 web server 的部署下不挂载） |
 | `src/shared/types.ts` | 前后端共用的数据契约 |
 | `src/client/index.ts` | 浏览器半入口：席位注册、面板 store、内建条目、API 客户端的注入面 |
