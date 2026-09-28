@@ -154,7 +154,7 @@ export async function apply(ctx: Context): Promise<void> {
   // the route simply never appears there.
   ctx.inject(['webServer'], (web) => {
     web.effect(
-      () => registerYonApi(web, service, skills.service, dataSources.service),
+      () => registerYonApi(web, service, skills.service, dataSources.service, wiki),
       'yon-panel: project api',
     )
   })

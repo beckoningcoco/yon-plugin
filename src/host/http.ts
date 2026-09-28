@@ -44,6 +44,7 @@ import {
 import { ProjectError, type YonProjectsService } from './service.ts'
 import { SkillError, type YonSkillsService } from './skill-registry.ts'
 import { DataSourceError, type YonDataSourcesService } from './datasource-service.ts'
+import { WikiError, type YonWikiService } from './wiki-service.ts'
 
 /** Largest request body accepted, in bytes. */
 const MAX_BODY_BYTES = 1_000_000
@@ -236,6 +237,57 @@ async function handleDataSources(
 }
 
 /**
+ * Serve the `/yon/api/wiki` branch.
+ *
+ * Two routes, which are the two things a surface can usefully do: see which
+ * vaults are registered and how big they are, and ask for a rebuild. Reading a
+ * page is the model's business through `wiki_read`, not the panel's.
+ *
+ * The vault paths are returned as they are. They are the operator's own machine
+ * paths, the panel displays them, and the operator may edit them — there is no
+ * secret in any of this, unlike a datasource password.
+ *
+ * @param req - the request; read for the rebuild body.
+ * @param res - the response.
+ * @param method - HTTP method.
+ * @param segments - the decoded path segments after the API prefix.
+ * @param wiki - the knowledge base service.
+ */
+async function handleWiki(
+  req: IncomingMessage,
+  res: ServerResponse,
+  method: string,
+  segments: readonly string[],
+  wiki: YonWikiService,
+): Promise<void> {
+  const tail = segments[1]
+
+  // /yon/api/wiki
+  if (tail === undefined) {
+    if (method !== 'GET') {
+      sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+      return
+    }
+    sendJson(res, 200, { vaults: await wiki.list() })
+    return
+  }
+
+  // /yon/api/wiki/rebuild
+  if (tail === 'rebuild') {
+    if (method !== 'POST') {
+      sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+      return
+    }
+    const body = await objectBody(req)
+    const vaultId = typeof body.vault === 'string' && body.vault !== '' ? body.vault : undefined
+    sendJson(res, 200, { vaults: await wiki.rebuild(vaultId) })
+    return
+  }
+
+  sendFailure(res, 404, 'not-found', `no route for ${method} /yon/api/wiki/...`)
+}
+
+/**
  * Serve the `/yon/api/skills` branch.
  *
  * A skill the operator owns is listed and readable but can never be switched:
@@ -289,6 +341,7 @@ async function handleSkills(
  * @param service - the project store to expose.
  * @param skills - the skill service to expose.
  * @param sources - the datasource service to expose.
+ * @param wiki - the knowledge base service to expose.
  * @returns the disposer removing the route.
  */
 export function registerYonApi(
@@ -296,6 +349,7 @@ export function registerYonApi(
   service: YonProjectsService,
   skills: YonSkillsService,
   sources: YonDataSourcesService,
+  wiki: YonWikiService,
 ): () => void {
   const carrier = ctx.get('webServer') as RouteRegistrar | undefined
   if (carrier === undefined) {
@@ -320,6 +374,10 @@ export function registerYonApi(
         }
         if (segments[0] === 'datasources') {
           await handleDataSources(req, res, method, segments, sources)
+          return
+        }
+        if (segments[0] === 'wiki') {
+          await handleWiki(req, res, method, segments, wiki)
           return
         }
         if (segments[0] !== 'projects') {
@@ -423,7 +481,12 @@ export function registerYonApi(
         // swallowed cause would leave nothing to debug with.
         console.error('[yon-panel] /yon/api failure', error)
         try {
-          if (error instanceof ProjectError || error instanceof SkillError || error instanceof DataSourceError) {
+          if (
+            error instanceof ProjectError
+            || error instanceof SkillError
+            || error instanceof DataSourceError
+            || error instanceof WikiError
+          ) {
             sendFailure(res, error.code === 'not-found' ? 404 : 400, error.code, error.message)
           } else {
             sendFailure(res, 500, 'internal', error instanceof Error ? error.message : String(error))

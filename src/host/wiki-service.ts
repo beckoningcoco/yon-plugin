@@ -28,6 +28,7 @@ import {
   type WikiIndex, type WikiPage, type WikiVault,
 } from './wiki-index.ts'
 import type { WikiStore } from './wiki-store.ts'
+import type { WikiVaultView } from '../shared/types.ts'
 
 /** What a knowledge base call can fail with. */
 export class WikiError extends Error {
@@ -84,17 +85,8 @@ export interface WikiPageContent {
   readonly text: string
 }
 
-/** One vault as the panel and the tools see it. */
-export interface WikiVaultView {
-  readonly id: string
-  readonly label: string
-  readonly path: string
-  /** Page count from the cached index, or 0 when none is built yet. */
-  readonly pages: number
-  readonly indexedAt?: string
-  /** False when the registered path no longer looks like a vault. */
-  readonly ready: boolean
-}
+/** One vault as the tools see it; the panel's copy is the shared view. */
+export type { WikiVaultView }
 
 /** The knowledge base, as the tools and the HTTP face use it. */
 export interface YonWikiService {

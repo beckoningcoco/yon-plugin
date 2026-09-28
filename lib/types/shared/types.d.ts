@@ -219,6 +219,25 @@ export interface DataSourceProbeResult {
     /** What went wrong, carrying the query tool's own diagnostic text. */
     readonly error?: string;
 }
+/** One Obsidian vault the operator registered as a knowledge base. */
+export interface WikiVaultView {
+    /** Stable short id, used to address the vault in calls. */
+    readonly id: string;
+    /** Human label for the panel. */
+    readonly label: string;
+    /** Absolute vault root on the operator's machine. */
+    readonly path: string;
+    /** Entity pages in the cached index; 0 before one is built. */
+    readonly pages: number;
+    /** When the cached index was built; absent until one is. */
+    readonly indexedAt?: string;
+    /** False when the registered path no longer holds a readable vault. */
+    readonly ready: boolean;
+}
+/** Body of `GET /yon/api/wiki`, and of a rebuild's answer. */
+export interface WikiListPayload {
+    readonly vaults: readonly WikiVaultView[];
+}
 /**
  * Build the identity both halves address one connection by.
  * @param configKey - the key the connection sits under in the configuration.
