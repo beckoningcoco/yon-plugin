@@ -6,8 +6,8 @@ export interface ProjectManagerProps extends ProjectApi {
     onClose(): void;
 }
 /**
- * Render the surface.
+ * Render the project surface.
  * @param props - injected API, copy seat, and close verb.
- * @returns the floating project panel.
+ * @returns the dialog, plus its create dialog and its removal confirmation.
  */
 export declare function ProjectManager({ t, onClose, ...api }: ProjectManagerProps): import("react").JSX.Element;

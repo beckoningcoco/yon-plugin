@@ -40,6 +40,7 @@ export function YonPanelRoot({ usePanel, onToggle, onSetOpen, renderSlot, t }: Y
   // The selector parameter is annotated so the hook's type stays readable no
   // matter how a given harness release types the injected `hooks` compartment.
   const open = usePanel((snapshot: YonPanelSnapshot) => snapshot.open)
+  const overlayDepth = usePanel((snapshot: YonPanelSnapshot) => snapshot.overlayDepth)
   const root = useRef<HTMLDivElement | null>(null)
   const panel = useRef<HTMLElement | null>(null)
   const anchor = useAnchoredPosition({
@@ -50,16 +51,18 @@ export function YonPanelRoot({ usePanel, onToggle, onSetOpen, renderSlot, t }: Y
     gap: 8,
     margin: 8,
   })
-  useDismissOnOutsidePointer(root, open, onSetOpen)
+  // While a layer stands above the panel (the project surface and its dialogs),
+  // its clicks are not outside clicks and its Escape is not the panel's.
+  useDismissOnOutsidePointer(root, open && overlayDepth === 0, onSetOpen)
 
   useEffect(() => {
     if (!open) return
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onSetOpen(false)
+      if (event.key === 'Escape' && overlayDepth === 0) onSetOpen(false)
     }
     window.addEventListener('keydown', onKeyDown)
     return () => { window.removeEventListener('keydown', onKeyDown) }
-  }, [open, onSetOpen])
+  }, [open, overlayDepth, onSetOpen])
 
   return (
     <div ref={root} className={css.action}>

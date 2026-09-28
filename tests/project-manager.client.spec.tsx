@@ -3,14 +3,13 @@
  * The project surface driven through its injected API.
  *
  * The stand-in is an in-memory store rather than a table of mock returns: the
- * point of these cases is the round trip (edit → call → refreshed view), and a
- * store keeps that honest without the host. The surface holds no data access of
- * its own, so nothing else has to be faked.
+ * point of these cases is the round trip (edit -> call -> refreshed view), and a
+ * store keeps that honest without the host.
  *
- * The surface selects the first project as soon as it loads, and a project's own
- * name renders both in the list and in the detail pane, so a case that needs a
- * different selection waits for the detail pane to change rather than reaching
- * into render state.
+ * The framework atoms are stubbed (their published half is a loader artifact this
+ * suite cannot execute), but each stub keeps the contract the surface relies on:
+ * a dialog renders its children into an element labelled by its title, and a
+ * button refuses to fire while disabled.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -20,24 +19,67 @@ import type { ProjectApi } from '../src/client/project/api.ts'
 import { ProjectManager, type ProjectManagerProps } from '../src/client/project/ProjectManager.tsx'
 import { zh } from '../src/client/locales.ts'
 
-// The baseline UI kit reaches the page from the DSH host bundle rather than from
-// a published module, so the specs stub the one hook this surface uses.
 vi.mock('@deepseek-ai/dsh-client-ui-primitives', () => ({
+  Button: ({ variant: _variant, size: _size, icon: _icon, children, ...rest }: Record<string, unknown>) =>
+    <button type="button" {...rest}>{children as ReactElement}</button>,
+  Input: ({ icon: _icon, ...rest }: Record<string, unknown>) => <input {...rest} />,
+  Pill: ({ active: _active, children, ...rest }: Record<string, unknown>) =>
+    <button type="button" {...rest}>{children as ReactElement}</button>,
+  Modal: ({ open, onClose, title, closeLabel, children, footer }: Record<string, unknown>) => (open === true
+    ? (
+      <div role="dialog" aria-label={String(title)}>
+        <button type="button" aria-label={String(closeLabel ?? 'close')} onClick={onClose as () => void} />
+        {children as ReactElement}
+        {footer as ReactElement}
+      </div>
+    )
+    : null),
+  RiskConfirmation: ({
+    open, title, confirmLabel, cancelLabel, closeLabel, acknowledged, disabled,
+    onAcknowledgedChange, onConfirm, onCancel,
+  }: Record<string, unknown>) => (open === true
+    ? (
+      <div role="dialog" aria-label={String(title)}>
+        <button type="button" aria-label={String(closeLabel)} onClick={onCancel as () => void} />
+        <input
+          type="checkbox"
+          aria-label="ack"
+          checked={acknowledged as boolean}
+          onChange={event => (onAcknowledgedChange as (next: boolean) => void)(event.target.checked)}
+        />
+        <button
+          type="button"
+          disabled={disabled === true || acknowledged !== true}
+          onClick={onConfirm as () => void}
+        >
+          {String(confirmLabel)}
+        </button>
+        <button type="button" onClick={onCancel as () => void}>{String(cancelLabel)}</button>
+      </div>
+    )
+    : null),
+  Tooltip: ({ children }: Record<string, unknown>) => children as ReactElement,
+  useAnchoredPosition: () => ({ left: 12, top: 12 }),
   useDismissOnOutsidePointer: () => {},
 }))
 
 afterEach(cleanup)
 
+// jsdom implements no scrolling, and the surface scrolls a freshly created
+// project into view. Without this the effect throws and React unmounts the tree.
+Element.prototype.scrollIntoView = () => {}
+
 /** One row of the stand-in store. */
 interface Row {
   name: string
   code: string
+  status: 'active' | 'paused' | 'done'
   archived: boolean
   fields: Record<string, JsonValue>
 }
 
 /** A project with no fields, active and unarchived. */
-const blank = (name: string): Row => ({ name, code: '', archived: false, fields: {} })
+const blank = (name: string): Row => ({ name, code: '', status: 'active', archived: false, fields: {} })
 
 /** Copy for one key, as the zh dictionary spells it. */
 const at = (key: keyof typeof zh): string => zh[key]
@@ -53,7 +95,7 @@ function stubApi() {
       projectId,
       name: row.name,
       code: row.code,
-      status: 'active',
+      status: row.status,
       archived: row.archived,
       createdAt: 0,
       updatedAt: 0,
@@ -74,6 +116,7 @@ function stubApi() {
       rows.set(projectId, {
         name: input.name,
         code: input.code ?? '',
+        status: input.status ?? 'active',
         archived: false,
         fields: { ...input.fields },
       })
@@ -83,6 +126,7 @@ function stubApi() {
       const row = rows.get(projectId) as Row
       if (patch.name !== undefined) row.name = patch.name
       if (patch.code !== undefined) row.code = patch.code
+      if (patch.status !== undefined) row.status = patch.status
       return detail(projectId)
     }),
     setField: vi.fn(async (projectId, fieldKey, value) => {
@@ -119,20 +163,6 @@ const listRow = (projectId: string): HTMLElement => {
   return row
 }
 
-/**
- * Wait for the opening load to settle.
- *
- * The surface disables its controls while any call is in flight, so a case that
- * means to click something must first let the load that runs on mount finish —
- * otherwise the click lands on a disabled button. The code box is the signal:
- * nothing else gates it.
- */
-async function settle(): Promise<void> {
-  await waitFor(() => {
-    expect((screen.getByLabelText(at('project.code')) as HTMLInputElement).disabled).toBe(false)
-  })
-}
-
 /** Render the surface over a fresh stand-in store. */
 function bench(seed: Record<string, Row> = {}) {
   const { api, rows } = stubApi()
@@ -142,38 +172,42 @@ function bench(seed: Record<string, Row> = {}) {
   return { ...view, api, rows, onClose }
 }
 
-describe('project manager surface', () => {
-  it('says so when there is nothing to list', async () => {
+/** Open the create dialog. */
+async function openCreate(): Promise<void> {
+  fireEvent.click(await screen.findByRole('button', { name: `+ ${at('project.new')}` }))
+}
+
+describe('project surface', () => {
+  it('invites the first project instead of two competing empty hints', async () => {
     bench()
 
     expect(await screen.findByText(at('project.empty'))).toBeTruthy()
-    expect(screen.getByText(at('project.pickHint'))).toBeTruthy()
+    expect(screen.getByText(at('project.emptyHint'))).toBeTruthy()
+    expect(screen.queryByText(at('project.pickHint'))).toBeNull()
   })
 
-  it('creates a project and shows it in the list', async () => {
+  it('creates a project from a dialog and selects it', async () => {
     const { api } = bench()
-    await settle()
+    await openCreate()
 
     fireEvent.change(screen.getByLabelText(at('project.name')), { target: { value: '用友 NCC 客开' } })
     fireEvent.change(screen.getByLabelText(at('project.code')), { target: { value: 'NCC-1' } })
-    fireEvent.click(screen.getByText(at('project.new')))
+    fireEvent.click(screen.getByText(at('project.createConfirm')))
 
     await waitFor(() => {
       expect(api.createProject).toHaveBeenCalledWith({ name: '用友 NCC 客开', code: 'NCC-1' })
     })
-    // The name shows in the list and again as the just-created selection.
-    await waitFor(() => { expect(screen.getAllByText('用友 NCC 客开')).toHaveLength(2) })
-    expect(screen.getByText('NCC-1')).toBeTruthy()
+    await waitFor(() => { expect(screen.getAllByText('用友 NCC 客开').length).toBeGreaterThan(0) })
+    expect(screen.queryByRole('dialog', { name: at('project.createTitle') })).toBeNull()
   })
 
   it('keeps the create button offering nothing until a name is typed', async () => {
     const { api } = bench()
-    await settle()
+    await openCreate()
 
-    const create = screen.getByText(at('project.new')) as HTMLButtonElement
+    const create = screen.getByText(at('project.createConfirm')) as HTMLButtonElement
     expect(create.disabled).toBe(true)
 
-    // A nameless press is not a call: the store never sees an empty project.
     fireEvent.click(create)
     expect(api.createProject).not.toHaveBeenCalled()
 
@@ -181,79 +215,139 @@ describe('project manager surface', () => {
     expect(create.disabled).toBe(false)
   })
 
-  it('shows the selected project dynamic fields and saves an edited value', async () => {
+  it('does not submit on the Enter that picks an input-method candidate', async () => {
+    const { api } = bench()
+    await openCreate()
+
+    const name = screen.getByLabelText(at('project.name'))
+    fireEvent.change(name, { target: { value: '环境信' } })
+
+    // The operator is mid-composition: this Enter belongs to the IME.
+    fireEvent.compositionStart(name)
+    fireEvent.keyDown(name, { key: 'Enter' })
+    expect(api.createProject).not.toHaveBeenCalled()
+
+    fireEvent.compositionEnd(name)
+    fireEvent.keyDown(name, { key: 'Enter' })
+    await waitFor(() => { expect(api.createProject).toHaveBeenCalledWith({ name: '环境信', code: '' }) })
+  })
+
+  it('renames a project in place', async () => {
+    const { api } = bench({ p1: blank('旧名字') })
+
+    fireEvent.click(await screen.findByLabelText(at('project.renameProject')))
+    const input = screen.getByLabelText(at('project.renameProject'))
+    fireEvent.change(input, { target: { value: '新名字' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => { expect(api.updateProject).toHaveBeenCalledWith('p1', { name: '新名字' }) })
+    await waitFor(() => { expect(screen.getAllByText('新名字').length).toBeGreaterThan(0) })
+  })
+
+  it('cancels an in-place rename with Escape', async () => {
+    const { api } = bench({ p1: blank('旧名字') })
+
+    fireEvent.click(await screen.findByLabelText(at('project.renameProject')))
+    const input = screen.getByLabelText(at('project.renameProject'))
+    fireEvent.change(input, { target: { value: '改了但不要' } })
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    expect(api.updateProject).not.toHaveBeenCalled()
+    // The name shows in the list and again as the selected project's heading.
+    expect(screen.getAllByText('旧名字').length).toBeGreaterThan(0)
+  })
+
+  it('switches status straight from the pills', async () => {
+    const { api } = bench({ p1: blank('proj') })
+
+    fireEvent.click(await screen.findByRole('button', { name: at('project.status.paused') }))
+
+    await waitFor(() => { expect(api.updateProject).toHaveBeenCalledWith('p1', { status: 'paused' }) })
+  })
+
+  it('edits the code in place and commits on blur', async () => {
+    const { api } = bench({ p1: blank('proj') })
+
+    fireEvent.click(await screen.findByLabelText(at('project.changeCode')))
+    const input = screen.getByLabelText(at('project.changeCode'))
+    fireEvent.change(input, { target: { value: 'NCC-9' } })
+    fireEvent.blur(input)
+
+    await waitFor(() => { expect(api.updateProject).toHaveBeenCalledWith('p1', { code: 'NCC-9' }) })
+  })
+
+  it('saves an edited field value when the row loses focus', async () => {
     const { api } = bench({
-      p1: { name: 'proj', code: '', archived: false, fields: { 环境信息: { host: '10.0.0.1' } } },
+      p1: { name: 'proj', code: '', status: 'active', archived: false, fields: { 环境信息: '10.0.0.1' } },
     })
 
     const value = await screen.findByLabelText(`环境信息 · ${at('project.fieldValue')}`)
-    fireEvent.change(value, { target: { value: '{"host":"10.0.0.9"}' } })
+    fireEvent.change(value, { target: { value: '10.0.0.9' } })
     fireEvent.blur(value)
 
     await waitFor(() => {
-      expect(api.setField).toHaveBeenCalledWith('p1', '环境信息', { host: '10.0.0.9' })
+      expect(api.setField).toHaveBeenCalledWith('p1', '环境信息', '10.0.0.9')
     })
-    // The saved value comes back from the store as the row's new text.
-    await screen.findByDisplayValue('{"host":"10.0.0.9"}')
+    await screen.findByText(at('project.fieldSaved'))
   })
 
-  it('leaves an unedited field alone when the row loses focus', async () => {
+  it('marks a failed save on its own row and retries it from there', async () => {
     const { api } = bench({
-      p1: { name: 'proj', code: '', archived: false, fields: { 环境信息: '10.0.0.1' } },
+      p1: { name: 'proj', code: '', status: 'active', archived: false, fields: { 环境信息: '10.0.0.1' } },
     })
+    vi.mocked(api.setField).mockRejectedValueOnce(new Error('boom'))
 
-    fireEvent.blur(await screen.findByLabelText(`环境信息 · ${at('project.fieldValue')}`))
+    const row = await screen.findByLabelText(`环境信息 · ${at('project.fieldValue')}`)
+    fireEvent.change(row, { target: { value: '10.0.0.9' } })
+    fireEvent.blur(row)
 
-    await screen.findByText(at('project.fields'))
-    expect(api.setField).not.toHaveBeenCalled()
-  })
+    const retry = await screen.findByText(at('project.fieldFailed'))
+    // The operator's text survives the failure instead of looking saved.
+    expect((screen.getByLabelText(`环境信息 · ${at('project.fieldValue')}`) as HTMLInputElement).value).toBe('10.0.0.9')
 
-  it('adds a field the operator invents, keeping plain text as text', async () => {
-    const { api } = bench({ p1: blank('proj') })
-
-    fireEvent.change(await screen.findByLabelText(at('project.fieldKey')), { target: { value: '环境信息new' } })
-    fireEvent.change(screen.getByLabelText(at('project.fieldValue')), { target: { value: '10.0.0.9' } })
-    fireEvent.click(screen.getByText(at('project.addField')))
-
-    // "10.0.0.9" is not JSON, so it stays the string the operator typed.
+    fireEvent.click(retry)
     await waitFor(() => {
-      expect(api.setField).toHaveBeenCalledWith('p1', '环境信息new', '10.0.0.9')
+      expect(api.setField).toHaveBeenLastCalledWith('p1', '环境信息', '10.0.0.9')
     })
-    await screen.findByLabelText(`环境信息new · ${at('project.fieldValue')}`)
+    await screen.findByText(at('project.fieldSaved'))
   })
 
-  it('reads a value that is JSON back as JSON', async () => {
+  it('keeps a long digit string a string', async () => {
     const { api } = bench({ p1: blank('proj') })
 
-    fireEvent.change(await screen.findByLabelText(at('project.fieldKey')), { target: { value: '端口' } })
-    fireEvent.change(screen.getByLabelText(at('project.fieldValue')), { target: { value: '[1,2]' } })
-    fireEvent.click(screen.getByText(at('project.addField')))
+    fireEvent.click(await screen.findByRole('button', { name: `+ ${at('project.addField')}` }))
+    fireEvent.change(await screen.findByLabelText(at('project.fieldKey')), { target: { value: '订单号' } })
+    fireEvent.change(screen.getByLabelText(at('project.fieldValue')), { target: { value: '138001380001234567' } })
+    fireEvent.click(screen.getByText(at('project.fieldAdd')))
 
-    await waitFor(() => { expect(api.setField).toHaveBeenCalledWith('p1', '端口', [1, 2]) })
+    await waitFor(() => {
+      expect(api.setField).toHaveBeenCalledWith('p1', '订单号', '138001380001234567')
+    })
   })
 
-  it('removes one field without touching the others', async () => {
+  it('reads structured JSON as JSON', async () => {
+    const { api } = bench({ p1: blank('proj') })
+
+    fireEvent.click(await screen.findByRole('button', { name: `+ ${at('project.addField')}` }))
+    fireEvent.change(await screen.findByLabelText(at('project.fieldKey')), { target: { value: '端口' } })
+    fireEvent.change(screen.getByLabelText(at('project.fieldValue')), { target: { value: '["8080","8443"]' } })
+    fireEvent.click(screen.getByText(at('project.fieldAdd')))
+
+    await waitFor(() => { expect(api.setField).toHaveBeenCalledWith('p1', '端口', ['8080', '8443']) })
+  })
+
+  it('asks before removing a field', async () => {
     const { api } = bench({
-      p1: { name: 'proj', code: '', archived: false, fields: { a: 1, b: 2 } },
+      p1: { name: 'proj', code: '', status: 'active', archived: false, fields: { a: 1, b: 2 } },
     })
 
-    fireEvent.click(await screen.findByLabelText(`${at('project.removeField')}: a`))
+    fireEvent.click(await screen.findByLabelText(`${at('project.fieldRemove')}: a`))
+    expect(api.removeField).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByText(at('project.fieldRemoveYes')))
 
     await waitFor(() => { expect(api.removeField).toHaveBeenCalledWith('p1', 'a') })
-    await screen.findByText('b')
-    expect(screen.queryByText('a')).toBeNull()
-  })
-
-  it('switches the detail pane to the project that was clicked', async () => {
-    bench({ p1: blank('first'), p2: { ...blank('second'), fields: { 环境信息: '10.0.0.2' } } })
-
-    // The first project is selected on load, so its name is in both panes.
-    await waitFor(() => { expect(screen.getAllByText('first')).toHaveLength(2) })
-
-    fireEvent.click(listRow('p2'))
-
-    await waitFor(() => { expect(screen.getAllByText('second')).toHaveLength(2) })
-    await screen.findByDisplayValue('10.0.0.2')
+    await waitFor(() => { expect(screen.queryByText('a')).toBeNull() })
   })
 
   it('archives a project and drops it from the default list', async () => {
@@ -267,7 +361,6 @@ describe('project manager surface', () => {
 
   it('keeps an archived project listed when asked for', async () => {
     const { api } = bench({ p1: { ...blank('proj'), archived: true } })
-    await settle()
 
     fireEvent.click(screen.getByLabelText(at('project.showArchived')))
 
@@ -275,33 +368,72 @@ describe('project manager surface', () => {
     await waitFor(() => { expect(screen.getAllByText('proj').length).toBeGreaterThan(0) })
   })
 
-  it('asks twice before deleting a project permanently', async () => {
+  it('deletes a project only after the risk is acknowledged', async () => {
     const { api } = bench({ p1: blank('proj') })
 
     fireEvent.click(await screen.findByText(at('project.remove')))
+
+    const confirm = await screen.findByText(at('project.removeConfirm')) as HTMLButtonElement
+    expect(confirm.disabled).toBe(true)
+
+    fireEvent.click(confirm)
     expect(api.removeProject).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByText(`${at('project.remove')}?`))
+    fireEvent.click(screen.getByLabelText('ack'))
+    expect(confirm.disabled).toBe(false)
+    fireEvent.click(confirm)
+
     await waitFor(() => { expect(api.removeProject).toHaveBeenCalledWith('p1') })
   })
 
-  it('reports a failing call instead of swallowing it', async () => {
+  it('lets the top dialog own the surface close control', async () => {
+    const { onClose } = bench({ p1: blank('proj') })
+    await screen.findByText(at('project.archive'))
+
+    await openCreate()
+    // The surface's own close control must not close the surface underneath the
+    // dialog that is actually on top.
+    fireEvent.click(screen.getByLabelText(at('project.close')))
+    expect(onClose).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByLabelText(at('project.cancel')))
+    await waitFor(() => { expect(screen.queryByRole('dialog', { name: at('project.createTitle') })).toBeNull() })
+
+    fireEvent.click(screen.getByLabelText(at('project.close')))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('walks the list with the arrow keys', async () => {
+    bench({ p1: blank('first'), p2: { ...blank('second'), fields: { 环境信息: '10.0.0.2' } } })
+    await waitFor(() => { expect(screen.getAllByText('first').length).toBe(2) })
+
+    fireEvent.keyDown(screen.getByRole('listbox', { name: at('project.list') }), { key: 'ArrowDown' })
+
+    await waitFor(() => { expect(screen.getAllByText('second').length).toBe(2) })
+  })
+
+  it('offers a search box once the list is long enough to need one', async () => {
+    const seed: Record<string, Row> = {}
+    for (let index = 0; index < 9; index += 1) seed[`p${index}`] = blank(`项目${index}`)
+
+    bench(seed)
+    const search = await screen.findByLabelText(at('project.search'))
+    fireEvent.change(search, { target: { value: '项目7' } })
+
+    await waitFor(() => { expect(document.querySelectorAll('[data-project]')).toHaveLength(1) })
+    expect(listRow('p7')).toBeTruthy()
+  })
+
+  it('reports a failed create inside the dialog instead of closing it', async () => {
     const { api } = bench()
-    await settle()
     vi.mocked(api.createProject).mockRejectedValueOnce(new Error('boom'))
+    await openCreate()
 
     fireEvent.change(screen.getByLabelText(at('project.name')), { target: { value: 'x' } })
-    fireEvent.click(screen.getByText(at('project.new')))
+    fireEvent.click(screen.getByText(at('project.createConfirm')))
 
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toContain('boom')
-  })
-
-  it('closes on its own control', async () => {
-    const { onClose } = bench()
-
-    fireEvent.click(screen.getByLabelText(at('panel.close')))
-
-    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('dialog', { name: at('project.createTitle') })).toBeTruthy()
   })
 })

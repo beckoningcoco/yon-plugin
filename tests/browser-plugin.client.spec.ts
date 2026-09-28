@@ -84,6 +84,31 @@ describe('dsh-plugin-yon-panel browser plugin', () => {
     expect(entry?.options.order).toBe(10)
   })
 
+  it('gives the project entry the operations and the overlay announcement it needs', async () => {
+    const { registrations } = await bench()
+
+    const entry = registrations.find(item => item.name === 'yon.panel.item')
+    const face = (entry?.options.inject as () => Record<string, unknown>)()
+
+    // The project surface: every operation the components call, and no URL.
+    for (const method of [
+      'listProjects', 'getProject', 'createProject', 'updateProject',
+      'setField', 'removeField', 'archiveProject', 'removeProject', 'pushOverlay',
+    ]) {
+      expect(typeof face[method]).toBe('function')
+    }
+
+    // Announcing the layer raises the panel's count, and releasing lowers it.
+    const release = (face.pushOverlay as () => () => void)()
+    const action = registrations.find(item => item.name === 'sidebar.footer.action')
+    const panelFace = (action?.options.inject as () => {
+      hooks: { panel: { getSnapshot(): { overlayDepth: number } } }
+    })()
+    expect(panelFace.hooks.panel.getSnapshot().overlayDepth).toBe(1)
+    release()
+    expect(panelFace.hooks.panel.getSnapshot().overlayDepth).toBe(0)
+  })
+
   it('registers its dictionaries under the plugin namespace', async () => {
     const { registerLocale } = await bench()
 
@@ -98,18 +123,18 @@ describe('dsh-plugin-yon-panel browser plugin', () => {
 
     const action = registrations.find(entry => entry.name === 'sidebar.footer.action')
     const face = (action?.options.inject as () => {
-      hooks: { panel: { getSnapshot(): { open: boolean } } }
+      hooks: { panel: { getSnapshot(): { open: boolean; overlayDepth: number } } }
       onToggle(): void
       onSetOpen(open: boolean): void
     })()
 
-    expect(face.hooks.panel.getSnapshot()).toEqual({ open: false })
+    expect(face.hooks.panel.getSnapshot()).toEqual({ open: false, overlayDepth: 0 })
     face.onSetOpen(true)
-    expect(face.hooks.panel.getSnapshot()).toEqual({ open: true })
+    expect(face.hooks.panel.getSnapshot()).toEqual({ open: true, overlayDepth: 0 })
     face.onToggle()
-    expect(face.hooks.panel.getSnapshot()).toEqual({ open: false })
+    expect(face.hooks.panel.getSnapshot()).toEqual({ open: false, overlayDepth: 0 })
     face.onSetOpen(false)
-    expect(face.hooks.panel.getSnapshot()).toEqual({ open: false })
+    expect(face.hooks.panel.getSnapshot()).toEqual({ open: false, overlayDepth: 0 })
   })
 
   it('tears down without throwing', async () => {

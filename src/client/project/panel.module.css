@@ -1,0 +1,489 @@
+/*
+ * The project surface: a two-column body inside the framework's dialog card.
+ *
+ * Every colour, border and shadow here is a theme alias, and the atoms that
+ * carry their own chrome (Button, Input, Pill, Modal) are used instead of being
+ * re-drawn — this file only owns layout, the parts the atoms do not cover
+ * (the list, the field rows, the empty state), and the focus ring the atoms
+ * leave to the browser.
+ *
+ * Elevation is declared once, by the dialog card's own shadow: nothing in here
+ * adds a second border or shadow on top of it.
+ */
+
+/* The dialog card is the atoms' `min(380px, 100%)`; a list beside a detail pane
+   needs the wider measure. Doubling the class outranks the atom's own rule. */
+.manager.manager {
+  width: min(680px, 100%);
+  max-height: calc(100vh - 48px);
+  /* This is an elevated scrolling surface, so the shared scrollbar tokens are
+     rebound to their layer-2 rung as the theme's styling rules require. */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+/* The card's content column: allowed to shrink so the body's own height wins. */
+.managerContent {
+  min-height: 0;
+}
+
+/* One fixed working area. A list beside a detail pane needs a stable height:
+   sized to the content, it would jump every time a project was selected. */
+.body {
+  height: min(62vh, 520px);
+  display: flex;
+  align-items: stretch;
+  gap: 16px;
+}
+
+/* Keyboard focus is the atoms' blind spot: Button and Pill ship no ring. */
+.manager :focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 2px;
+}
+
+/* ── the list column ─────────────────────────────────────────────────────── */
+
+.listPane {
+  flex: none;
+  width: 244px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 16px;
+  border-right: 0.5px solid var(--dsw-alias-border-l1);
+}
+
+.listHead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.listTitle {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.projects {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.projectRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.projectRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.projectRow[aria-selected='true'] {
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+.projectRow[data-archived] {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.projectMark {
+  flex: none;
+  display: inline-flex;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.projectName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.projectCode {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.projectMeta {
+  flex: none;
+  margin-left: auto;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.projectArchived {
+  flex: none;
+  padding: 0 4px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 4px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.archivedToggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 0.5px solid var(--dsw-alias-border-l1);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.archivedToggle input {
+  margin: 0;
+  accent-color: var(--dsw-alias-button-primary-fill);
+}
+
+/* ── the detail column ───────────────────────────────────────────────────── */
+
+.detailPane {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 2px;
+}
+
+.empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px 16px;
+  text-align: center;
+}
+
+.emptyMark {
+  display: inline-flex;
+  color: var(--dsw-alias-label-dimmed);
+}
+
+.emptyTitle {
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.note {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.hint {
+  margin: 2px 0 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* ── values edited where they are read ───────────────────────────────────── */
+
+.inlineText {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 2px 6px;
+  border: 0.5px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  cursor: text;
+}
+
+/* The hairline on hover is the whole invitation: this text is editable. */
+.inlineText:hover:not(:disabled) {
+  border-color: var(--dsw-alias-border-l2);
+}
+
+.inlineText:disabled {
+  cursor: default;
+}
+
+.inlineTitle {
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.inlineValue {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.inlineEmpty {
+  color: var(--dsw-alias-label-dimmed);
+}
+
+/* The project's own name, at heading weight, still editable in place. */
+.detailName {
+  min-width: 0;
+}
+
+.props {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px 10px;
+  margin: 0;
+}
+
+.propLabel {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.propValue {
+  min-width: 0;
+  margin: 0;
+}
+
+.statusGroup {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.statusGroup > button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.detailActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Destructive, so it carries the error colour and a matching hover fill. The
+   outline form draws its border in the same colour, as the product's own
+   delete confirmations do. */
+.dangerButton.dangerButton {
+  color: var(--dsw-alias-state-error-primary);
+  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, transparent);
+}
+
+.dangerButton.dangerButton:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover-danger);
+}
+
+.rule {
+  height: 0;
+  margin: 2px 0;
+  border: 0;
+  border-top: 0.5px solid var(--dsw-alias-border-l1);
+}
+
+/* ── the field rows ──────────────────────────────────────────────────────── */
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fieldsHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.sectionTitle {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.fieldRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
+
+.fieldKey {
+  flex: none;
+  width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* The atom's wrapper is inline-flex and sizes to its input; stretch it. */
+.inputFill {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+}
+
+.fieldRow .inputFill {
+  flex: 1;
+}
+
+/* The row state holds its own width so a save never reflows the row. */
+.rowState {
+  flex: none;
+  width: 52px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+  text-align: right;
+}
+
+.rowFailed {
+  flex: none;
+  max-width: 150px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-state-error-primary);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  text-align: right;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  cursor: pointer;
+}
+
+.rowRemove {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.rowRemove:hover {
+  background: var(--dsw-alias-interactive-bg-hover-danger);
+  color: var(--dsw-alias-state-error-primary);
+}
+
+/* The new-field row keeps the name box the same width as the rows above it. */
+.draftKey.draftKey {
+  flex: none;
+  width: 96px;
+}
+
+/* ── failure and the create form ─────────────────────────────────────────── */
+
+.error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--dsw-alias-interactive-bg-hover-danger);
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.errorText {
+  flex: 1;
+  min-width: 0;
+}
+
+.errorAction {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.formRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.formLabel {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.formError {
+  margin: 0;
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+  line-height: 16px;
+}

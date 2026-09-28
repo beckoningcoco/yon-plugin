@@ -1,11 +1,13 @@
 /**
  * The panel's built-in entry: one icon cell that opens the project surface.
  *
- * The surface is a fixed-position overlay rather than a region of the panel body
- * — a 280px strip cannot hold a list plus an editable field table — and this
- * entry owns it, so opening it needs no cross-seat coordination.
+ * The surface is a dialog rather than a region of the panel body — a 280px strip
+ * cannot hold a list beside a field table — and this entry owns it, so opening it
+ * needs no cross-seat coordination. While the surface is up the entry also tells
+ * the panel to stand down, and when it closes the entry hands focus back to the
+ * cell that opened it.
  */
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   InjectFace, PropsLocale, PropsRuntime,
@@ -16,7 +18,8 @@ import css from './ProjectItem.module.css'
 
 /**
  * Composed props of this panel button seat: the owner share carries the panel's
- * live open state, and the inject face carries the project operations.
+ * live open state, and the inject face carries the project operations plus the
+ * overlay announcement.
  */
 export type ProjectItemProps =
   PropsRuntime<'yon.panel.item'>
@@ -54,24 +57,47 @@ function FolderMark() {
 /**
  * Render the entry cell and, while open, the project surface.
  * @param props - composed slot props.
- * @returns the cell, plus the overlay when it is showing.
+ * @returns the cell, plus the dialog when it is showing.
  */
-export function ProjectItem({ t, ...api }: ProjectItemProps) {
+export function ProjectItem({ t, pushOverlay, ...api }: ProjectItemProps) {
   const [open, setOpen] = useState(false)
+  const trigger = useRef<HTMLButtonElement | null>(null)
+  // The face may be rebuilt by the host between renders; the announcement must
+  // still be made once per opening, with the newest function available.
+  const announce = useRef(pushOverlay)
+  announce.current = pushOverlay
+  const wasOpen = useRef(false)
+
+  // The panel's dismissals stand down for exactly as long as the surface is up.
+  useEffect(() => {
+    if (!open) return
+    const release = announce.current()
+    return () => { release() }
+  }, [open])
+
+  // Closing hands focus back to the cell, rather than dropping it on the page.
+  useEffect(() => {
+    if (wasOpen.current && !open) trigger.current?.focus()
+    wasOpen.current = open
+  }, [open])
 
   return (
     <>
       <Tooltip label={t('item.project')} side="bottom" delayMs={300}>
-        <button
-          type="button"
-          className={css.item}
-          data-active={open ? '' : undefined}
-          aria-label={t('item.project')}
-          aria-expanded={open}
-          onClick={() => { setOpen(value => !value) }}
-        >
-          <FolderMark />
-        </button>
+        <span className={css.cell}>
+          <button
+            ref={trigger}
+            type="button"
+            className={css.item}
+            data-active={open ? '' : undefined}
+            aria-label={t('item.project')}
+            aria-expanded={open}
+            aria-haspopup="dialog"
+            onClick={() => { setOpen(value => !value) }}
+          >
+            <FolderMark />
+          </button>
+        </span>
       </Tooltip>
       {open && <ProjectManager t={t} onClose={() => { setOpen(false) }} {...api} />}
     </>

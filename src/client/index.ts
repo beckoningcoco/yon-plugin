@@ -76,6 +76,9 @@ export function apply(ctx: ClientContext): void {
     id: 'project',
     order: 10,
     locale: NS,
-    inject: () => ({ ...projectApi }),
+    // The entry gets the project operations plus the one panel-level gesture its
+    // surface needs: announcing itself as a layer above the panel, so the panel
+    // stops answering Escape and outside clicks while it is up.
+    inject: () => ({ ...projectApi, pushOverlay: () => panel.pushOverlay() }),
   }, ProjectItem))
 }

@@ -2,10 +2,18 @@
 import type { ProjectApi } from './project/api.ts';
 /**
  * Data face the panel's built-in entry receives: the project API, closed over the
- * apply world. The component calls these operations; it never builds a URL, never
- * fetches, and never subscribes.
+ * apply world, plus the one panel-level gesture the entry needs. The component
+ * calls these operations; it never builds a URL, never fetches, and never
+ * subscribes.
  */
-export type ProjectItemFace = ProjectApi;
+export type ProjectItemFace = ProjectApi & {
+    /**
+     * Announce a layer standing above the panel (the project surface). The panel's
+     * own Escape and outside-click dismissals stand down while one is up.
+     * @returns the release for that layer.
+     */
+    pushOverlay(): () => void;
+};
 /**
  * Bare observable source: the getSnapshot/subscribe pair the DSH renderer binds
  * into a \`use<Name>\` selector hook. Declared here rather than imported, so this
@@ -21,6 +29,12 @@ export interface PanelSource<T> {
 export interface YonPanelSnapshot {
     /** Whether the panel surface is currently showing. */
     readonly open: boolean;
+    /**
+     * How many layers stand above the panel right now. The panel keeps its own
+     * dismissals (Escape, outside click) while this is above zero, so one Escape
+     * closes the top layer instead of the whole stack.
+     */
+    readonly overlayDepth: number;
 }
 /** Owner share of one panel button seat: the panel's live open state. */
 export interface YonPanelItemOwnerProps {

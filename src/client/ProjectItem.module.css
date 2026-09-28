@@ -1,4 +1,9 @@
-/* One panel entry: an icon cell laid out by the panel body. */
+/* One panel entry: an icon cell laid out by the panel body. The wrapper exists
+   so the tooltip can own an element of its own while the button keeps its ref. */
+
+.cell {
+  display: inline-flex;
+}
 
 .item {
   flex: none;
