@@ -35,6 +35,7 @@ import { registerYonWikiTools, WIKI_TOOL_NAMES } from './host/wiki-tools.ts'
 import { GBK_TOOL_NAMES, registerYonGbkTools } from './host/gbk-tool.ts'
 import { KNOWLEDGE_TOOL_NAMES, registerYonKnowledgeTools } from './host/knowledge-tools.ts'
 import { CLASS_TOOL_NAMES, registerYonClassTools } from './host/class-tools.ts'
+import { registerYonWikiWriteTools, WIKI_WRITE_TOOL_NAMES } from './host/wiki-write.ts'
 
 export { DOMAIN_NAME, YON_DOMAIN } from './host/domain.ts'
 export { SKILL_DOMAIN_NAME, YON_SKILL_DOMAIN } from './host/skill-domain.ts'
@@ -53,6 +54,7 @@ export { WIKI_TOOL_NAMES } from './host/wiki-tools.ts'
 export { GBK_TOOL_NAMES, GbkError } from './host/gbk-tool.ts'
 export { KNOWLEDGE_TOOL_NAMES, KnowledgeError } from './host/knowledge-tools.ts'
 export { CLASS_TOOL_NAMES, ClassIndexError } from './host/class-tools.ts'
+export { WIKI_WRITE_TOOL_NAMES, WikiWriteError } from './host/wiki-write.ts'
 export { classIndexDir, classIndexPath } from './host/class-index.ts'
 export { defaultWikiStorePath } from './host/wiki-store.ts'
 export { guessVaults } from './host/wiki-index.ts'
@@ -144,6 +146,16 @@ export async function apply(ctx: Context): Promise<void> {
   ctx.provide('yonWiki', wiki)
 
   ctx.effect(() => registerYonWikiTools(ctx, wiki), 'yon-panel: wiki tools')
+
+  // The way back into the vault. Until something can write, a lookup that comes
+  // back empty stays empty forever: what the model learns from the database is
+  // gone when the session ends. Three modes, and no way to replace a page's text —
+  // see wiki-write.ts for why that operation does not exist rather than being
+  // merely gated.
+  ctx.effect(
+    () => registerYonWikiWriteTools(ctx, wiki, wikiStore),
+    'yon-panel: wiki write tool',
+  )
 
   // The GBK editor: one tool over the script this package ships, because a NCC
   // customisation tree is GBK on disk and a general-purpose save corrupts it

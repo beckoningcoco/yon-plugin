@@ -66,6 +66,16 @@ export interface YonWikiService {
     read(page: string, vaultId?: string): Promise<WikiPageContent>;
     /** Drop the cached indexes and rebuild them from disk. */
     rebuild(vaultId?: string): Promise<readonly WikiVaultView[]>;
+    /**
+     * Forget what is cached for one vault: on disk and in memory.
+     *
+     * Called after a write. The page on disk is newer than any index, and a lookup
+     * served from the in-memory copy would not see it until the process restarted —
+     * which is the difference between "the write worked" and "the write worked and
+     * the knowledge base can tell you about it".
+     * @param vaultId - the vault that changed; all of them when omitted.
+     */
+    invalidate(vaultId?: string): Promise<void>;
     dispose(): void;
 }
 /**

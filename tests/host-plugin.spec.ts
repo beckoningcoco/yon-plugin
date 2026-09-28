@@ -12,13 +12,13 @@ import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
 import {
   CLASS_TOOL_NAMES, DATASOURCE_TOOL_NAMES, DOMAIN_NAME, GBK_TOOL_NAMES, KNOWLEDGE_TOOL_NAMES,
-  SKILL_DOMAIN_NAME, WIKI_TOOL_NAMES, YON_BUNDLED_SKILLS, YON_SKILL_SOURCE, apply, inject,
-  YON_TOOL_NAMES,
+  SKILL_DOMAIN_NAME, WIKI_TOOL_NAMES, WIKI_WRITE_TOOL_NAMES, YON_BUNDLED_SKILLS, YON_SKILL_SOURCE,
+  apply, inject, YON_TOOL_NAMES,
 } from '../src/index.ts'
 
 /** Every tool this package registers, in the order apply() adds them. */
 const ALL_TOOL_NAMES = [
-  ...YON_TOOL_NAMES, ...DATASOURCE_TOOL_NAMES, ...WIKI_TOOL_NAMES,
+  ...YON_TOOL_NAMES, ...DATASOURCE_TOOL_NAMES, ...WIKI_TOOL_NAMES, ...WIKI_WRITE_TOOL_NAMES,
   ...GBK_TOOL_NAMES, ...KNOWLEDGE_TOOL_NAMES, ...CLASS_TOOL_NAMES,
 ]
 

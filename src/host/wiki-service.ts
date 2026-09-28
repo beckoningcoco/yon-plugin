@@ -21,7 +21,7 @@
  * and rebuilt only on request — see `wiki-index.ts` for why staleness is the
  * operator's decision rather than something detected behind their back.
  */
-import { readFile } from 'node:fs/promises'
+import { readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 import {
   buildWikiIndex, ensureWikiIndex, entityDirOf, wikiIndexPath, writeWikiIndex,
@@ -106,6 +106,16 @@ export interface YonWikiService {
   read(page: string, vaultId?: string): Promise<WikiPageContent>
   /** Drop the cached indexes and rebuild them from disk. */
   rebuild(vaultId?: string): Promise<readonly WikiVaultView[]>
+  /**
+   * Forget what is cached for one vault: on disk and in memory.
+   *
+   * Called after a write. The page on disk is newer than any index, and a lookup
+   * served from the in-memory copy would not see it until the process restarted —
+   * which is the difference between "the write worked" and "the write worked and
+   * the knowledge base can tell you about it".
+   * @param vaultId - the vault that changed; all of them when omitted.
+   */
+  invalidate(vaultId?: string): Promise<void>
   dispose(): void
 }
 
@@ -298,6 +308,14 @@ export function createYonWikiService(store: WikiStore): YonWikiService {
         indexes.set(vault.path, index)
       }
       return this.list()
+    },
+
+    async invalidate(vaultId) {
+      const selected = await select(vaultId)
+      for (const vault of selected) {
+        indexes.delete(vault.path)
+        await rm(wikiIndexPath(vault.path), { force: true }).catch(() => undefined)
+      }
     },
 
     dispose() {
