@@ -1,0 +1,4 @@
+# Keep the published sources byte-identical across platforms: the compiled lib/
+# is committed, so a CRLF rewrite would show up as a spurious diff everywhere.
+* text=auto eol=lf
+*.png binary
