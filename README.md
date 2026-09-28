@@ -93,6 +93,46 @@ const stop = ctx.yonProjects.subscribe(() => {   // 变更通知（来自 domain
 
 想要 **SQLite 介质**：在 profile 里挂 `@deepseek-ai/dsh-storage-sqlite` 并把本领域路由指过去即可，**插件代码不用改**（介质由部署方选，见 DSH 的 storage 子系统文档）。
 
+### 让 Agent 帮你管配置（模型工具）
+
+Host 半把这份存储同时注册成 **agent 工具**，所以你可以直接在对话里说人话：
+
+> 把「用友 NCC 客开」的环境信息改成 10.0.0.9
+> 给「用友 NCC 客开」加一个字段：负责人 = 张三
+> 新建一个项目叫「BIP 旗舰版客开」，编码 BIP-1
+> 把「旧项目」删掉
+
+注册的工具：
+
+| 工具 | 作用 | 要不要确认 |
+|---|---|---|
+| `project_list` | 列出项目（可按关键词过滤、可含已归档） | 不需要 |
+| `project_read` | 读一个项目及其全部字段（改之前模型必须先读） | 不需要 |
+| `project_create` | 新建项目，可带初始字段 | **要** |
+| `project_update` | 改名 / 改编码 / 改状态 / 归档 + 写字段 + 删字段 | **要** |
+| `project_delete` | 彻底删除项目及其全部字段 | **要** |
+
+**三个写工具都会先停下来等你确认**，而且确认时给你的不是「即将执行 project_update」，而是**改动清单**：
+
+```
+修改项目「用友 NCC 客开」：
+· 名称：「用友 NCC 客开」→「用友 NCC」
+· 字段「环境信息」：「10.0.0.1」→「10.0.0.9」
+· 新增字段「负责人」= 张三
+· 删除字段「旧字段」（原值 x）
+```
+
+没批准就不会落库 —— 这一步走的是框架自己的审批闸门（`tools/pre-execute` 返回 `{kind:'ask'}`），除了「允许一次」以外的任何回答都按拒绝处理。一次调用确实没有改动时，预览会直说「项目「X」没有任何改动。」
+
+几个设计取舍：
+
+- **解析自然语言的模型就是你在对话的那个模型**：提示词、模型选择、凭据、重试、会话记录全部由 DSH 的 agent loop 负责，插件只声明「能做什么」和「改之前给人看什么」，因此**不含任何模型客户端**，也不需要在插件里配置 API key。
+- **项目可以用名字指代**：`project` 参数接受 id、名称或编码。名字撞车时它不猜，而是把候选列出来让人挑。
+- **读工具不设闸门**，否则每次问「我有哪些项目」都得点一次批准。
+- **参数校验在工具自己手里**：模型给的参数不合法（比如 `fields` 不是对象、项目名是空白）会被拒绝并回一条它能看懂的错误，而不是写进去半个记录。
+
+> ⚠️ **需要重启 DSH**：工具是 host 半注册的，改完插件必须重启才生效（浏览器半只需要刷新页面）。
+
 ## 按钮面板（浏览器半）
 
 侧栏底部的 `Y` 图标点开是 280px 的小面板；面板内有一个内建格子「项目管理」（图标 + 悬停显示完整描述）。
@@ -141,7 +181,7 @@ ctx.slots.inject('yon.panel.item', () => ctx.slots.register({
 ```sh
 pnpm install
 pnpm typecheck   # tsc --noEmit（host + client + tests）
-pnpm test        # vitest（65 个用例）
+pnpm test        # vitest（92 个用例）
 pnpm build       # tsc 出 host 半（ESM），tsdown 出浏览器半（loader factory）
 pnpm verify      # 产物自检：loader 契约、externals、样式注入、host ESM、patch 层
 pnpm pack        # 打包，prepack 会先 build
@@ -164,6 +204,7 @@ pnpm pack        # 打包，prepack 会先 build
 
 ## 已知限制
 
+- **agent 工具依赖部署**：模型那一步由 DSH 的 agent loop 负责，所以所在 profile 需要有 `tools` 服务与可用的模型凭据。缺凭据的环境（例如没配 key 的 `headless` profile）里界面照常可用，但"说人话改配置"这条路径走不通
 - **字段名不能改名**：字段名就是这条记录的身份键，改名等于「写新键 + 删旧键」两次写，中途失败会留下两个字段。要改就删掉重建
 - **删除没有撤销**：归档可以恢复，删字段/删项目不行（删除前会确认，但确认之后就没了）
 - **值只能手输**：没有类型选择器或富编辑，结构化值要自己写 JSON 文本
@@ -177,8 +218,9 @@ pnpm pack        # 打包，prepack 会先 build
 |---|---|
 | `src/index.ts` | Host 入口：打开领域、发布 `ctx.yonProjects`、挂 `/yon/api` |
 | `src/host/domain.ts` | 领域与两张表的 zod schema、路径安全的记录键编码 |
-| `src/host/service.ts` | 项目存储服务：主子表聚合、级联删除、写入校验、变更订阅 |
-| `src/host/http.ts` | `/yon/api` 前缀路由与错误映射 |
+| `src/host/service.ts` | 项目存储服务：主子表聚合、级联删除、写入校验、变更订阅、按 id/名称/编码定位 |
+| `src/host/tools.ts` | 面向 agent 的工具：5 个 `project_*` 工具 + 写操作的确认预览闸门 |
+| `src/host/http.ts` | `/yon/api` 前缀路由与错误映射（没有 web server 的部署下不挂载） |
 | `src/shared/types.ts` | 前后端共用的数据契约 |
 | `src/client/index.ts` | 浏览器半入口：席位注册、面板 store、内建条目、API 客户端的注入面 |
 | `src/client/YonPanelRoot.tsx` | 侧栏底部触发按钮、面板外壳、分层后的关闭行为 |

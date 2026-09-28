@@ -9,7 +9,7 @@
  */
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
-import { DOMAIN_NAME, apply, inject } from '../src/index.ts'
+import { DOMAIN_NAME, apply, inject, YON_TOOL_NAMES } from '../src/index.ts'
 
 /** An always-empty `KvTable`, enough for the store to construct and refresh. */
 function emptyTable() {
@@ -24,8 +24,11 @@ function emptyTable() {
   }
 }
 
-/** Mount the host half over stand-in services. */
-async function bench() {
+/**
+ * Mount the host half over stand-in services.
+ * @param withWebServer - whether this deployment has an HTTP carrier at all.
+ */
+async function bench(withWebServer = true) {
   const ctx = new Context()
   const closeDomain = vi.fn(async () => {})
   const open = vi.fn(async (_spec: unknown) => ({
@@ -35,17 +38,20 @@ async function bench() {
   }))
   const disposeRoute = vi.fn()
   const register = vi.fn((_route: unknown) => disposeRoute)
+  const disposeTool = vi.fn()
+  const registerTool = vi.fn((_definition: unknown) => disposeTool)
   ctx.provide('storageDomain', { open } as never)
-  ctx.provide('webServer', { register } as never)
+  ctx.provide('tools', { register: registerTool } as never)
+  if (withWebServer) ctx.provide('webServer', { register } as never)
 
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
-  return { ctx, open, register, closeDomain, disposeRoute, fiber }
+  return { ctx, open, register, closeDomain, disposeRoute, registerTool, disposeTool, fiber }
 }
 
 describe('dsh-plugin-yon-panel host half', () => {
-  it('declares the two services it needs', () => {
-    expect([...inject]).toEqual(['storageDomain', 'webServer'])
+  it('requires storage and the tool registry, and nothing else', () => {
+    expect([...inject]).toEqual(['storageDomain', 'tools'])
   })
 
   it('opens the declared domain', async () => {
@@ -69,6 +75,26 @@ describe('dsh-plugin-yon-panel host half', () => {
 
     expect(register).toHaveBeenCalledTimes(1)
     expect(register.mock.calls[0]?.[0]).toMatchObject({ kind: 'prefix', path: '/yon/api' })
+  })
+
+  it('loads in a deployment that has no web server at all', async () => {
+    // Without this, listing `webServer` among the required services leaves the
+    // entry pending forever, and a pending entry fails the whole profile.
+    const { ctx, register, registerTool } = await bench(false)
+
+    expect(register).not.toHaveBeenCalled()
+    expect(registerTool).toHaveBeenCalledTimes(YON_TOOL_NAMES.length)
+    expect(ctx.get('yonProjects')).toBeDefined()
+  })
+
+  it('registers the project tools and withdraws them with its own fiber', async () => {
+    const { registerTool, disposeTool, fiber } = await bench()
+
+    expect(registerTool.mock.calls.map(call => (call[0] as { name: string }).name))
+      .toEqual([...YON_TOOL_NAMES])
+
+    await fiber.dispose()
+    expect(disposeTool).toHaveBeenCalledTimes(YON_TOOL_NAMES.length)
   })
 
   it('closes the domain and drops the route with its own fiber', async () => {

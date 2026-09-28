@@ -37,6 +37,18 @@ export class ProjectError extends Error {
   }
 }
 
+/**
+ * How one project reference resolved.
+ *
+ * A tool argument names a project the way a human would — by name — while the
+ * store keys by id, so this lookup accepts either and reports an ambiguous name
+ * instead of guessing which of two same-named projects was meant.
+ */
+export type ProjectRefResolution =
+  | { readonly kind: 'found'; readonly project: ProjectDetail }
+  | { readonly kind: 'ambiguous'; readonly candidates: readonly ProjectSummary[] }
+  | { readonly kind: 'missing' }
+
 /** The public store, reachable in-process as `ctx.yonProjects`. */
 export interface YonProjectsService {
   /**
@@ -52,6 +64,15 @@ export interface YonProjectsService {
    * @returns the detail, or undefined when no such project exists.
    */
   get(projectId: string): ProjectDetail | undefined
+
+  /**
+   * Locate one project by id, or by the exact name or code a human used.
+   * @param ref - project id, name, or code.
+   * @returns the match; the candidates when the reference is ambiguous; missing
+   *   when nothing matches. Archived projects match too — naming one is a
+   *   deliberate act, not an accident.
+   */
+  resolve(ref: string): ProjectRefResolution
 
   /**
    * Create a project and its initial fields (main row first, then one child row
@@ -234,6 +255,19 @@ export function createYonProjectsService(ctx: Context, domain: YonDomain): YonPr
     },
 
     get: detailOf,
+
+    resolve(ref) {
+      const needle = ref.trim()
+      if (needle === '') return { kind: 'missing' }
+      const byId = detailOf(needle)
+      if (byId !== undefined) return { kind: 'found', project: byId }
+      const matches = snapshot.filter(project =>
+        project.name === needle || (project.code !== '' && project.code === needle))
+      if (matches.length === 0) return { kind: 'missing' }
+      if (matches.length > 1) return { kind: 'ambiguous', candidates: matches }
+      const only = matches[0] as ProjectSummary
+      return { kind: 'found', project: stored(only.projectId) }
+    },
 
     async create(input) {
       const name = input.name.trim()

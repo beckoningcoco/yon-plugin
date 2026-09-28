@@ -9,6 +9,22 @@ export declare class ProjectError extends Error {
     /** Machine code the API reports. */
     code: 'not-found' | 'invalid-input', message: string);
 }
+/**
+ * How one project reference resolved.
+ *
+ * A tool argument names a project the way a human would — by name — while the
+ * store keys by id, so this lookup accepts either and reports an ambiguous name
+ * instead of guessing which of two same-named projects was meant.
+ */
+export type ProjectRefResolution = {
+    readonly kind: 'found';
+    readonly project: ProjectDetail;
+} | {
+    readonly kind: 'ambiguous';
+    readonly candidates: readonly ProjectSummary[];
+} | {
+    readonly kind: 'missing';
+};
 /** The public store, reachable in-process as `ctx.yonProjects`. */
 export interface YonProjectsService {
     /**
@@ -25,6 +41,14 @@ export interface YonProjectsService {
      * @returns the detail, or undefined when no such project exists.
      */
     get(projectId: string): ProjectDetail | undefined;
+    /**
+     * Locate one project by id, or by the exact name or code a human used.
+     * @param ref - project id, name, or code.
+     * @returns the match; the candidates when the reference is ambiguous; missing
+     *   when nothing matches. Archived projects match too — naming one is a
+     *   deliberate act, not an accident.
+     */
+    resolve(ref: string): ProjectRefResolution;
     /**
      * Create a project and its initial fields (main row first, then one child row
      * per field).
