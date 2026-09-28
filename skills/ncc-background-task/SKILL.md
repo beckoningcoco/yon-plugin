@@ -5,6 +5,11 @@ description: NCC（用友NC Cloud）后台任务开发技能。当用户需要�
 
 # NCC 后台任务开发指南
 
+> **本技能引用的文档**都在插件的参考库里，路径形如 `ncc/ncc-background-task/references/xxx.md`。
+> 用 `knowledge_read` 传该路径读全文，或先用 `knowledge_search` 按关键词搜索；
+> **不要**按相对路径去猜文件位置——内联的正文里没有路径可解析。
+
+
 ## 版本定位
 
 本技能服务于 **用友 NCC（NC Cloud）**（非旗舰版 BIP）。
@@ -16,7 +21,7 @@ description: NCC（用友NC Cloud）后台任务开发技能。当用户需要�
 ---
 
 > **本 skill 是 `ncc-dev`（NCC 定制开发总技能）的子技能，专注于后台任务插件开发。**
-> 通用素材（编码规范、通用 API）请查阅 `ncc-dev` skill 的 `references/common/` 目录。
+> 通用素材（编码规范、通用 API）请查阅 `ncc/ncc-dev/references/common/` 目录。
 
 ## 接口源码（官方）
 
@@ -112,14 +117,14 @@ boolean faStarted = InitGroupQuery.isEnabled(bgwc.getGroupId(), ModuleConst.FA_F
 
 ### 场景专用资料
 
-- **后台任务示例代码**：读取 `references/examples.md` — 典型后台任务的完整代码和解读
-- **产品源码参考**：读取 `references/product-source-code.md` — NCC 产品中的真实后台任务实现，包含编码模式和 API 用法
+- **后台任务示例代码**：读取 `ncc/ncc-background-task/references/examples.md` — 典型后台任务的完整代码和解读
+- **产品源码参考**：读取 `ncc/ncc-background-task/references/product-source-code.md` — NCC 产品中的真实后台任务实现，包含编码模式和 API 用法
 
 ### 通用资料（来自 ncc-dev，按需读取）
 
-- **编码规范**：`ncc-dev` skill 的 `references/common/coding-standard.md` — 命名、注释、异常处理等规范
-- **通用 API**：`ncc-dev` skill 的 `references/common/common-api.md` — 自定义档案操作、持久化查询、批量操作、基础数据接口等
-- **VO 对照表**：`ncc-dev` skill 的 `references/common/` 下的各模块 VO 对照表
+- **编码规范**：`ncc/ncc-dev/references/common/coding-standard.md` — 命名、注释、异常处理等规范
+- **通用 API**：`ncc/ncc-dev/references/common/common-api.md` — 自定义档案操作、持久化查询、批量操作、基础数据接口等
+- **VO 对照表**：`ncc/ncc-dev/references/common/` 下的各模块 VO 对照表
 
 ## 开发流程
 
@@ -340,7 +345,7 @@ return pao;
 3. 设置表格数据：`setBodyValue(Object[][])` — 二维数组，每行一个 Object[]
 4. 组装 `PreAlertObject`：`setReturnType(RETURNFORMATMSG)` + `setReturnObj(IAlertMessage)`
 
-> 详细用法和产品代码示例见 `references/product-source-code.md` 的"源码2"部分。
+> 详细用法和产品代码示例见 `ncc/ncc-background-task/references/product-source-code.md` 的"源码2"部分。
 
 ## 后台任务监控
 

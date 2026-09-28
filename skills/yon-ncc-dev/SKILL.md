@@ -5,6 +5,11 @@ description: NCC（用友 NC Cloud）客开技能。当用户提到 NCC、NC Clo
 
 # NCC（NC Cloud）客开技能
 
+> **本技能引用的文档**都在插件的参考库里，路径形如 `ncc/references/xxx.md`。
+> 用 `knowledge_read` 传该路径读全文，或先用 `knowledge_search` 按关键词搜索；
+> **不要**按相对路径去猜文件位置——内联的正文里没有路径可解析。
+
+
 ## 版本定位
 
 本技能服务于 **用友 NCC（NC Cloud）**（非旗舰版 BIP）。
@@ -40,24 +45,22 @@ description: NCC（用友 NC Cloud）客开技能。当用户提到 NCC、NC Clo
 
 | 文档 | 路径 | 内容 |
 |------|------|------|
-| 资产包接口开发指南 | `references/NCC资产包接口开发指南.md` | 框架类、集成规则、代码模板、报销单流程、常见问题 |
-| 资产包接口实战流程 | `references/NCC资产包接口实战开发流程.md` | 完整 9 步开发流程（需求→代码→SQL脚本→API注册→测试） |
-| **🆕 集成规则字段速查卡** | `references/集成规则字段速查卡.md` | **一页纸速查**：14 字段含义、VFIELDTYPE SQL模板、配置策略表（含按名称翻译）、**易漏两条**、常见 docId |
-| 集成规则配置参考示例 | `references/集成规则配置参考示例.json` | 差旅费报销单完整 JSON 配置模板（AI 用，结构化） |
-| **🆕 集成规则配置模板（可读版）** | `references/集成规则配置模板-可读版.md` | **人类审核用**：Markdown表格格式，规则主表+表头+表体+陷阱一览 |
+| 资产包接口开发指南 | `ncc/references/NCC资产包接口开发指南.md` | 框架类、集成规则、代码模板、报销单流程、常见问题 |
+| 资产包接口实战流程 | `ncc/references/NCC资产包接口实战开发流程.md` | 完整 9 步开发流程（需求→代码→SQL脚本→API注册→测试） |
+| **🆕 集成规则字段速查卡** | `ncc/references/集成规则字段速查卡.md` | **一页纸速查**：14 字段含义、VFIELDTYPE SQL模板、配置策略表（含按名称翻译）、**易漏两条**、常见 docId |
+| 集成规则配置参考示例 | `ncc/references/集成规则配置参考示例.json` | 差旅费报销单完整 JSON 配置模板（AI 用，结构化） |
+| **🆕 集成规则配置模板（可读版）** | `ncc/references/集成规则配置模板-可读版.md` | **人类审核用**：Markdown表格格式，规则主表+表头+表体+陷阱一览 |
 | OpenAPI 开发指南 | `ncc-dev/references/common/openapi-dev.md` | 标准 OpenAPI 注册流程（.rest 文件 + opm_apimanager） |
 | FIP 外部接口单模式 | `ncc-dev/references/common/openapi-fip-txbill-pattern.md` | 资产包专用模式（`AbstractRestResource` + `IFipMessageService.sendMessage()`） |
-| 集成规则配置方法 | `references/问题处理/NCC资产包集成规则配置方法.md` | bmf 前缀查询流程、常见配置问题 |
-| 集成规则字段截断bug | `references/问题处理/集成规则参照类型保存报错-字符串截断.md` | 历史问题记录（已合并到开发指南 §11.5） |
-| **🆕 补丁后前台看不到菜单** | `references/问题处理/打上资产包补丁后前台看不到应用菜单.md` | 资产包补丁打上后看不到集成规则/集成日志等节点：权限逐级授权 + 内置菜单 vs 自定义菜单主键 |
-| 缓存查询方法模板 | `references/NCC缓存查询方法模板.md` | 4 种编码→ID 查询方法 + IBDMetaDataIDConst 速查表 |
-| **🆕 审核代理 Prompt 模板** | `references/审核代理-prompt-模板.md` | 步骤4/5 质量审核代理的验证清单和输出格式 |
-| **🆕 常见参照 VFIELDTYPE 速查** | `references/常见参照VFIELDTYPE速查.md` | **VFIELDTYPE 权威源**：40+ 条目按分类组织，优先查此文档再查库 |
-| **🆕 OpenAPI 签名机制详解** | `references/NCC-OpenAPI-签名机制详解.md` | Token 获取、OAEP 加密、加盐签名、API 调用、常见错误速查、完整 Python 代码 |
-| **🆕 API 测试工具** | `tools/NCC-API-POSTER/ncc-api-tester.py` | NCC OpenAPI 桌面测试工具（GUI），双击 `.bat` 启动 |
-| **🆕 NCC API MCP 服务参考** | `references/ncc-api-mcp-reference.md` | **AI 调用 ncc-api MCP 时必读**：参数获取来源、集成规则查询、body 构造流程 |
-| **🆕 三方应用配置读取** | `references/NCC三方应用配置读取.md` | **读外系统配置的权威源**：`pub_thirdsys`/`pub_thirdparam` 表结构、`IThirdSysVOService` 用法、可粘贴工具类、8 条陷阱、实测样本 |
-| **🆕 GBK 文件编辑** | `references/GBK文件编辑.md` | **改 NCC 源码前必读**：源码树是 GBK 而工具链是 UTF-8，直接编辑会静默损坏；三种正确姿势 + `tools/gbk_edit.py` 用法与 5 条陷阱 |
+| 集成规则配置方法 | `ncc/references/问题处理/NCC资产包集成规则配置方法.md` | bmf 前缀查询流程、常见配置问题 |
+| 集成规则字段截断bug | `ncc/references/问题处理/集成规则参照类型保存报错-字符串截断.md` | 历史问题记录（已合并到开发指南 §11.5） |
+| **🆕 补丁后前台看不到菜单** | `ncc/references/问题处理/打上资产包补丁后前台看不到应用菜单.md` | 资产包补丁打上后看不到集成规则/集成日志等节点：权限逐级授权 + 内置菜单 vs 自定义菜单主键 |
+| 缓存查询方法模板 | `ncc/references/NCC缓存查询方法模板.md` | 4 种编码→ID 查询方法 + IBDMetaDataIDConst 速查表 |
+| **🆕 审核代理 Prompt 模板** | `ncc/references/审核代理-prompt-模板.md` | 步骤4/5 质量审核代理的验证清单和输出格式 |
+| **🆕 常见参照 VFIELDTYPE 速查** | `ncc/references/常见参照VFIELDTYPE速查.md` | **VFIELDTYPE 权威源**：40+ 条目按分类组织，优先查此文档再查库 |
+| **🆕 OpenAPI 签名机制详解** | `ncc/references/NCC-OpenAPI-签名机制详解.md` | Token 获取、OAEP 加密、加盐签名、API 调用、常见错误速查、完整 Python 代码 |
+| **🆕 三方应用配置读取** | `ncc/references/NCC三方应用配置读取.md` | **读外系统配置的权威源**：`pub_thirdsys`/`pub_thirdparam` 表结构、`IThirdSysVOService` 用法、可粘贴工具类、8 条陷阱、实测样本 |
+| **🆕 GBK 文件编辑** | `ncc/references/GBK文件编辑.md` | **改 NCC 源码前必读**：源码树是 GBK 而工具链是 UTF-8，直接编辑会静默损坏；三种正确姿势 + `ncc/tools/gbk_edit.py` 用法与 5 条陷阱 |
 
 #### 🧭 读者导航：我想做 X → 看 Y 文档
 
@@ -124,7 +127,7 @@ description: NCC（用友 NC Cloud）客开技能。当用户提到 NCC、NC Clo
 
 > **审核代理说明**：
 > - 审核代理只在**高风险步骤 4 和 5** 启用（这两个步骤依赖数据库查询，错误率高）
-> - 审核代理 Prompt 模板见 `references/审核代理-prompt-模板.md`
+> - 审核代理 Prompt 模板见 `ncc/references/审核代理-prompt-模板.md`
 > - 审核代理具有独立数据库访问权限，会重新执行开发者的 SQL 进行交叉验证
 > - 审核报告直接提交给用户，⚠️ 警告和 ❌ 错误由用户最终判断
 

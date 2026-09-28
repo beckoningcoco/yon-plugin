@@ -5,6 +5,11 @@ description: NCC（用友NC Cloud）业务插件（事件监听器）开发技�
 
 # NCC 业务插件开发指南
 
+> **本技能引用的文档**都在插件的参考库里，路径形如 `ncc/ncc-plugin-dev/references/xxx.md`。
+> 用 `knowledge_read` 传该路径读全文，或先用 `knowledge_search` 按关键词搜索；
+> **不要**按相对路径去猜文件位置——内联的正文里没有路径可解析。
+
+
 ## 版本定位
 
 本技能服务于 **用友 NCC（NC Cloud）**（非旗舰版 BIP）。
@@ -16,7 +21,7 @@ description: NCC（用友NC Cloud）业务插件（事件监听器）开发技�
 ---
 
 > **本 skill 是 `ncc-dev`（NCC 定制开发总技能）的子技能，专注于业务插件（事件监听器）开发。**
-> 通用素材（事件码表、单据类型表、编码规范、通用 API）请查阅 `ncc-dev` skill 的 `references/common/` 目录。
+> 通用素材（事件码表、单据类型表、编码规范、通用 API）请查阅 `ncc/ncc-dev/references/common/` 目录。
 
 ## 核心概念
 
@@ -29,17 +34,17 @@ description: NCC（用友NC Cloud）业务插件（事件监听器）开发技�
 
 ### 场景专用资料
 
-- **插件示例代码**：读取 `references/examples.md` — 三种典型模式的完整代码和解读（单据转换、字段回写、自定义档案同步）
+- **插件示例代码**：读取 `ncc/ncc-plugin-dev/references/examples.md` — 三种典型模式的完整代码和解读（单据转换、字段回写、自定义档案同步）
 
 ### 通用资料（来自 ncc-dev，按需读取）
 
-- **事件码表**：`ncc-dev` skill 的 `references/common/event-codes.md` — 查找需要的事件码
-- **单据类型代码**：`ncc-dev` skill 的 `references/common/bill-types.md` — 查找单据类型代码
-- **编码规范**：`ncc-dev` skill 的 `references/common/coding-standard.md` — 命名、注释、异常处理等规范
-- **通用 API**：`ncc-dev` skill 的 `references/common/common-api.md` — 自定义档案操作、持久化查询、批量操作等
-- **销售管理 VO**：`ncc-dev` skill 的 `references/common/so-vo-reference.md` — 销售管理模块 VO 与表名对照表
-- **采购管理 VO**：`ncc-dev` skill 的 `references/common/pu-vo-reference.md` — 采购管理模块 VO 与表名对照表
-- **库存管理 VO**：`ncc-dev` skill 的 `references/common/ic-vo-reference.md` — 库存管理模块 VO 与表名对照表
+- **事件码表**：`ncc/ncc-dev/references/common/event-codes.md` — 查找需要的事件码
+- **单据类型代码**：`ncc/ncc-dev/references/common/bill-types.md` — 查找单据类型代码
+- **编码规范**：`ncc/ncc-dev/references/common/coding-standard.md` — 命名、注释、异常处理等规范
+- **通用 API**：`ncc/ncc-dev/references/common/common-api.md` — 自定义档案操作、持久化查询、批量操作等
+- **销售管理 VO**：`ncc/ncc-dev/references/common/so-vo-reference.md` — 销售管理模块 VO 与表名对照表
+- **采购管理 VO**：`ncc/ncc-dev/references/common/pu-vo-reference.md` — 采购管理模块 VO 与表名对照表
+- **库存管理 VO**：`ncc/ncc-dev/references/common/ic-vo-reference.md` — 库存管理模块 VO 与表名对照表
 
 ## 开发流程
 
@@ -198,7 +203,7 @@ someService.batchSave(pk_org, batchVO);
 
 典型模式：审批后/新增后将单据数据同步写入 BD 自定义档案。
 
-> **自定义档案的完整 API 用法**（查询、新增、更新）请查阅 `ncc-dev` 的 `references/common/common-api.md`。
+> **自定义档案的完整 API 用法**（查询、新增、更新）请查阅 `ncc/ncc-dev/references/common/common-api.md`。
 
 **同步策略（先查后写）**：
 

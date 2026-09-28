@@ -5,6 +5,11 @@ description: 用友 BIP 旗舰版客开技能（YonBIP / 旗舰版 / BIP）。 �
 
 # 用友 BIP 客开技能
 
+> **本技能引用的文档**都在插件的参考库里，路径形如 `bip/references/xxx.md`。
+> 用 `knowledge_read` 传该路径读全文，或先用 `knowledge_search` 按关键词搜索；
+> **不要**按相对路径去猜文件位置——内联的正文里没有路径可解析。
+
+
 ## 版本定位
 
 本技能服务于 **用友旗舰版（BIP / YonBIP）**。
@@ -79,17 +84,16 @@ description: 用友 BIP 旗舰版客开技能（YonBIP / 旗舰版 / BIP）。 �
 
 | 问题类型 | 扫描目录 | 说明 |
 |----------|----------|------|
-| 便捷帮助类（SQL/API/脚本/模板等） | `references/旗舰版/` | `ls` 列出文件名 → 按关键词匹配 → 读取匹配的文档 |
-| 后端开发（Service/规则/插件/调度/事件） | `references/旗舰版/后端开发/` | 体系化后端规范（IBillQueryRepository、DispatchTask、BIPEventSubscribe 等） |
-| 前端扩展（MDF/ViewModel/页面脚本） | `references/旗舰版/前端扩展/` | MDF 开发框架（架构/模型/事件/模式）+ `references/旗舰版/` 下代码片段 |
-| 第三方系统集成（WMS/LIMS/MES/SRM…） | `references/旗舰版/集成/` | 按业务域子目录匹配（应收应付、总账、仓储、税务等 13 个域） |
-| 报表 SQL 生成（台账/日报/月报） | `references/旗舰版/报表SQL/` | 四阶段报表 SQL 生成流程（需求分析→字段分析→SQL构建→校验交付）；`05-经验-组织树与子级数量统计.md` 是「组织树 + 统计子级组织数量」类报表的可复用手册（含报表平台参数/筛选器配置） |
-| 公式配置（YonBuilder/UI模板） | `references/旗舰版/公式/` | 公式函数参考 + 36 个业务场景示例 |
-| SQL 模板 | `references/SQL/` | 每条 SQL 独立一个文件，扫描匹配 |
-| 问题处理类（报错/异常/故障） | `references/问题处理/` | `ls` 列出文件名 → 按报错关键词匹配 → 读取匹配的文档 |
-| 项目配置（环境/账号/数据库等） | `references/projects/` | 每个项目独立一个文件 |
-| 通用开发规范/事件码/单据类型 | `references/common/` | 按需检索 |
-| 已归档旧文档（被新版替换） | `references/旗舰版/_archive/` | 旧版参考，新版在对应子目录中 |
+| 便捷帮助类（SQL/API/脚本/模板等） | `bip/references/旗舰版/` | `ls` 列出文件名 → 按关键词匹配 → 读取匹配的文档 |
+| 后端开发（Service/规则/插件/调度/事件） | `bip/references/旗舰版/后端开发/` | 体系化后端规范（IBillQueryRepository、DispatchTask、BIPEventSubscribe 等） |
+| 前端扩展（MDF/ViewModel/页面脚本） | `bip/references/旗舰版/前端扩展/` | MDF 开发框架（架构/模型/事件/模式）+ `bip/references/旗舰版/` 下代码片段 |
+| 第三方系统集成（WMS/LIMS/MES/SRM…） | `bip/references/旗舰版/集成/` | 按业务域子目录匹配（应收应付、总账、仓储、税务等 13 个域） |
+| 报表 SQL 生成（台账/日报/月报） | `bip/references/旗舰版/报表SQL/` | 四阶段报表 SQL 生成流程（需求分析→字段分析→SQL构建→校验交付）；`05-经验-组织树与子级数量统计.md` 是「组织树 + 统计子级组织数量」类报表的可复用手册（含报表平台参数/筛选器配置） |
+| 公式配置（YonBuilder/UI模板） | `bip/references/旗舰版/公式/` | 公式函数参考 + 36 个业务场景示例 |
+| SQL 模板 | `bip/references/SQL/` | 每条 SQL 独立一个文件，扫描匹配 |
+| 问题处理类（报错/异常/故障） | `bip/references/问题处理/` | `ls` 列出文件名 → 按报错关键词匹配 → 读取匹配的文档 |
+| 项目配置（环境/账号/数据库等） | Yon 面板的「项目」与「数据源」 | 每个项目独立一条记录 |
+| 已归档旧文档（被新版替换） | `bip/references/旗舰版/_archive/` | 旧版参考，新版在对应子目录中 |
 
 
 ## 接收到用户的提问，处理流程
@@ -107,16 +111,16 @@ description: 用友 BIP 旗舰版客开技能（YonBIP / 旗舰版 / BIP）。 �
 
 | 问题类型 | 典型关键词 | 扫描目录 |
 |----------|-----------|----------|
-| 报错排查 | 报错、异常、报异常、不生效、崩溃 | `references/问题处理/` |
-| 便捷协助 | 生成SQL、写个脚本、模板代码、阿尔萨斯命令 | `references/旗舰版/` |
-| 环境/配置/账号 | 环境地址、数据库连接、账号密码、VPN | `references/projects/` |
-| 后端开发规范 | Service、规则、插件、调度、事件、IBillQuery | `references/旗舰版/后端开发/` |
-| 前端扩展 | MDF、ViewModel、页面脚本、字段联动 | `references/旗舰版/前端扩展/` |
-| 第三方集成 | WMS、LIMS、MES、SRM、接口对接 | `references/旗舰版/集成/` |
-| 报表SQL | 台账、日报、月报、报表SQL | `references/旗舰版/报表SQL/` |
-| 组织树报表 | 组织树、子级组织、上卷、父组织汇总、语义模型、筛选器、参数绑定 | `references/旗舰版/报表SQL/05-经验-组织树与子级数量统计.md` |
-| 直联/银企报表 | 直联、直连、银企通道、不可直连、未直连成功、直连率、财务公司账户 | `references/旗舰版/报表SQL/06-金隅-账户直联情况统计表-字段核查.md` |
-| 公式配置 | 公式、YonBuilder、计算公式 | `references/旗舰版/公式/` |
+| 报错排查 | 报错、异常、报异常、不生效、崩溃 | `bip/references/问题处理/` |
+| 便捷协助 | 生成SQL、写个脚本、模板代码、阿尔萨斯命令 | `bip/references/旗舰版/` |
+| 环境/配置/账号 | 环境地址、数据库连接、账号密码、VPN | Yon 面板的「数据源」 |
+| 后端开发规范 | Service、规则、插件、调度、事件、IBillQuery | `bip/references/旗舰版/后端开发/` |
+| 前端扩展 | MDF、ViewModel、页面脚本、字段联动 | `bip/references/旗舰版/前端扩展/` |
+| 第三方集成 | WMS、LIMS、MES、SRM、接口对接 | `bip/references/旗舰版/集成/` |
+| 报表SQL | 台账、日报、月报、报表SQL | `bip/references/旗舰版/报表SQL/` |
+| 组织树报表 | 组织树、子级组织、上卷、父组织汇总、语义模型、筛选器、参数绑定 | `bip/references/旗舰版/报表SQL/05-经验-组织树与子级数量统计.md` |
+| 直联/银企报表 | 直联、直连、银企通道、不可直连、未直连成功、直连率、财务公司账户 | `bip/references/旗舰版/报表SQL/06-金隅-账户直联情况统计表-字段核查.md` |
+| 公式配置 | 公式、YonBuilder、计算公式 | `bip/references/旗舰版/公式/` |
 
 ## 源码索引配置
 
@@ -150,15 +154,15 @@ description: 用友 BIP 旗舰版客开技能（YonBIP / 旗舰版 / BIP）。 �
 | 脚本 | 路径 | 用途 |
 |------|------|------|
 | 数据源健康检查 | `datasource_list` 工具 | 列出已登记的数据源（类型/地址/登录名）与项目绑定情况 |
-| OpenAPI 开发 | `references/旗舰版/旗舰版OpenAPI开发指南.md` | BIP 旗舰版 OpenAPI 服务端开发（Controller → YMS 注册 → 发布 → 授权） |
-| OpenAPI 调用(客户端) | `references/旗舰版/旗舰版调用OpenAPI.md` | Java 后端调用 BIP OpenAPI（Token、签名、GET/POST） |
-| OpenAPI SDK 调用 | `references/旗舰版/openapi-sdk调用api的使用示例.md` | 独立 Maven 工程通过 SDK jar 调用 BIP OpenAPI |
-| Arthas 命令工具 | `scripts/arthas_exec.py` | 通过 Tunnel Server HTTP API 执行 Arthas 命令，自动格式化输出，避免手拼 JSON |
-| MDF 前端代码模板 | `assets/mdf/` | 9 个 JS 模板（字段联动/参照过滤/校验/弹窗等） |
-| Java 后端代码模板 | `assets/java/` | 费用报销集成等场景的 Controller/Service/Factory 模板 |
-| 后端开发总览 | `references/旗舰版/后端开发/后端开发总览.md` | server-codegen 完整后端开发指南（含 GUIDE.md） |
-| 前端开发总览 | `references/旗舰版/前端扩展/前端开发总览.md` | MDF 三层架构前端开发框架 |
-| 集成开发公共规范 | `references/旗舰版/集成/_公共规范/` | MVC 架构、数据持久化、特征字段翻译速查 |
+| OpenAPI 开发 | `bip/references/旗舰版/旗舰版OpenAPI开发指南.md` | BIP 旗舰版 OpenAPI 服务端开发（Controller → YMS 注册 → 发布 → 授权） |
+| OpenAPI 调用(客户端) | `bip/references/旗舰版/旗舰版调用OpenAPI.md` | Java 后端调用 BIP OpenAPI（Token、签名、GET/POST） |
+| OpenAPI SDK 调用 | `bip/references/旗舰版/openapi-sdk调用api的使用示例.md` | 独立 Maven 工程通过 SDK jar 调用 BIP OpenAPI |
+| Arthas 命令工具 | `bip/scripts/arthas_exec.py` | 通过 Tunnel Server HTTP API 执行 Arthas 命令，自动格式化输出，避免手拼 JSON |
+| MDF 前端代码模板 | `bip/assets/mdf/` | 9 个 JS 模板（字段联动/参照过滤/校验/弹窗等） |
+| Java 后端代码模板 | `bip/assets/java/` | 费用报销集成等场景的 Controller/Service/Factory 模板 |
+| 后端开发总览 | `bip/references/旗舰版/后端开发/后端开发总览.md` | server-codegen 完整后端开发指南（含 GUIDE.md） |
+| 前端开发总览 | `bip/references/旗舰版/前端扩展/`（api-index.md、mobile-api.md 等） | MDF 三层架构前端开发框架 |
+| 集成开发公共规范 | `bip/references/旗舰版/集成/_公共规范/` | MVC 架构、数据持久化、特征字段翻译速查 |
 
 ## 健康检查触发
 
@@ -212,4 +216,4 @@ description: 用友 BIP 旗舰版客开技能（YonBIP / 旗舰版 / BIP）。 �
 
 ## 接口测试
 
-- 参考 `references/旗舰版/Arthas-API测试实战流程.md`
+- 参考 `bip/references/旗舰版/Arthas-API测试实战流程.md`

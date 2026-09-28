@@ -5,6 +5,11 @@ description: NCC（用友NC Cloud）定制开发总技能，涵盖业务插件�
 
 # NCC 定制开发总指南
 
+> **本技能引用的文档**都在插件的参考库里，路径形如 `ncc/ncc-dev/references/xxx.md`。
+> 用 `knowledge_read` 传该路径读全文，或先用 `knowledge_search` 按关键词搜索；
+> **不要**按相对路径去猜文件位置——内联的正文里没有路径可解析。
+
+
 ## 版本定位
 
 本技能服务于 **用友 NCC（NC Cloud）**。
@@ -18,15 +23,15 @@ description: NCC（用友NC Cloud）定制开发总技能，涵盖业务插件�
 ### 问题记录路由
 
 当用户要求将问题/解决方案记录到参考资料时：
-- **NCC 问题** → 记录到本技能 `references/` 目录（或对应的子技能目录）
-- **旗舰版问题** → 记录到 `yon-bip-dev` 的 `references/` 目录
+- **NCC 问题** → 记录到本技能 `ncc/ncc-dev/references/` 目录（或对应的子技能目录）
+- **旗舰版问题** → 记录到 `yon-bip-dev` 的 `ncc/ncc-dev/references/` 目录
 
 ## 概述
 
 本 skill 是 NCC 定制开发的**总入口**，负责识别用户需求属于哪个开发场景，然后读取对应的参考资料生成代码。
 
-> **通用素材（事件码、单据类型、编码规范、通用 API）** 所有场景共享，存放在 `references/common/` 下。
-> **场景素材（各开发模式的示例代码和模式说明）** 存放在 `references/scenarios/` 下。
+> **通用素材（事件码、单据类型、编码规范、通用 API）** 所有场景共享，存放在 `ncc/ncc-dev/references/common/` 下。
+> **场景素材（各开发模式的示例代码和模式说明）** 存放在 `ncc/ncc-dev/references/scenarios/` 下。
 
 ## 场景路由
 
@@ -34,12 +39,12 @@ description: NCC（用友NC Cloud）定制开发总技能，涵盖业务插件�
 
 | 场景 | 触发关键词 | 参考文件 |
 |------|-----------|----------|
-| **业务插件** | 事件监听、审批后/新增后/修改后、IBusinessListener、doAction、单据转换、自动生成、回写字段、审批后协同、自动生单 | `references/scenarios/plugin-dev.md` + `references/scenarios/ncc-coding-patterns.md` |
-| **审批后自动协同** | 协同、购销协同、自动生单、IPfExchangeService、ISCMPubSaveCommitService、CloudPFlowContext、用户模拟、跨公司 | `references/scenarios/ncc-coding-patterns.md` §2 + `references/scenarios/project-ztxx.md` §1 |
+| **业务插件** | 事件监听、审批后/新增后/修改后、IBusinessListener、doAction、单据转换、自动生成、回写字段、审批后协同、自动生单 | `ncc/ncc-dev/references/scenarios/plugin-dev.md` + `ncc/ncc-dev/references/scenarios/ncc-coding-patterns.md`（未随包提供） |
+| **审批后自动协同** | 协同、购销协同、自动生单、IPfExchangeService、ISCMPubSaveCommitService、CloudPFlowContext、用户模拟、跨公司 | `ncc/ncc-dev/references/scenarios/ncc-coding-patterns.md`（未随包提供） §2 + `ncc/ncc-dev/references/scenarios/project-ztxx.md`（未随包提供） §1 |
 | **后台任务** | 后台任务、计划任务、定时任务、定时执行、调度、IBackgroundWorkPlugin、executeTask | `ncc-background-task` 子技能 |
-| **参照** | 参照、下拉参照、自定义参照、参照过滤、F7 | `references/scenarios/ref-model.md`（待建） |
-| **业务扩展** | 业务扩展、扩展点、扩展注册、处理器 | `references/scenarios/biz-extension.md`（待建） |
-| **编码规则** | 编码规则、单据编号、自动编号、编码生成 | `references/scenarios/coding-rule.md`（待建） |
+| **参照** | 参照、下拉参照、自定义参照、参照过滤、F7 | `ncc/ncc-dev/references/scenarios/ref-model.md`（待建） |
+| **业务扩展** | 业务扩展、扩展点、扩展注册、处理器 | `ncc/ncc-dev/references/scenarios/biz-extension.md`（待建） |
+| **编码规则** | 编码规则、单据编号、自动编号、编码生成 | `ncc/ncc-dev/references/scenarios/coding-rule.md`（待建） |
 
 ## 源码分析工作流
 
@@ -205,18 +210,18 @@ NCLocator.getInstance().lookup(IPreAlertPlugin.class);
 
 | 文件 | 内容 | 何时读取 |
 |------|------|----------|
-| `references/common/event-codes.md` | 45 个业务事件码对照表 | 涉及事件监听时 |
-| `references/common/bill-types.md` | 单据类型代码表（采购/销售/库存/财务等） | 涉及单据操作时 |
-| `references/common/coding-standard.md` | Java 编码规范（命名/注释/异常处理） | 生成代码时 |
-| `references/common/common-api.md` | 通用 API 模式（自定义档案、服务定位、持久化查询、系统参数、事件入口、基础数据接口速查等） | 需要调用通用能力时 |
-| `references/common/so-vo-reference.md` | 销售管理模块 VO 与表名对照表 | 涉及销售订单/发货单/销售发票等 VO 操作时 |
-| `references/common/pu-vo-reference.md` | 采购管理模块 VO 与表名对照表 | 涉及采购订单/请购单/采购发票等 VO 操作时 |
-| `references/common/ic-vo-reference.md` | 库存管理模块 VO 与表名对照表 | 涉及出入库/调拨/盘点/转库等 VO 操作时 |
-| `references/common/pim-vo-reference.md` | 立项管理（pim）模块 VO 与表名对照表 | 涉及项目立项/预算/验收/进度计划等 VO 操作时 |
-| `references/common/ipm-vo-reference.md` | IPM 基金投资模块 VO 与表名对照表（ipmbd/ipmam/ipmas/ipmdm/ipmexit/ipmfund/ipmip/ipmpb/ipmpe/ipmpg/ipmpl/ipmprm/ipmrisk，含聚合VO） | 涉及基金/投资/产权/风险管理等 VO 操作时 |
-| `references/common/arap-payablebill-frontend.md` | 应付单卡片前端实战参考（目录结构、按钮分发、NCModal弹框、数据操作API、缓存机制、联查模式、入库明细弹框） | 涉及应付单/付款单/报销单前端客开、入库明细弹框、EAM集成时 |
-| `references/common/openapi-dev.md` | NCC OpenAPI 开发完整指南（Restlet+JAX-RS，5步：写Java类→写.rest文件→写.md文档→**前台注册**→调用测试） | 涉及 OpenAPI、开放接口、REST API、servlet 开发时 |
-| `references/common/openapi-fip-txbill-pattern.md` | 资产包 OpenAPI Resources 模式（FIP 外部接口单专用）：`AbstractRestResource` + `transferBill()` + `IFipMessageService.sendMessage()`，仅适用于外部接口单，不适用于付款单等其他单据 | 提到"资产包"开发 OpenAPI / Resources 类 / 外部接口单 OpenAPI 时 |
+| `ncc/ncc-dev/references/common/event-codes.md` | 45 个业务事件码对照表 | 涉及事件监听时 |
+| `ncc/ncc-dev/references/common/bill-types.md` | 单据类型代码表（采购/销售/库存/财务等） | 涉及单据操作时 |
+| `ncc/ncc-dev/references/common/coding-standard.md` | Java 编码规范（命名/注释/异常处理） | 生成代码时 |
+| `ncc/ncc-dev/references/common/common-api.md` | 通用 API 模式（自定义档案、服务定位、持久化查询、系统参数、事件入口、基础数据接口速查等） | 需要调用通用能力时 |
+| `ncc/ncc-dev/references/common/so-vo-reference.md` | 销售管理模块 VO 与表名对照表 | 涉及销售订单/发货单/销售发票等 VO 操作时 |
+| `ncc/ncc-dev/references/common/pu-vo-reference.md` | 采购管理模块 VO 与表名对照表 | 涉及采购订单/请购单/采购发票等 VO 操作时 |
+| `ncc/ncc-dev/references/common/ic-vo-reference.md` | 库存管理模块 VO 与表名对照表 | 涉及出入库/调拨/盘点/转库等 VO 操作时 |
+| `ncc/ncc-dev/references/common/pim-vo-reference.md` | 立项管理（pim）模块 VO 与表名对照表 | 涉及项目立项/预算/验收/进度计划等 VO 操作时 |
+| `ncc/ncc-dev/references/common/ipm-vo-reference.md` | IPM 基金投资模块 VO 与表名对照表（ipmbd/ipmam/ipmas/ipmdm/ipmexit/ipmfund/ipmip/ipmpb/ipmpe/ipmpg/ipmpl/ipmprm/ipmrisk，含聚合VO） | 涉及基金/投资/产权/风险管理等 VO 操作时 |
+| `ncc/ncc-dev/references/common/arap-payablebill-frontend.md` | 应付单卡片前端实战参考（目录结构、按钮分发、NCModal弹框、数据操作API、缓存机制、联查模式、入库明细弹框） | 涉及应付单/付款单/报销单前端客开、入库明细弹框、EAM集成时 |
+| `ncc/ncc-dev/references/common/openapi-dev.md` | NCC OpenAPI 开发完整指南（Restlet+JAX-RS，5步：写Java类→写.rest文件→写.md文档→**前台注册**→调用测试） | 涉及 OpenAPI、开放接口、REST API、servlet 开发时 |
+| `ncc/ncc-dev/references/common/openapi-fip-txbill-pattern.md` | 资产包 OpenAPI Resources 模式（FIP 外部接口单专用）：`AbstractRestResource` + `transferBill()` + `IFipMessageService.sendMessage()`，仅适用于外部接口单，不适用于付款单等其他单据 | 提到"资产包"开发 OpenAPI / Resources 类 / 外部接口单 OpenAPI 时 |
 
 
 ## NCC 数据库查询规则

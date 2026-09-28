@@ -14,6 +14,11 @@ export const YON_BUNDLED_SKILLS: readonly YonBundledSkill[] = [
     description: 'NCC（用友NC Cloud）后台任务开发技能。当用户需要编写、生成、审查 NCC 后台任务插件代码时使用此技能。 触发场景包括但不限于：写一个后台任务、定时任务、计划任务、定时执行、后台任务插件、 IBackgroundWorkPlugin、executeTask、PreAlertContext、PreAlertObject、阈值配置、 后台任务注册、后台任务部署、NCC客开、NCC二开、用友NC Cloud后台任务开发、NCC定制开发。',
     content: `# NCC 后台任务开发指南
 
+> **本技能引用的文档**都在插件的参考库里，路径形如 \`ncc/ncc-background-task/references/xxx.md\`。
+> 用 \`knowledge_read\` 传该路径读全文，或先用 \`knowledge_search\` 按关键词搜索；
+> **不要**按相对路径去猜文件位置——内联的正文里没有路径可解析。
+
+
 ## 版本定位
 
 本技能服务于 **用友 NCC（NC Cloud）**（非旗舰版 BIP）。
@@ -25,7 +30,7 @@ export const YON_BUNDLED_SKILLS: readonly YonBundledSkill[] = [
 ---
 
 > **本 skill 是 \`ncc-dev\`（NCC 定制开发总技能）的子技能，专注于后台任务插件开发。**
-> 通用素材（编码规范、通用 API）请查阅 \`ncc-dev\` skill 的 \`references/common/\` 目录。
+> 通用素材（编码规范、通用 API）请查阅 \`ncc/ncc-dev/references/common/\` 目录。
 
 ## 接口源码（官方）
 
@@ -121,14 +126,14 @@ boolean faStarted = InitGroupQuery.isEnabled(bgwc.getGroupId(), ModuleConst.FA_F
 
 ### 场景专用资料
 
-- **后台任务示例代码**：读取 \`references/examples.md\` — 典型后台任务的完整代码和解读
-- **产品源码参考**：读取 \`references/product-source-code.md\` — NCC 产品中的真实后台任务实现，包含编码模式和 API 用法
+- **后台任务示例代码**：读取 \`ncc/ncc-background-task/references/examples.md\` — 典型后台任务的完整代码和解读
+- **产品源码参考**：读取 \`ncc/ncc-background-task/references/product-source-code.md\` — NCC 产品中的真实后台任务实现，包含编码模式和 API 用法
 
 ### 通用资料（来自 ncc-dev，按需读取）
 
-- **编码规范**：\`ncc-dev\` skill 的 \`references/common/coding-standard.md\` — 命名、注释、异常处理等规范
-- **通用 API**：\`ncc-dev\` skill 的 \`references/common/common-api.md\` — 自定义档案操作、持久化查询、批量操作、基础数据接口等
-- **VO 对照表**：\`ncc-dev\` skill 的 \`references/common/\` 下的各模块 VO 对照表
+- **编码规范**：\`ncc/ncc-dev/references/common/coding-standard.md\` — 命名、注释、异常处理等规范
+- **通用 API**：\`ncc/ncc-dev/references/common/common-api.md\` — 自定义档案操作、持久化查询、批量操作、基础数据接口等
+- **VO 对照表**：\`ncc/ncc-dev/references/common/\` 下的各模块 VO 对照表
 
 ## 开发流程
 
@@ -349,7 +354,7 @@ return pao;
 3. 设置表格数据：\`setBodyValue(Object[][])\` — 二维数组，每行一个 Object[]
 4. 组装 \`PreAlertObject\`：\`setReturnType(RETURNFORMATMSG)\` + \`setReturnObj(IAlertMessage)\`
 
-> 详细用法和产品代码示例见 \`references/product-source-code.md\` 的"源码2"部分。
+> 详细用法和产品代码示例见 \`ncc/ncc-background-task/references/product-source-code.md\` 的"源码2"部分。
 
 ## 后台任务监控
 
@@ -440,6 +445,11 @@ import nc.vo.bd.meta.BatchOperateVO;
     description: 'NCC（用友NC Cloud）定制开发总技能，涵盖业务插件、后台任务、参照、业务扩展等多种开发场景。 触发场景包括但不限于：NCC客开、NCC二开、用友NC Cloud插件开发、NCC定制开发、 写一个业务插件、写一个事件监听、NCC事件监听、IBusinessListener、doAction、 后台任务、计划任务、定时任务、NCC后台任务开发、 参照、NCC参照开发、自定义参照、 业务扩展、扩展点、NCC扩展开发、 单据转换 runChangeDataAry、saveCommit 保存提交、 编码规则、单据编号、编码规则开发、 自定义档案、DefdocVO、档案同步、 采购发票/销售订单/库存单据的业务插件开发、 审批后/新增后/修改后的事件监听。',
     content: `# NCC 定制开发总指南
 
+> **本技能引用的文档**都在插件的参考库里，路径形如 \`ncc/ncc-dev/references/xxx.md\`。
+> 用 \`knowledge_read\` 传该路径读全文，或先用 \`knowledge_search\` 按关键词搜索；
+> **不要**按相对路径去猜文件位置——内联的正文里没有路径可解析。
+
+
 ## 版本定位
 
 本技能服务于 **用友 NCC（NC Cloud）**。
@@ -453,15 +463,15 @@ import nc.vo.bd.meta.BatchOperateVO;
 ### 问题记录路由
 
 当用户要求将问题/解决方案记录到参考资料时：
-- **NCC 问题** → 记录到本技能 \`references/\` 目录（或对应的子技能目录）
-- **旗舰版问题** → 记录到 \`yon-bip-dev\` 的 \`references/\` 目录
+- **NCC 问题** → 记录到本技能 \`ncc/ncc-dev/references/\` 目录（或对应的子技能目录）
+- **旗舰版问题** → 记录到 \`yon-bip-dev\` 的 \`ncc/ncc-dev/references/\` 目录
 
 ## 概述
 
 本 skill 是 NCC 定制开发的**总入口**，负责识别用户需求属于哪个开发场景，然后读取对应的参考资料生成代码。
 
-> **通用素材（事件码、单据类型、编码规范、通用 API）** 所有场景共享，存放在 \`references/common/\` 下。
-> **场景素材（各开发模式的示例代码和模式说明）** 存放在 \`references/scenarios/\` 下。
+> **通用素材（事件码、单据类型、编码规范、通用 API）** 所有场景共享，存放在 \`ncc/ncc-dev/references/common/\` 下。
+> **场景素材（各开发模式的示例代码和模式说明）** 存放在 \`ncc/ncc-dev/references/scenarios/\` 下。
 
 ## 场景路由
 
@@ -469,12 +479,12 @@ import nc.vo.bd.meta.BatchOperateVO;
 
 | 场景 | 触发关键词 | 参考文件 |
 |------|-----------|----------|
-| **业务插件** | 事件监听、审批后/新增后/修改后、IBusinessListener、doAction、单据转换、自动生成、回写字段、审批后协同、自动生单 | \`references/scenarios/plugin-dev.md\` + \`references/scenarios/ncc-coding-patterns.md\` |
-| **审批后自动协同** | 协同、购销协同、自动生单、IPfExchangeService、ISCMPubSaveCommitService、CloudPFlowContext、用户模拟、跨公司 | \`references/scenarios/ncc-coding-patterns.md\` §2 + \`references/scenarios/project-ztxx.md\` §1 |
+| **业务插件** | 事件监听、审批后/新增后/修改后、IBusinessListener、doAction、单据转换、自动生成、回写字段、审批后协同、自动生单 | \`ncc/ncc-dev/references/scenarios/plugin-dev.md\` + \`ncc/ncc-dev/references/scenarios/ncc-coding-patterns.md\`（未随包提供） |
+| **审批后自动协同** | 协同、购销协同、自动生单、IPfExchangeService、ISCMPubSaveCommitService、CloudPFlowContext、用户模拟、跨公司 | \`ncc/ncc-dev/references/scenarios/ncc-coding-patterns.md\`（未随包提供） §2 + \`ncc/ncc-dev/references/scenarios/project-ztxx.md\`（未随包提供） §1 |
 | **后台任务** | 后台任务、计划任务、定时任务、定时执行、调度、IBackgroundWorkPlugin、executeTask | \`ncc-background-task\` 子技能 |
-| **参照** | 参照、下拉参照、自定义参照、参照过滤、F7 | \`references/scenarios/ref-model.md\`（待建） |
-| **业务扩展** | 业务扩展、扩展点、扩展注册、处理器 | \`references/scenarios/biz-extension.md\`（待建） |
-| **编码规则** | 编码规则、单据编号、自动编号、编码生成 | \`references/scenarios/coding-rule.md\`（待建） |
+| **参照** | 参照、下拉参照、自定义参照、参照过滤、F7 | \`ncc/ncc-dev/references/scenarios/ref-model.md\`（待建） |
+| **业务扩展** | 业务扩展、扩展点、扩展注册、处理器 | \`ncc/ncc-dev/references/scenarios/biz-extension.md\`（待建） |
+| **编码规则** | 编码规则、单据编号、自动编号、编码生成 | \`ncc/ncc-dev/references/scenarios/coding-rule.md\`（待建） |
 
 ## 源码分析工作流
 
@@ -640,18 +650,18 @@ NCLocator.getInstance().lookup(IPreAlertPlugin.class);
 
 | 文件 | 内容 | 何时读取 |
 |------|------|----------|
-| \`references/common/event-codes.md\` | 45 个业务事件码对照表 | 涉及事件监听时 |
-| \`references/common/bill-types.md\` | 单据类型代码表（采购/销售/库存/财务等） | 涉及单据操作时 |
-| \`references/common/coding-standard.md\` | Java 编码规范（命名/注释/异常处理） | 生成代码时 |
-| \`references/common/common-api.md\` | 通用 API 模式（自定义档案、服务定位、持久化查询、系统参数、事件入口、基础数据接口速查等） | 需要调用通用能力时 |
-| \`references/common/so-vo-reference.md\` | 销售管理模块 VO 与表名对照表 | 涉及销售订单/发货单/销售发票等 VO 操作时 |
-| \`references/common/pu-vo-reference.md\` | 采购管理模块 VO 与表名对照表 | 涉及采购订单/请购单/采购发票等 VO 操作时 |
-| \`references/common/ic-vo-reference.md\` | 库存管理模块 VO 与表名对照表 | 涉及出入库/调拨/盘点/转库等 VO 操作时 |
-| \`references/common/pim-vo-reference.md\` | 立项管理（pim）模块 VO 与表名对照表 | 涉及项目立项/预算/验收/进度计划等 VO 操作时 |
-| \`references/common/ipm-vo-reference.md\` | IPM 基金投资模块 VO 与表名对照表（ipmbd/ipmam/ipmas/ipmdm/ipmexit/ipmfund/ipmip/ipmpb/ipmpe/ipmpg/ipmpl/ipmprm/ipmrisk，含聚合VO） | 涉及基金/投资/产权/风险管理等 VO 操作时 |
-| \`references/common/arap-payablebill-frontend.md\` | 应付单卡片前端实战参考（目录结构、按钮分发、NCModal弹框、数据操作API、缓存机制、联查模式、入库明细弹框） | 涉及应付单/付款单/报销单前端客开、入库明细弹框、EAM集成时 |
-| \`references/common/openapi-dev.md\` | NCC OpenAPI 开发完整指南（Restlet+JAX-RS，5步：写Java类→写.rest文件→写.md文档→**前台注册**→调用测试） | 涉及 OpenAPI、开放接口、REST API、servlet 开发时 |
-| \`references/common/openapi-fip-txbill-pattern.md\` | 资产包 OpenAPI Resources 模式（FIP 外部接口单专用）：\`AbstractRestResource\` + \`transferBill()\` + \`IFipMessageService.sendMessage()\`，仅适用于外部接口单，不适用于付款单等其他单据 | 提到"资产包"开发 OpenAPI / Resources 类 / 外部接口单 OpenAPI 时 |
+| \`ncc/ncc-dev/references/common/event-codes.md\` | 45 个业务事件码对照表 | 涉及事件监听时 |
+| \`ncc/ncc-dev/references/common/bill-types.md\` | 单据类型代码表（采购/销售/库存/财务等） | 涉及单据操作时 |
+| \`ncc/ncc-dev/references/common/coding-standard.md\` | Java 编码规范（命名/注释/异常处理） | 生成代码时 |
+| \`ncc/ncc-dev/references/common/common-api.md\` | 通用 API 模式（自定义档案、服务定位、持久化查询、系统参数、事件入口、基础数据接口速查等） | 需要调用通用能力时 |
+| \`ncc/ncc-dev/references/common/so-vo-reference.md\` | 销售管理模块 VO 与表名对照表 | 涉及销售订单/发货单/销售发票等 VO 操作时 |
+| \`ncc/ncc-dev/references/common/pu-vo-reference.md\` | 采购管理模块 VO 与表名对照表 | 涉及采购订单/请购单/采购发票等 VO 操作时 |
+| \`ncc/ncc-dev/references/common/ic-vo-reference.md\` | 库存管理模块 VO 与表名对照表 | 涉及出入库/调拨/盘点/转库等 VO 操作时 |
+| \`ncc/ncc-dev/references/common/pim-vo-reference.md\` | 立项管理（pim）模块 VO 与表名对照表 | 涉及项目立项/预算/验收/进度计划等 VO 操作时 |
+| \`ncc/ncc-dev/references/common/ipm-vo-reference.md\` | IPM 基金投资模块 VO 与表名对照表（ipmbd/ipmam/ipmas/ipmdm/ipmexit/ipmfund/ipmip/ipmpb/ipmpe/ipmpg/ipmpl/ipmprm/ipmrisk，含聚合VO） | 涉及基金/投资/产权/风险管理等 VO 操作时 |
+| \`ncc/ncc-dev/references/common/arap-payablebill-frontend.md\` | 应付单卡片前端实战参考（目录结构、按钮分发、NCModal弹框、数据操作API、缓存机制、联查模式、入库明细弹框） | 涉及应付单/付款单/报销单前端客开、入库明细弹框、EAM集成时 |
+| \`ncc/ncc-dev/references/common/openapi-dev.md\` | NCC OpenAPI 开发完整指南（Restlet+JAX-RS，5步：写Java类→写.rest文件→写.md文档→**前台注册**→调用测试） | 涉及 OpenAPI、开放接口、REST API、servlet 开发时 |
+| \`ncc/ncc-dev/references/common/openapi-fip-txbill-pattern.md\` | 资产包 OpenAPI Resources 模式（FIP 外部接口单专用）：\`AbstractRestResource\` + \`transferBill()\` + \`IFipMessageService.sendMessage()\`，仅适用于外部接口单，不适用于付款单等其他单据 | 提到"资产包"开发 OpenAPI / Resources 类 / 外部接口单 OpenAPI 时 |
 
 
 ## NCC 数据库查询规则
@@ -834,6 +844,11 @@ import nc.vo.pp.util.StringUtils;
     description: 'NCC（用友NC Cloud）业务插件（事件监听器）开发技能。当用户需要编写、生成、审查 NCC 业务插件代码时使用此技能。 触发场景包括但不限于：写一个审批后/新增后/修改后的事件监听、销售订单审批后自动生成采购入库单、 单据审批后自动回写字段、写一个业务插件、NCC事件监听、IBusinessListener、doAction、 单据转换 runChangeDataAry、saveCommit 保存提交、采购发票/销售订单/库存单据的业务插件开发、 NCC客开、NCC二开、用友NC Cloud插件开发、NCC定制开发。',
     content: `# NCC 业务插件开发指南
 
+> **本技能引用的文档**都在插件的参考库里，路径形如 \`ncc/ncc-plugin-dev/references/xxx.md\`。
+> 用 \`knowledge_read\` 传该路径读全文，或先用 \`knowledge_search\` 按关键词搜索；
+> **不要**按相对路径去猜文件位置——内联的正文里没有路径可解析。
+
+
 ## 版本定位
 
 本技能服务于 **用友 NCC（NC Cloud）**（非旗舰版 BIP）。
@@ -845,7 +860,7 @@ import nc.vo.pp.util.StringUtils;
 ---
 
 > **本 skill 是 \`ncc-dev\`（NCC 定制开发总技能）的子技能，专注于业务插件（事件监听器）开发。**
-> 通用素材（事件码表、单据类型表、编码规范、通用 API）请查阅 \`ncc-dev\` skill 的 \`references/common/\` 目录。
+> 通用素材（事件码表、单据类型表、编码规范、通用 API）请查阅 \`ncc/ncc-dev/references/common/\` 目录。
 
 ## 核心概念
 
@@ -858,17 +873,17 @@ import nc.vo.pp.util.StringUtils;
 
 ### 场景专用资料
 
-- **插件示例代码**：读取 \`references/examples.md\` — 三种典型模式的完整代码和解读（单据转换、字段回写、自定义档案同步）
+- **插件示例代码**：读取 \`ncc/ncc-plugin-dev/references/examples.md\` — 三种典型模式的完整代码和解读（单据转换、字段回写、自定义档案同步）
 
 ### 通用资料（来自 ncc-dev，按需读取）
 
-- **事件码表**：\`ncc-dev\` skill 的 \`references/common/event-codes.md\` — 查找需要的事件码
-- **单据类型代码**：\`ncc-dev\` skill 的 \`references/common/bill-types.md\` — 查找单据类型代码
-- **编码规范**：\`ncc-dev\` skill 的 \`references/common/coding-standard.md\` — 命名、注释、异常处理等规范
-- **通用 API**：\`ncc-dev\` skill 的 \`references/common/common-api.md\` — 自定义档案操作、持久化查询、批量操作等
-- **销售管理 VO**：\`ncc-dev\` skill 的 \`references/common/so-vo-reference.md\` — 销售管理模块 VO 与表名对照表
-- **采购管理 VO**：\`ncc-dev\` skill 的 \`references/common/pu-vo-reference.md\` — 采购管理模块 VO 与表名对照表
-- **库存管理 VO**：\`ncc-dev\` skill 的 \`references/common/ic-vo-reference.md\` — 库存管理模块 VO 与表名对照表
+- **事件码表**：\`ncc/ncc-dev/references/common/event-codes.md\` — 查找需要的事件码
+- **单据类型代码**：\`ncc/ncc-dev/references/common/bill-types.md\` — 查找单据类型代码
+- **编码规范**：\`ncc/ncc-dev/references/common/coding-standard.md\` — 命名、注释、异常处理等规范
+- **通用 API**：\`ncc/ncc-dev/references/common/common-api.md\` — 自定义档案操作、持久化查询、批量操作等
+- **销售管理 VO**：\`ncc/ncc-dev/references/common/so-vo-reference.md\` — 销售管理模块 VO 与表名对照表
+- **采购管理 VO**：\`ncc/ncc-dev/references/common/pu-vo-reference.md\` — 采购管理模块 VO 与表名对照表
+- **库存管理 VO**：\`ncc/ncc-dev/references/common/ic-vo-reference.md\` — 库存管理模块 VO 与表名对照表
 
 ## 开发流程
 
@@ -1027,7 +1042,7 @@ someService.batchSave(pk_org, batchVO);
 
 典型模式：审批后/新增后将单据数据同步写入 BD 自定义档案。
 
-> **自定义档案的完整 API 用法**（查询、新增、更新）请查阅 \`ncc-dev\` 的 \`references/common/common-api.md\`。
+> **自定义档案的完整 API 用法**（查询、新增、更新）请查阅 \`ncc/ncc-dev/references/common/common-api.md\`。
 
 **同步策略（先查后写）**：
 
@@ -1208,6 +1223,11 @@ public void doAction(IBusinessEvent event) throws BusinessException {
     description: 'NCC（用友 NC Cloud）客开技能。当用户提到 NCC、NC Cloud、NCC2111、NCC2312、NCC2207、 或 NCC 特有的开发模式（资产包接口开发、业务插件/事件监听器 IBusinessListener、 单据转换 IPfExchangeService、集成规则 pub_interule、对照表 pub_intecontrast、 REST API Resource 继承 AbstractRestResource、华科客开模式、OpenAPI 路由注册等）时， 必须使用此技能。也包括 NCC 数据库问题、NCC 服务器问题等。',
     content: `# NCC（NC Cloud）客开技能
 
+> **本技能引用的文档**都在插件的参考库里，路径形如 \`ncc/references/xxx.md\`。
+> 用 \`knowledge_read\` 传该路径读全文，或先用 \`knowledge_search\` 按关键词搜索；
+> **不要**按相对路径去猜文件位置——内联的正文里没有路径可解析。
+
+
 ## 版本定位
 
 本技能服务于 **用友 NCC（NC Cloud）**（非旗舰版 BIP）。
@@ -1243,24 +1263,22 @@ public void doAction(IBusinessEvent event) throws BusinessException {
 
 | 文档 | 路径 | 内容 |
 |------|------|------|
-| 资产包接口开发指南 | \`references/NCC资产包接口开发指南.md\` | 框架类、集成规则、代码模板、报销单流程、常见问题 |
-| 资产包接口实战流程 | \`references/NCC资产包接口实战开发流程.md\` | 完整 9 步开发流程（需求→代码→SQL脚本→API注册→测试） |
-| **🆕 集成规则字段速查卡** | \`references/集成规则字段速查卡.md\` | **一页纸速查**：14 字段含义、VFIELDTYPE SQL模板、配置策略表（含按名称翻译）、**易漏两条**、常见 docId |
-| 集成规则配置参考示例 | \`references/集成规则配置参考示例.json\` | 差旅费报销单完整 JSON 配置模板（AI 用，结构化） |
-| **🆕 集成规则配置模板（可读版）** | \`references/集成规则配置模板-可读版.md\` | **人类审核用**：Markdown表格格式，规则主表+表头+表体+陷阱一览 |
+| 资产包接口开发指南 | \`ncc/references/NCC资产包接口开发指南.md\` | 框架类、集成规则、代码模板、报销单流程、常见问题 |
+| 资产包接口实战流程 | \`ncc/references/NCC资产包接口实战开发流程.md\` | 完整 9 步开发流程（需求→代码→SQL脚本→API注册→测试） |
+| **🆕 集成规则字段速查卡** | \`ncc/references/集成规则字段速查卡.md\` | **一页纸速查**：14 字段含义、VFIELDTYPE SQL模板、配置策略表（含按名称翻译）、**易漏两条**、常见 docId |
+| 集成规则配置参考示例 | \`ncc/references/集成规则配置参考示例.json\` | 差旅费报销单完整 JSON 配置模板（AI 用，结构化） |
+| **🆕 集成规则配置模板（可读版）** | \`ncc/references/集成规则配置模板-可读版.md\` | **人类审核用**：Markdown表格格式，规则主表+表头+表体+陷阱一览 |
 | OpenAPI 开发指南 | \`ncc-dev/references/common/openapi-dev.md\` | 标准 OpenAPI 注册流程（.rest 文件 + opm_apimanager） |
 | FIP 外部接口单模式 | \`ncc-dev/references/common/openapi-fip-txbill-pattern.md\` | 资产包专用模式（\`AbstractRestResource\` + \`IFipMessageService.sendMessage()\`） |
-| 集成规则配置方法 | \`references/问题处理/NCC资产包集成规则配置方法.md\` | bmf 前缀查询流程、常见配置问题 |
-| 集成规则字段截断bug | \`references/问题处理/集成规则参照类型保存报错-字符串截断.md\` | 历史问题记录（已合并到开发指南 §11.5） |
-| **🆕 补丁后前台看不到菜单** | \`references/问题处理/打上资产包补丁后前台看不到应用菜单.md\` | 资产包补丁打上后看不到集成规则/集成日志等节点：权限逐级授权 + 内置菜单 vs 自定义菜单主键 |
-| 缓存查询方法模板 | \`references/NCC缓存查询方法模板.md\` | 4 种编码→ID 查询方法 + IBDMetaDataIDConst 速查表 |
-| **🆕 审核代理 Prompt 模板** | \`references/审核代理-prompt-模板.md\` | 步骤4/5 质量审核代理的验证清单和输出格式 |
-| **🆕 常见参照 VFIELDTYPE 速查** | \`references/常见参照VFIELDTYPE速查.md\` | **VFIELDTYPE 权威源**：40+ 条目按分类组织，优先查此文档再查库 |
-| **🆕 OpenAPI 签名机制详解** | \`references/NCC-OpenAPI-签名机制详解.md\` | Token 获取、OAEP 加密、加盐签名、API 调用、常见错误速查、完整 Python 代码 |
-| **🆕 API 测试工具** | \`tools/NCC-API-POSTER/ncc-api-tester.py\` | NCC OpenAPI 桌面测试工具（GUI），双击 \`.bat\` 启动 |
-| **🆕 NCC API MCP 服务参考** | \`references/ncc-api-mcp-reference.md\` | **AI 调用 ncc-api MCP 时必读**：参数获取来源、集成规则查询、body 构造流程 |
-| **🆕 三方应用配置读取** | \`references/NCC三方应用配置读取.md\` | **读外系统配置的权威源**：\`pub_thirdsys\`/\`pub_thirdparam\` 表结构、\`IThirdSysVOService\` 用法、可粘贴工具类、8 条陷阱、实测样本 |
-| **🆕 GBK 文件编辑** | \`references/GBK文件编辑.md\` | **改 NCC 源码前必读**：源码树是 GBK 而工具链是 UTF-8，直接编辑会静默损坏；三种正确姿势 + \`tools/gbk_edit.py\` 用法与 5 条陷阱 |
+| 集成规则配置方法 | \`ncc/references/问题处理/NCC资产包集成规则配置方法.md\` | bmf 前缀查询流程、常见配置问题 |
+| 集成规则字段截断bug | \`ncc/references/问题处理/集成规则参照类型保存报错-字符串截断.md\` | 历史问题记录（已合并到开发指南 §11.5） |
+| **🆕 补丁后前台看不到菜单** | \`ncc/references/问题处理/打上资产包补丁后前台看不到应用菜单.md\` | 资产包补丁打上后看不到集成规则/集成日志等节点：权限逐级授权 + 内置菜单 vs 自定义菜单主键 |
+| 缓存查询方法模板 | \`ncc/references/NCC缓存查询方法模板.md\` | 4 种编码→ID 查询方法 + IBDMetaDataIDConst 速查表 |
+| **🆕 审核代理 Prompt 模板** | \`ncc/references/审核代理-prompt-模板.md\` | 步骤4/5 质量审核代理的验证清单和输出格式 |
+| **🆕 常见参照 VFIELDTYPE 速查** | \`ncc/references/常见参照VFIELDTYPE速查.md\` | **VFIELDTYPE 权威源**：40+ 条目按分类组织，优先查此文档再查库 |
+| **🆕 OpenAPI 签名机制详解** | \`ncc/references/NCC-OpenAPI-签名机制详解.md\` | Token 获取、OAEP 加密、加盐签名、API 调用、常见错误速查、完整 Python 代码 |
+| **🆕 三方应用配置读取** | \`ncc/references/NCC三方应用配置读取.md\` | **读外系统配置的权威源**：\`pub_thirdsys\`/\`pub_thirdparam\` 表结构、\`IThirdSysVOService\` 用法、可粘贴工具类、8 条陷阱、实测样本 |
+| **🆕 GBK 文件编辑** | \`ncc/references/GBK文件编辑.md\` | **改 NCC 源码前必读**：源码树是 GBK 而工具链是 UTF-8，直接编辑会静默损坏；三种正确姿势 + \`ncc/tools/gbk_edit.py\` 用法与 5 条陷阱 |
 
 #### 🧭 读者导航：我想做 X → 看 Y 文档
 
@@ -1327,7 +1345,7 @@ public void doAction(IBusinessEvent event) throws BusinessException {
 
 > **审核代理说明**：
 > - 审核代理只在**高风险步骤 4 和 5** 启用（这两个步骤依赖数据库查询，错误率高）
-> - 审核代理 Prompt 模板见 \`references/审核代理-prompt-模板.md\`
+> - 审核代理 Prompt 模板见 \`ncc/references/审核代理-prompt-模板.md\`
 > - 审核代理具有独立数据库访问权限，会重新执行开发者的 SQL 进行交叉验证
 > - 审核报告直接提交给用户，⚠️ 警告和 ❌ 错误由用户最终判断
 
@@ -1419,6 +1437,11 @@ IBDMetaDataIDConst 元数据 ID 速查表见模板文档。
     description: '用友 BIP 旗舰版客开技能（YonBIP / 旗舰版 / BIP）。 触发场景：BIP 平台开发、SuperDO/BPO 实体扩展、YMS 异步任务、 单据模板/元数据/字段名查询、OpenAPI、MDF 前端扩展、 旗舰版数据库问题、旗舰版环境配置、Arthas 诊断。 注意：NCC / NC Cloud 产品线请使用 yon-ncc-dev 技能，勿混用。',
     content: `# 用友 BIP 客开技能
 
+> **本技能引用的文档**都在插件的参考库里，路径形如 \`bip/references/xxx.md\`。
+> 用 \`knowledge_read\` 传该路径读全文，或先用 \`knowledge_search\` 按关键词搜索；
+> **不要**按相对路径去猜文件位置——内联的正文里没有路径可解析。
+
+
 ## 版本定位
 
 本技能服务于 **用友旗舰版（BIP / YonBIP）**。
@@ -1493,17 +1516,16 @@ IBDMetaDataIDConst 元数据 ID 速查表见模板文档。
 
 | 问题类型 | 扫描目录 | 说明 |
 |----------|----------|------|
-| 便捷帮助类（SQL/API/脚本/模板等） | \`references/旗舰版/\` | \`ls\` 列出文件名 → 按关键词匹配 → 读取匹配的文档 |
-| 后端开发（Service/规则/插件/调度/事件） | \`references/旗舰版/后端开发/\` | 体系化后端规范（IBillQueryRepository、DispatchTask、BIPEventSubscribe 等） |
-| 前端扩展（MDF/ViewModel/页面脚本） | \`references/旗舰版/前端扩展/\` | MDF 开发框架（架构/模型/事件/模式）+ \`references/旗舰版/\` 下代码片段 |
-| 第三方系统集成（WMS/LIMS/MES/SRM…） | \`references/旗舰版/集成/\` | 按业务域子目录匹配（应收应付、总账、仓储、税务等 13 个域） |
-| 报表 SQL 生成（台账/日报/月报） | \`references/旗舰版/报表SQL/\` | 四阶段报表 SQL 生成流程（需求分析→字段分析→SQL构建→校验交付）；\`05-经验-组织树与子级数量统计.md\` 是「组织树 + 统计子级组织数量」类报表的可复用手册（含报表平台参数/筛选器配置） |
-| 公式配置（YonBuilder/UI模板） | \`references/旗舰版/公式/\` | 公式函数参考 + 36 个业务场景示例 |
-| SQL 模板 | \`references/SQL/\` | 每条 SQL 独立一个文件，扫描匹配 |
-| 问题处理类（报错/异常/故障） | \`references/问题处理/\` | \`ls\` 列出文件名 → 按报错关键词匹配 → 读取匹配的文档 |
-| 项目配置（环境/账号/数据库等） | \`references/projects/\` | 每个项目独立一个文件 |
-| 通用开发规范/事件码/单据类型 | \`references/common/\` | 按需检索 |
-| 已归档旧文档（被新版替换） | \`references/旗舰版/_archive/\` | 旧版参考，新版在对应子目录中 |
+| 便捷帮助类（SQL/API/脚本/模板等） | \`bip/references/旗舰版/\` | \`ls\` 列出文件名 → 按关键词匹配 → 读取匹配的文档 |
+| 后端开发（Service/规则/插件/调度/事件） | \`bip/references/旗舰版/后端开发/\` | 体系化后端规范（IBillQueryRepository、DispatchTask、BIPEventSubscribe 等） |
+| 前端扩展（MDF/ViewModel/页面脚本） | \`bip/references/旗舰版/前端扩展/\` | MDF 开发框架（架构/模型/事件/模式）+ \`bip/references/旗舰版/\` 下代码片段 |
+| 第三方系统集成（WMS/LIMS/MES/SRM…） | \`bip/references/旗舰版/集成/\` | 按业务域子目录匹配（应收应付、总账、仓储、税务等 13 个域） |
+| 报表 SQL 生成（台账/日报/月报） | \`bip/references/旗舰版/报表SQL/\` | 四阶段报表 SQL 生成流程（需求分析→字段分析→SQL构建→校验交付）；\`05-经验-组织树与子级数量统计.md\` 是「组织树 + 统计子级组织数量」类报表的可复用手册（含报表平台参数/筛选器配置） |
+| 公式配置（YonBuilder/UI模板） | \`bip/references/旗舰版/公式/\` | 公式函数参考 + 36 个业务场景示例 |
+| SQL 模板 | \`bip/references/SQL/\` | 每条 SQL 独立一个文件，扫描匹配 |
+| 问题处理类（报错/异常/故障） | \`bip/references/问题处理/\` | \`ls\` 列出文件名 → 按报错关键词匹配 → 读取匹配的文档 |
+| 项目配置（环境/账号/数据库等） | Yon 面板的「项目」与「数据源」 | 每个项目独立一条记录 |
+| 已归档旧文档（被新版替换） | \`bip/references/旗舰版/_archive/\` | 旧版参考，新版在对应子目录中 |
 
 
 ## 接收到用户的提问，处理流程
@@ -1521,16 +1543,16 @@ IBDMetaDataIDConst 元数据 ID 速查表见模板文档。
 
 | 问题类型 | 典型关键词 | 扫描目录 |
 |----------|-----------|----------|
-| 报错排查 | 报错、异常、报异常、不生效、崩溃 | \`references/问题处理/\` |
-| 便捷协助 | 生成SQL、写个脚本、模板代码、阿尔萨斯命令 | \`references/旗舰版/\` |
-| 环境/配置/账号 | 环境地址、数据库连接、账号密码、VPN | \`references/projects/\` |
-| 后端开发规范 | Service、规则、插件、调度、事件、IBillQuery | \`references/旗舰版/后端开发/\` |
-| 前端扩展 | MDF、ViewModel、页面脚本、字段联动 | \`references/旗舰版/前端扩展/\` |
-| 第三方集成 | WMS、LIMS、MES、SRM、接口对接 | \`references/旗舰版/集成/\` |
-| 报表SQL | 台账、日报、月报、报表SQL | \`references/旗舰版/报表SQL/\` |
-| 组织树报表 | 组织树、子级组织、上卷、父组织汇总、语义模型、筛选器、参数绑定 | \`references/旗舰版/报表SQL/05-经验-组织树与子级数量统计.md\` |
-| 直联/银企报表 | 直联、直连、银企通道、不可直连、未直连成功、直连率、财务公司账户 | \`references/旗舰版/报表SQL/06-金隅-账户直联情况统计表-字段核查.md\` |
-| 公式配置 | 公式、YonBuilder、计算公式 | \`references/旗舰版/公式/\` |
+| 报错排查 | 报错、异常、报异常、不生效、崩溃 | \`bip/references/问题处理/\` |
+| 便捷协助 | 生成SQL、写个脚本、模板代码、阿尔萨斯命令 | \`bip/references/旗舰版/\` |
+| 环境/配置/账号 | 环境地址、数据库连接、账号密码、VPN | Yon 面板的「数据源」 |
+| 后端开发规范 | Service、规则、插件、调度、事件、IBillQuery | \`bip/references/旗舰版/后端开发/\` |
+| 前端扩展 | MDF、ViewModel、页面脚本、字段联动 | \`bip/references/旗舰版/前端扩展/\` |
+| 第三方集成 | WMS、LIMS、MES、SRM、接口对接 | \`bip/references/旗舰版/集成/\` |
+| 报表SQL | 台账、日报、月报、报表SQL | \`bip/references/旗舰版/报表SQL/\` |
+| 组织树报表 | 组织树、子级组织、上卷、父组织汇总、语义模型、筛选器、参数绑定 | \`bip/references/旗舰版/报表SQL/05-经验-组织树与子级数量统计.md\` |
+| 直联/银企报表 | 直联、直连、银企通道、不可直连、未直连成功、直连率、财务公司账户 | \`bip/references/旗舰版/报表SQL/06-金隅-账户直联情况统计表-字段核查.md\` |
+| 公式配置 | 公式、YonBuilder、计算公式 | \`bip/references/旗舰版/公式/\` |
 
 ## 源码索引配置
 
@@ -1564,15 +1586,15 @@ IBDMetaDataIDConst 元数据 ID 速查表见模板文档。
 | 脚本 | 路径 | 用途 |
 |------|------|------|
 | 数据源健康检查 | \`datasource_list\` 工具 | 列出已登记的数据源（类型/地址/登录名）与项目绑定情况 |
-| OpenAPI 开发 | \`references/旗舰版/旗舰版OpenAPI开发指南.md\` | BIP 旗舰版 OpenAPI 服务端开发（Controller → YMS 注册 → 发布 → 授权） |
-| OpenAPI 调用(客户端) | \`references/旗舰版/旗舰版调用OpenAPI.md\` | Java 后端调用 BIP OpenAPI（Token、签名、GET/POST） |
-| OpenAPI SDK 调用 | \`references/旗舰版/openapi-sdk调用api的使用示例.md\` | 独立 Maven 工程通过 SDK jar 调用 BIP OpenAPI |
-| Arthas 命令工具 | \`scripts/arthas_exec.py\` | 通过 Tunnel Server HTTP API 执行 Arthas 命令，自动格式化输出，避免手拼 JSON |
-| MDF 前端代码模板 | \`assets/mdf/\` | 9 个 JS 模板（字段联动/参照过滤/校验/弹窗等） |
-| Java 后端代码模板 | \`assets/java/\` | 费用报销集成等场景的 Controller/Service/Factory 模板 |
-| 后端开发总览 | \`references/旗舰版/后端开发/后端开发总览.md\` | server-codegen 完整后端开发指南（含 GUIDE.md） |
-| 前端开发总览 | \`references/旗舰版/前端扩展/前端开发总览.md\` | MDF 三层架构前端开发框架 |
-| 集成开发公共规范 | \`references/旗舰版/集成/_公共规范/\` | MVC 架构、数据持久化、特征字段翻译速查 |
+| OpenAPI 开发 | \`bip/references/旗舰版/旗舰版OpenAPI开发指南.md\` | BIP 旗舰版 OpenAPI 服务端开发（Controller → YMS 注册 → 发布 → 授权） |
+| OpenAPI 调用(客户端) | \`bip/references/旗舰版/旗舰版调用OpenAPI.md\` | Java 后端调用 BIP OpenAPI（Token、签名、GET/POST） |
+| OpenAPI SDK 调用 | \`bip/references/旗舰版/openapi-sdk调用api的使用示例.md\` | 独立 Maven 工程通过 SDK jar 调用 BIP OpenAPI |
+| Arthas 命令工具 | \`bip/scripts/arthas_exec.py\` | 通过 Tunnel Server HTTP API 执行 Arthas 命令，自动格式化输出，避免手拼 JSON |
+| MDF 前端代码模板 | \`bip/assets/mdf/\` | 9 个 JS 模板（字段联动/参照过滤/校验/弹窗等） |
+| Java 后端代码模板 | \`bip/assets/java/\` | 费用报销集成等场景的 Controller/Service/Factory 模板 |
+| 后端开发总览 | \`bip/references/旗舰版/后端开发/后端开发总览.md\` | server-codegen 完整后端开发指南（含 GUIDE.md） |
+| 前端开发总览 | \`bip/references/旗舰版/前端扩展/\`（api-index.md、mobile-api.md 等） | MDF 三层架构前端开发框架 |
+| 集成开发公共规范 | \`bip/references/旗舰版/集成/_公共规范/\` | MVC 架构、数据持久化、特征字段翻译速查 |
 
 ## 健康检查触发
 
@@ -1626,7 +1648,7 @@ IBDMetaDataIDConst 元数据 ID 速查表见模板文档。
 
 ## 接口测试
 
-- 参考 \`references/旗舰版/Arthas-API测试实战流程.md\`
+- 参考 \`bip/references/旗舰版/Arthas-API测试实战流程.md\`
 `,
   },
 ]
