@@ -1,0 +1,319 @@
+{
+  "_note": "差旅费报销单集成规则配置 — 示例文件，新单据参照此结构填写，审核通过后据此生成 pub_interuleitem INSERT SQL",
+
+  "_workflow": [
+    "1. 读接口文档 → 列出所有字段（表头 + 各页签表体），记录：字段编码、字段类型(字符/参照/日期…)、是否必填、备注(固定值/翻译规则)",
+    "2. 确定 bmf 前缀 → HOME/modules/{模块}/METADATA/{聚合VO}.bmf → 搜索 BodyOfAggVOAccessor → 取 name 属性值。详见技能文档: NCC资产包集成规则配置方法.md",
+    "3. 区别三类字段: ref(参照类型, 需要编码→ID翻译) / direct(普通值, 照搬) / fixed(外部不传, 系统写固定值)",
+    "4. 逐个字段查询 md_class_id: type=ref 时, 根据字段含义确定语义名(semantic), 查 md_class 表获取 id。详见技能文档: NCC资产包接口实战开发流程.md §4.3",
+    "5. 确定 scope: group(集团级档案) / org(组织级档案) / global(全局唯一)。大多数人/组织/部门=group, 自定义档案=org",
+    "6. 确定 onNotFound: error(找不到报错, 适合必填参照) / ignore(找不到跳过, 适合可选字段或代码兜底)",
+    "7. 填写 JSON 中所有 { value, desc }。desc 必须记录取数来源(SQL)或决策原因",
+    "8. 人工审核 JSON → 根据 _mapping 规则生成 _sql_template 中的 INSERT 语句"
+  ],
+
+  "_desc_guide": {
+    "规则1": "如果值来自数据库查询 → 写完整可执行的 SQL。例: 'SELECT id FROM md_class WHERE fullclassname=''nc.vo.org.DeptVO''' ",
+    "规则2": "如果值来自接口文档 → 写 '接口文档：xxx'。例: '接口文档：报销人编码' ",
+    "规则3": "如果值来自系统约定/固定规则 → 写决策原因。例: 'VCONVERTPARAM=1：人员档案集团级维护' ",
+    "规则4": "如果值来自 bmf/配置文件 → 写文件路径和搜索关键字。例: 'expenseaccount.bmf → BodyOfAggVOAccessor → name属性' ",
+    "规则5": "如果值是生成的(如PK) → 写生成规则。例: 'NCC主键格式，20位唯一字符串' "
+  },
+
+  "_pitfalls": [
+    "⚠️ 固定值≠不翻译：接口文档标注了固定值(如jsfs=3), 但 3 是编码不是主键, 仍需 type=ref 翻译为 bd_balatype 的主键",
+    "⚠️ 表体字段要加前缀：VFIELD 格式为 {prefix}.{field}, VEXTFIELD 也必须同样加前缀",
+    "⚠️ 系统字段不能漏：djlxbm/djbh/tablecode 虽然在接口文档中标注'NCC自动生成', 但集成规则仍需配置, 否则 transferBill 读不到",
+    "⚠️ vfieldtype 区分版本：同一个概念(如部门)有 DeptVO(b26fa3cb) 和 DeptVersionVO(66ed0cf6), 费用承担部门需要带版本的，主要看接口文档上写的字段编码，有无_v后缀，有后缀则多为带版本的。",
+    "⚠️ scope 不能默认全填 org：大部分项目的档案是集团级维护(scope=group), 只有少数按业务单元隔离的才填 org，这个需要具体分析，不确定可以提问。"
+  ],
+
+  "_sql_template": {
+    "_说明": "根据 _mapping 规则，将 header[] 和 body.items[] 中每个字段转换为以下 INSERT 语句。表体字段的 VFIELD 和 VEXTFIELD 需加 body.prefix 前缀。",
+    "ref类型": "INSERT INTO pub_interuleitem (PK_ITEM, PK_RULE, SERIALNO, VFIELD, VFIELDNAME, VFIELDTYPE, VEXTFIELD, VEXTFIELDNAME, FCONVERT, VCONVERTPARAM, VCONVERTRULE, VTRANSLATE, VCONTRAST, DR, TS) VALUES ('{PK}', '{RULE_PK}', {N}, '{VFIELD}', '{VFIELDNAME}', '{VFIELDTYPE}', '{VEXTFIELD}', '{VEXTFIELDNAME}', 1, {VCONVERTPARAM}, 1, {VTRANSLATE}, '~', 0, SYSDATE);",
+    "direct类型": "INSERT INTO pub_interuleitem (PK_ITEM, PK_RULE, SERIALNO, VFIELD, VFIELDNAME, VEXTFIELD, VEXTFIELDNAME, VFIELDTYPE, VCONTRAST, FCONVERT, DR, TS) VALUES ('{PK}', '{RULE_PK}', {N}, '{VFIELD}', '{VFIELDNAME}', '{VEXTFIELD}', '{VEXTFIELDNAME}', '~', '~', 1, 0, SYSDATE);",
+    "fixed类型": "INSERT INTO pub_interuleitem (PK_ITEM, PK_RULE, SERIALNO, VFIELD, VFIELDNAME, FCONVERT, VDEFAULTVALUE, DR, TS) VALUES ('{PK}', '{RULE_PK}', {N}, '{VFIELD}', '{VFIELDNAME}', 0, '{VDEFAULTVALUE}', 0, SYSDATE);"
+  },
+
+  "_schema": {
+    "_说明": "以下定义 header[] 和 body.items[] 中每个字段对象的结构。所有属性值均为 { value, desc } 对象格式。标注「必填」的属性所有类型都需要；标注「ref专用」的仅 type=ref 时需要；标注「fixed专用」的仅 type=fixed 时需要。",
+
+    "field":     { "含义": "[必填] 目标 VO 字段名 → pub_interuleitem.VFIELD",                     "填法": "headVo.getXxx() 对应的属性名。表体字段自动加 body.prefix 前缀，此处只写子表VO内部字段名", "示例": "jkbxr / defitem25" },
+    "source":    { "含义": "[必填, fixed除外] 来源 JSON 字段名 → pub_interuleitem.VEXTFIELD",     "填法": "接口文档中「字段编码」列的值。外部不传的 fixed 字段不需要填",             "示例": "jkbxr / defitem25" },
+    "type":      { "含义": "[必填] 映射类型，决定 FCONVERT 和后续取值逻辑",                         "填法": "ref=参照翻译(字段类型为参照/档案) | direct=直接映射(字段类型为字符/日期/数字) | fixed=固定值(接口文档标注'固定')", "示例": "ref" },
+    "ref":       { "含义": "[ref专用] 参照档案信息，含语义名和 md_class.id",                        "填法": "{ semantic: 自定义语义名(如 psndoc/dept), md_class_id: SELECT id FROM md_class WHERE ... 查询结果, displayName: md_class.displayname }", "示例": "{ semantic: 'psndoc', md_class_id: '40d39c26...', displayName: '人员管理信息' }" },
+    "scope":     { "含义": "[ref专用] 翻译的组织范围 → pub_interuleitem.VCONVERTPARAM",             "填法": "group=按集团(1, 大多数情况) | org=按组织(2, 档案按业务单元隔离时) | global=全局(0)", "示例": "group" },
+    "onNotFound":{ "含义": "[ref专用] 编码找不到时的行为 → pub_interuleitem.VTRANSLATE",           "填法": "error=报错(1, 必填参照推荐) | ignore=跳过(null, 可选字段/代码有兜底时) | create=自动创建(3)", "示例": "error" },
+    "required":  { "含义": "[必填] 是否必填",                                                       "填法": "接口文档「是否必填」列: 是→true, 否→false。fixed类型填false",         "示例": "true" },
+    "default":   { "含义": "[可选, ref/direct专用] 兜底值 → pub_interuleitem.VDEFAULTVALUE",       "填法": "接口文档标注的固定编码值, 或代码 setDefaultValue 中设置的兜底",          "示例": "111" },
+    "value":     { "含义": "[fixed专用] 写入的固定值 → pub_interuleitem.VDEFAULTVALUE",             "填法": "接口文档中标明的固定值, 或系统约定值(如 tablecode=bzitem)",              "示例": "bzitem" }
+  },
+
+  "_mapping": {
+    "_说明": "JSON header[i] / body.items[i] → pub_interuleitem INSERT 的转换规则",
+
+    "SERIALNO":      { "生成规则": "header[] 在前，body.items[] 在后，从 1 开始连续编号。每个字段占一个序号" },
+    "PK_ITEM":       { "生成规则": "NCC 20位主键，前缀 1001ZZ1000000 + 唯一后缀，可使用 PK 生成器工具" },
+    "PK_RULE":       { "取值": "固定 = _rule.pk_interule.value" },
+    "DR":            { "取值": "固定 = 0" },
+    "TS":            { "取值": "固定 = TO_CHAR(SYSDATE, 'YYYY-MM-DD HH24:MI:SS')" },
+
+    "VFIELD":        { "取值": "header[i].field.value；body 字段 = body.prefix.value + '.' + item.field.value" },
+    "VFIELDNAME":    { "取值": "header[i].field.desc 中的中文名部分" },
+    "VEXTFIELD":     { "取值": "header[i].source.value；fixed 类型不填" },
+    "VEXTFIELDNAME": { "取值": "header[i].source.desc 中的中文名部分" },
+    "VFIELDTYPE":    { "取值": "type=ref → ref.md_class_id.value；type=direct → '~' 或 NULL；type=fixed → NULL" },
+    "FCONVERT":      { "取值": "type=ref    → 1 | type=direct → 1 | type=fixed → 0" },
+    "VCONVERTPARAM": { "取值": "type=ref 时取 scope: group→1, org→2, global→0；其余不填" },
+    "VCONVERTRULE":  { "取值": "type=ref 时固定=1(按编码翻译)；其余不填" },
+    "VTRANSLATE":    { "取值": "type=ref 时取 onNotFound: error→1, ignore→NULL, create→3；其余不填" },
+    "VDEFAULTVALUE": { "取值": "header[i].default.value 或 header[i].value.value（仅 fixed 类型时取 value）" },
+    "VCONTRAST":     { "取值": "固定 = '~'（不使用对照表时）" },
+    "VQUERYPARAM":   { "取值": "不填" },
+    "VCONVERTCLASS": { "取值": "不填" }
+  },
+
+  "_rule": {
+    "code":              { "value": "264X-Cxx-11102",             "desc": "接口文档：交易类型编码，与 er_billtype.billtypecode 对应" },
+    "name":              { "value": "差旅费报销单-机科",           "desc": "规则名称，命名规则：单据名-项目名" },
+    "description":       { "value": "差旅费报销单接收接口",        "desc": "接口文档：接口说明" },
+    "pk_interule":       { "value": "1001A8100000013QWU9G",      "desc": "参照NCC主键格式，生成不重复的唯一的20位主键值" },
+    "pk_billtype":       { "value": "1001A1100000002PRBVH",      "desc": "SELECT pk_billtypeid FROM bd_billtype WHERE pk_billtypecode='264X-Cxx-11102' AND dr=0" },
+    "pk_org":            { "value": "0001A110000000000A2N",      "desc": "SELECT pk_org FROM org_orgs WHERE code='111' AND isbusinessunit='Y' AND islastversion='Y' AND dr=0" },
+    "pk_group":          { "value": "0001A110000000000A2N",      "desc": "SELECT pk_group FROM org_group WHERE code='{集团编码}' AND dr=0 —— 或从 InvocationInfoProxy.getGroupId() 获取" },
+    "datatype":          { "value": 1,                            "desc": "1=单据，0=基础档案" },
+    "bdtype":            { "value": null,                         "desc": "基础档案类型全类名，单据类型不填" },
+    "provider":          { "value": "0001HAWK000000000001",      "desc": "固定值：华科资产包标识" },
+    "destsys":           { "value": "0001HAWK000000000001",      "desc": "目标系统 PK，外系统调NCC时填 NCC 集团主键" },
+    "srcsys":            { "value": "0001HAWK000000000001",      "desc": "来源系统 PK，外系统调NCC时填外系统 pk_thirdsys" },
+    "creator":           { "value": "1001A1100000005RBPHF",      "desc": "SELECT cuserid FROM sm_user WHERE user_code='{当前用户}' AND dr=0 —— 审核执行时替换" },
+    "creationtime":      { "value": "2026-06-30 10:53:09",       "desc": "SYSDATE 或规则首次创建时间" },
+    "modifier":          { "value": "1001A1100000005RBPHF",      "desc": "同 creator，最后修改人" },
+    "modifiedtime":      { "value": "2026-07-02 15:05:09",       "desc": "SYSDATE，规则最后修改时间" }
+  },
+
+  "header": [
+    {
+      "field":  { "value": "djlxbm",   "desc": "JKBXHeaderVO 字段名" },
+      "source": { "value": "djlxbm",   "desc": "接口文档：请求参数字段编码" },
+      "type":   { "value": "direct",   "desc": "直接映射：JSON值照搬写入VO，不做翻译" }
+    },
+    {
+      "field":    { "value": "pk_org",     "desc": "JKBXHeaderVO 字段名" },
+      "source":   { "value": "pk_org",     "desc": "接口文档：报销单位编码，固定111" },
+      "type":     { "value": "ref",        "desc": "参照翻译：编码→ID (FCONVERT=1)" },
+      "ref": {
+        "semantic":  { "value": "org",                           "desc": "语义名：通用组织。区别于 financeorg(财务组织)、corp(公司)" },
+        "md_class_id": { "value": "985be8a4-3a36-4778-8afe-2d8ed3902659", "desc": "SELECT id FROM md_class WHERE name='org' AND fullclassname LIKE '%OrgVO%'" },
+        "displayName": { "value": "组织",                        "desc": "md_class.displayname" }
+      },
+      "scope":       { "value": "group",    "desc": "VCONVERTPARAM=1：机科组织档案统一在集团维护，不区分业务单元" },
+      "onNotFound":  { "value": "ignore",   "desc": "VTRANSLATE=NULL：找不到编码时不报错，代码 setDefaultValue 用 111 兜底" },
+      "required":    { "value": false,       "desc": "接口文档：否" },
+      "default":     { "value": "111",       "desc": "接口文档：固定。编码固定为111，由集成规则翻译为组织ID" }
+    },
+    {
+      "field":    { "value": "jkbxr",       "desc": "JKBXHeaderVO 字段名" },
+      "source":   { "value": "jkbxr",       "desc": "接口文档：报销人编码" },
+      "type":     { "value": "ref",         "desc": "参照翻译 (FCONVERT=1)" },
+      "ref": {
+        "semantic":    { "value": "psndoc",                        "desc": "语义名：人员基本信息" },
+        "md_class_id": { "value": "40d39c26-a2b6-4f16-a018-45664cac1a1f", "desc": "SELECT id FROM md_class WHERE fullclassname='nc.vo.bd.psn.PsndocVO'" },
+        "displayName": { "value": "人员管理信息",                   "desc": "md_class.displayname" }
+      },
+      "scope":       { "value": "group",    "desc": "VCONVERTPARAM=1：人员档案集团级维护" },
+      "onNotFound":  { "value": "error",    "desc": "VTRANSLATE=1：找不到人员编码必须报错，不允许跳过" },
+      "required":    { "value": true,        "desc": "接口文档：是" }
+    },
+    {
+      "field":    { "value": "deptid",      "desc": "JKBXHeaderVO 字段名" },
+      "source":   { "value": "deptid",      "desc": "接口文档：报销人部门编码" },
+      "type":     { "value": "ref",         "desc": "参照翻译 (FCONVERT=1)" },
+      "ref": {
+        "semantic":    { "value": "dept",                          "desc": "语义名：部门" },
+        "md_class_id": { "value": "b26fa3cb-4087-4027-a3b6-c83ab2a086a9", "desc": "SELECT id FROM md_class WHERE fullclassname='nc.vo.org.DeptVO'" },
+        "displayName": { "value": "组织_部门",                      "desc": "md_class.displayname" }
+      },
+      "scope":       { "value": "org",      "desc": "VCONVERTPARAM=2：部门档案按业务单元隔离" },
+      "onNotFound":  { "value": "error",    "desc": "VTRANSLATE=1" },
+      "required":    { "value": true,        "desc": "接口文档：是" }
+    },
+    {
+      "field":    { "value": "fydeptid_v",  "desc": "JKBXHeaderVO 字段名" },
+      "source":   { "value": "fydeptid_v",  "desc": "接口文档：费用承担部门编码" },
+      "type":     { "value": "ref",         "desc": "参照翻译 (FCONVERT=1)" },
+      "ref": {
+        "semantic":    { "value": "dept_v",                        "desc": "语义名：部门版本。费用承担部门是带版本信息的" },
+        "md_class_id": { "value": "66ed0cf6-e260-4f39-8fbb-172260efd677", "desc": "SELECT id FROM md_class WHERE name='org_dept_v' —— 注意不是 b26fa3cb(DeptVO)" },
+        "displayName": { "value": "组织_部门版本信息",              "desc": "md_class.displayname" }
+      },
+      "scope":       { "value": "org",      "desc": "VCONVERTPARAM=2" },
+      "onNotFound":  { "value": "error",    "desc": "VTRANSLATE=1" },
+      "required":    { "value": true,        "desc": "接口文档：是" }
+    },
+    {
+      "field":    { "value": "zyx26",       "desc": "JKBXHeaderVO 自定义项字段" },
+      "source":   { "value": "zyx26",       "desc": "接口文档：管理费用类别编码" },
+      "type":     { "value": "ref",         "desc": "参照翻译 (FCONVERT=1)" },
+      "ref": {
+        "semantic":    { "value": "defdoc/管理费用类别",             "desc": "语义名：自定义档案/管理费用类别" },
+        "md_class_id": { "value": "1001A1100000000012OX",           "desc": "SELECT id FROM md_class WHERE fullclassname='nc.vo.bd.defdoc.DefdocVO' AND displayname LIKE '%管理费用类别%'" },
+        "displayName": { "value": "管理费用类别(自定义档案)",        "desc": "md_class.displayname" }
+      },
+      "scope":       { "value": "org",      "desc": "VCONVERTPARAM=2" },
+      "onNotFound":  { "value": "error",    "desc": "VTRANSLATE=1" },
+      "required":    { "value": true,        "desc": "接口文档：是" }
+    },
+    {
+      "field":    { "value": "jobid",       "desc": "JKBXHeaderVO 字段名" },
+      "source":   { "value": "jobid",       "desc": "接口文档：项目编码" },
+      "type":     { "value": "direct",      "desc": "直接映射 — 项目不在集成规则中翻译，由代码 getBizUnitPkByCode 手动处理" },
+      "ref":      { "value": "~",           "desc": "VFIELDTYPE='~' 显式标记为不做参照翻译" }
+    },
+    {
+      "field":    { "value": "zyx28",       "desc": "JKBXHeaderVO 自定义项字段" },
+      "source":   { "value": "zyx28",       "desc": "接口文档：差旅类型编码" },
+      "type":     { "value": "ref",         "desc": "参照翻译 (FCONVERT=1)" },
+      "ref": {
+        "semantic":    { "value": "defdoc/差旅类型",               "desc": "语义名：自定义档案/差旅类型" },
+        "md_class_id": { "value": "1001A11000000005LMOQ",          "desc": "SELECT id FROM md_class WHERE fullclassname='nc.vo.bd.defdoc.DefdocVO' AND displayname LIKE '%差旅类型%'" },
+        "displayName": { "value": "差旅类型(自定义档案)",           "desc": "md_class.displayname" }
+      },
+      "scope":       { "value": "group",    "desc": "VCONVERTPARAM=1：差旅类型集团级统一管理" },
+      "onNotFound":  { "value": "error",    "desc": "VTRANSLATE=1" },
+      "required":    { "value": true,        "desc": "接口文档：是" }
+    },
+    {
+      "field":    { "value": "zyx65",       "desc": "JKBXHeaderVO 自定义项字段" },
+      "source":   { "value": "zyx65",       "desc": "接口文档：CBS编码" },
+      "type":     { "value": "ref",         "desc": "参照翻译 (FCONVERT=1)" },
+      "ref": {
+        "semantic":    { "value": "defdoc/机科CBS科目",            "desc": "语义名：自定义档案/机科CBS科目" },
+        "md_class_id": { "value": "1001A8100000013NT2II",          "desc": "SELECT id FROM md_class WHERE fullclassname='nc.vo.bd.defdoc.DefdocVO' AND displayname LIKE '%机科%CBS%'" },
+        "displayName": { "value": "机科CBS科目(自定义档案)",        "desc": "md_class.displayname" }
+      },
+      "scope":       { "value": "org",      "desc": "VCONVERTPARAM=2" },
+      "onNotFound":  { "value": "error",    "desc": "VTRANSLATE=1" },
+      "required":    { "value": true,        "desc": "接口文档：是" }
+    },
+    {
+      "field":  { "value": "zyx70",        "desc": "JKBXHeaderVO 自定义项字段（汇联易单据号）" },
+      "source": { "value": "zyx70",        "desc": "接口文档：汇联易单据号，用于验重" },
+      "type":   { "value": "direct",       "desc": "直接映射 — 不做翻译，代码中用于 SELECT 验重" }
+    },
+    {
+      "field":  { "value": "djrq",         "desc": "JKBXHeaderVO 字段名" },
+      "source": { "value": "djrq",         "desc": "接口文档：单据日期 YYYY-MM-DD 00:00:00" },
+      "type":   { "value": "direct",       "desc": "直接映射" }
+    },
+    {
+      "field":  { "value": "zyx19",        "desc": "JKBXHeaderVO 自定义项字段" },
+      "source": { "value": "zyx19",        "desc": "接口文档：事由" },
+      "type":   { "value": "direct",       "desc": "直接映射" }
+    },
+    {
+      "field":  { "value": "vat_amount",   "desc": "JKBXHeaderVO 字段名（表头合计金额）" },
+      "source": { "value": "vat_amount",   "desc": "接口文档：合计金额（补贴合计）" },
+      "type":   { "value": "direct",       "desc": "直接映射 — 代码 setDefaultValue 中还会处理 ybje/total 赋值" }
+    },
+    {
+      "field":  { "value": "creationtime", "desc": "JKBXHeaderVO 字段名" },
+      "source": { "value": "creationtime", "desc": "接口文档：创建时间" },
+      "type":   { "value": "direct",       "desc": "直接映射 — 代码 setDefaultValue 中补当前时间兜底" }
+    },
+    {
+      "field":    { "value": "jsfs",        "desc": "JKBXHeaderVO 字段名" },
+      "source":   { "value": "jsfs",        "desc": "接口文档：结算方式，固定传3(网银)" },
+      "type":     { "value": "ref",         "desc": "参照翻译 — 初始版用 fixed，修正为 ref：3 是编码不是主键，需要翻译为 bd_balatype 的主键" },
+      "ref": {
+        "semantic":    { "value": "balatype",                      "desc": "语义名：结算方式" },
+        "md_class_id": { "value": "7016ec17-4116-4b3c-abf1-37e3b5d815ef", "desc": "SELECT id FROM md_class WHERE name='bd_balatype'" },
+        "displayName": { "value": "结算方式",                      "desc": "md_class.displayname" }
+      },
+      "scope":       { "value": "group",    "desc": "VCONVERTPARAM=1" },
+      "required":    { "value": false,       "desc": "接口文档：否" },
+      "default":     { "value": "3",         "desc": "接口文档：固定3。代码中 StringUtils.isBlank 时兜底" }
+    },
+    {
+      "field":  { "value": "djzt",          "desc": "JKBXHeaderVO 字段名" },
+      "type":   { "value": "fixed",         "desc": "固定值 (FCONVERT=0)：外部系统不传，规则写入默认值" },
+      "value":  { "value": "1",             "desc": "接口文档：固定1。注意代码 setDefaultValue 会覆盖为8(自由态)" }
+    },
+    {
+      "field":  { "value": "zyx34",         "desc": "JKBXHeaderVO 自定义项字段" },
+      "source": { "value": "zyx34",         "desc": "接口文档：是否来源于商旅平台" },
+      "type":   { "value": "fixed",         "desc": "固定值 (FCONVERT=0)：外部系统不传" },
+      "value":  { "value": "01",            "desc": "接口文档：固定01(是)" }
+    },
+    {
+      "field":    { "value": "zyx8",        "desc": "JKBXHeaderVO 自定义项字段" },
+      "source":   { "value": "zyx8",        "desc": "接口文档：职务编码（汇联易可能传也可能不传）" },
+      "type":     { "value": "ref",         "desc": "参照翻译 (FCONVERT=1)" },
+      "ref": {
+        "semantic":    { "value": "job",                           "desc": "语义名：职务" },
+        "md_class_id": { "value": "8afa3f01-d755-4b31-a593-507130d91ffd", "desc": "SELECT id FROM md_class WHERE name='om_job'" },
+        "displayName": { "value": "职务",                          "desc": "md_class.displayname" }
+      },
+      "scope":       { "value": "group",    "desc": "VCONVERTPARAM=1" },
+      "onNotFound":  { "value": "ignore",   "desc": "VTRANSLATE=NULL：找不到不报错，代码 getMainPsnjob 自动带出" },
+      "required":    { "value": false,       "desc": "接口文档：汇联易不传时 NCC 根据报销人自动分析填入" }
+    },
+    {
+      "field":  { "value": "djbh",          "desc": "JKBXHeaderVO 字段名" },
+      "source": { "value": "djbh",          "desc": "接口文档：单据号（NCC自动生成）" },
+      "type":   { "value": "direct",        "desc": "直接映射 — 规则回写用" }
+    }
+  ],
+
+  "body": {
+    "_生成说明": "表体 items[] 中每个字段的 VFIELD = prefix.value + '.' + item.field.value，VEXTFIELD 同样加前缀。例如: VFIELD='er_busitem.defitem25', VEXTFIELD='er_busitem.defitem25'",
+    "prefix": { "value": "er_busitem", "desc": "expenseaccount.bmf → BodyOfAggVOAccessor name → 确认命令: grep -o 'BodyOfAggVOAccessor[^>]*name=\"[^\"]*\"' expenseaccount.bmf" },
+
+    "items": [
+      {
+        "field":  { "value": "tablecode",   "desc": "BXBusItemVO 页签标识字段" },
+        "type":   { "value": "fixed",       "desc": "固定值 (FCONVERT=0)：无需外部传入" },
+        "value":  { "value": "bzitem",      "desc": "接口文档：bzitem=出差补贴明细。报销单包含多个页签（交通/住宿/补贴），此值标识当前行属于哪个页签" }
+      },
+      {
+        "field":    { "value": "defitem25",     "desc": "BXBusItemVO 自定义项字段" },
+        "source":   { "value": "defitem25",     "desc": "接口文档：补助类型编码" },
+        "type":     { "value": "ref",           "desc": "参照翻译 (FCONVERT=1)" },
+        "ref": {
+          "semantic":    { "value": "defdoc/补助类型",             "desc": "语义名：自定义档案/补助类型" },
+          "md_class_id": { "value": "1001A1100000002PXW6C",        "desc": "SELECT id FROM md_class WHERE fullclassname='nc.vo.bd.defdoc.DefdocVO' AND displayname LIKE '%补助类型%'" },
+          "displayName": { "value": "补助类型(自定义档案)",         "desc": "md_class.displayname" }
+        },
+        "scope":       { "value": "org",      "desc": "VCONVERTPARAM=2" },
+        "onNotFound":  { "value": "error",    "desc": "VTRANSLATE=1" },
+        "required":    { "value": true,        "desc": "接口文档：是" }
+      },
+      {
+        "field":   { "value": "szxmid",        "desc": "BXBusItemVO 字段名" },
+        "source":  { "value": "szxmid",        "desc": "接口文档：收支项目编码" },
+        "type":    { "value": "direct",        "desc": "直接映射 — 代码中手动翻译，VFIELDTYPE='~' 显式跳过" },
+        "ref":     { "value": "~",             "desc": "不翻译。NCC 标准档案 InoutBusiClassVO(283d91a4) 在机科环境无数据，改为代码处理" }
+      },
+      {
+        "field":  { "value": "defitem18",      "desc": "BXBusItemVO 自定义项字段" },
+        "source": { "value": "defitem18",      "desc": "接口文档：人数" },
+        "type":   { "value": "direct",         "desc": "直接映射" }
+      },
+      {
+        "field":  { "value": "defitem9",       "desc": "BXBusItemVO 自定义项字段" },
+        "source": { "value": "defitem9",       "desc": "接口文档：天数" },
+        "type":   { "value": "direct",         "desc": "直接映射" }
+      },
+      {
+        "field":  { "value": "defitem13",      "desc": "BXBusItemVO 自定义项字段" },
+        "source": { "value": "defitem13",      "desc": "接口文档：标准（精度2位）" },
+        "type":   { "value": "direct",         "desc": "直接映射" }
+      },
+      {
+        "field":  { "value": "vat_amount",     "desc": "BXBusItemVO 字段名（子表补助金额）" },
+        "source": { "value": "vat_amount",     "desc": "接口文档：补助金额" },
+        "type":   { "value": "direct",         "desc": "直接映射 — 代码 setDefaultValue 中还会处理 ybje/bbje/amount 赋值" }
+      }
+    ]
+  }
+}

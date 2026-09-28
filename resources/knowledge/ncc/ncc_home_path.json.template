@@ -1,0 +1,5 @@
+{
+  "_说明": "本文件记录本机 NCC home 路径。复制 ncc_home_path.json.template 为 ncc_home_path.json，然后填入你的 NCC home 目录。此文件已被 .gitignore 忽略，不会入库。首次运行 build_index.py 也会自动创建此文件。",
+  "default_version": "",
+  "versions": {}
+}

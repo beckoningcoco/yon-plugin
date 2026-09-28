@@ -1,0 +1,7 @@
+{
+  "code": "200",
+  "data": {
+    "msg": "Does not exist in DB. uri: ucfbasedoc.bd_billtypetreeref, tenantId: nfkwaryp",
+    "resultCode": "500"
+  }
+}

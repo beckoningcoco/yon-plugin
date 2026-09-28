@@ -10,6 +10,1107 @@ import type { YonBundledSkill } from './skill-catalog.ts'
 /** Every skill this plugin ships, in name order. */
 export const YON_BUNDLED_SKILLS: readonly YonBundledSkill[] = [
   {
+    name: 'ncc-background-task',
+    description: 'NCC（用友NC Cloud）后台任务开发技能。当用户需要编写、生成、审查 NCC 后台任务插件代码时使用此技能。 触发场景包括但不限于：写一个后台任务、定时任务、计划任务、定时执行、后台任务插件、 IBackgroundWorkPlugin、executeTask、PreAlertContext、PreAlertObject、阈值配置、 后台任务注册、后台任务部署、NCC客开、NCC二开、用友NC Cloud后台任务开发、NCC定制开发。',
+    content: `# NCC 后台任务开发指南
+
+## 版本定位
+
+本技能服务于 **用友 NCC（NC Cloud）**（非旗舰版 BIP）。
+
+> **版本区分**：旗舰版（BIP）→ \`yon-bip-dev\` | NCC → \`yon-ncc-dev\`
+>
+> 收到问题时务必先判断版本。记录问题时注意路由到对应的技能目录。
+
+---
+
+> **本 skill 是 \`ncc-dev\`（NCC 定制开发总技能）的子技能，专注于后台任务插件开发。**
+> 通用素材（编码规范、通用 API）请查阅 \`ncc-dev\` skill 的 \`references/common/\` 目录。
+
+## 接口源码（官方）
+
+> ⚠️ 以下为 \`IBackgroundWorkPlugin\` 接口的官方源码，**务必严格遵守注释中的约束**。
+
+\`\`\`java
+package nc.bs.pub.taskcenter;
+
+import nc.bs.pub.pa.PreAlertObject;
+import nc.vo.pub.BusinessException;
+
+/**
+ * <b>后台任务 插件类 接口.</b>
+ *
+ * @author huangzg 2007-5-14
+ * @since v5.02
+ */
+public interface IBackgroundWorkPlugin
+{
+    /**
+     * 任务插件执行体
+     *
+     * @param bgwc 执行环境
+     * @return <tt>PreAlertObject</tt>
+     *            该返回值不允许为null！<p>
+     *            若后台任务插件成功执行但不打算发送消息，<p>
+     *           那么请将PreAlertObject的returnType设为PreAlertReturnType.RETURNNOTHING
+     * @throws BusinessException
+     */
+    PreAlertObject executeTask(BgWorkingContext bgwc) throws BusinessException;
+}
+\`\`\`
+
+### 🔴 接口注释要点（必须遵守）
+
+1. **返回值不允许为 null！** — \`executeTask\` 方法必须返回一个非空的 \`PreAlertObject\`
+2. **成功但不需要发消息时**：将 \`PreAlertObject.setReturnType(PreAlertReturnType.RETURNNOTHING)\`
+3. **参数类型**：接口签名中参数为 \`BgWorkingContext bgwc\`（包 \`nc.bs.pub.taskcenter\`）
+   - ⚠️ 实际开发中，\`BgWorkingContext\` 是 \`PreAlertContext\` 的子类/别名，两者可互换使用
+
+> ⚡ **实际产品代码中的做法**：部分 NCC 产品代码中存在 \`return null\` 的情况（如"未查到数据就直接返回"）。虽然违反接口注释约束，但框架层面不会报错。**客开代码建议严格遵守接口规范**，使用 \`RETURNNOTHING\` 而非 \`return null\`。
+
+### BgWorkingContext / PreAlertContext API
+
+| 方法 | 返回类型 | 说明 |
+|------|---------|------|
+| \`getKeyMap()\` | \`KeyMap\` | 获取所有阈值参数，通过 \`.get("参数名")\` 取值 |
+| \`getPk_orgs()\` | \`String[]\` | 获取当前任务部署时选择的组织主键数组 |
+| \`getGroupId()\` | \`String\` | 获取当前集团主键 |
+
+**典型用法**：
+
+\`\`\`java
+// 获取阈值参数
+KeyMap keyMap = bgwc.getKeyMap();
+String paramValue = (String) keyMap.get("参数名");
+
+// 获取组织范围
+String[] pkOrgs = bgwc.getPk_orgs();
+// ⚠️ pkOrgs 可能为 null 或空数组，需要判断
+if (pkOrgs != null && pkOrgs.length > 0) {
+    // 按组织过滤
+} else {
+    // 按集团过滤
+    String pkGroup = bgwc.getGroupId();
+}
+
+// 检查模块是否启用
+boolean faStarted = InitGroupQuery.isEnabled(bgwc.getGroupId(), ModuleConst.FA_FUNCCODE);
+\`\`\`
+
+### 包路径说明
+
+| 类 | 官方接口包路径 | 实际开发常用包路径 | 说明 |
+|----|--------------|------------------|------|
+| \`IBackgroundWorkPlugin\` | \`nc.bs.pub.taskcenter\` | \`nc.bs.pub.pa\` | 两个包下都存在，功能相同 |
+| \`BgWorkingContext\` | \`nc.bs.pub.taskcenter\` | — | 接口源码中的参数类型 |
+| \`PreAlertContext\` | — | \`nc.bs.pub.pa\` | 实际开发中常用，与 BgWorkingContext 等价 |
+| \`PreAlertObject\` | \`nc.bs.pub.pa\` | \`nc.bs.pub.pa\` | 返回值类型 |
+| \`PreAlertReturnType\` | \`nc.bs.pub.pa\` | \`nc.bs.pub.pa\` | 返回类型枚举 |
+
+> **开发建议**：代码中 import 使用 \`nc.bs.pub.pa\` 包下的类即可，\`BgWorkingContext\` 可用 \`PreAlertContext\` 替代，功能完全一致。
+
+## 核心概念
+
+**后台任务 = 实现 \`IBackgroundWorkPlugin\` 接口的 Java 类**，通过 \`executeTask\` 方法编写业务逻辑。
+
+后台任务与业务插件的关键区别：
+- **业务插件**：由事件触发（如审批后、新增后），被动执行
+- **后台任务**：由定时调度或手动触发，主动执行，适用于批量处理、定时同步、数据清理等场景
+
+## 参考资料
+
+### 场景专用资料
+
+- **后台任务示例代码**：读取 \`references/examples.md\` — 典型后台任务的完整代码和解读
+- **产品源码参考**：读取 \`references/product-source-code.md\` — NCC 产品中的真实后台任务实现，包含编码模式和 API 用法
+
+### 通用资料（来自 ncc-dev，按需读取）
+
+- **编码规范**：\`ncc-dev\` skill 的 \`references/common/coding-standard.md\` — 命名、注释、异常处理等规范
+- **通用 API**：\`ncc-dev\` skill 的 \`references/common/common-api.md\` — 自定义档案操作、持久化查询、批量操作、基础数据接口等
+- **VO 对照表**：\`ncc-dev\` skill 的 \`references/common/\` 下的各模块 VO 对照表
+
+## 开发流程
+
+### 第一步：理解需求
+
+从用户描述中提取以下关键信息：
+
+| 需要确认的信息 | 说明 |
+|--------------|------|
+| **任务功能** | 要执行什么业务逻辑？（如批量同步、数据清理、定时推送等） |
+| **触发方式** | 定时执行（Cron 表达式）还是手动触发？ |
+| **阈值参数** | 需要哪些可配置参数？（如组织、日期范围、业务类型等） |
+| **返回结果** | 执行后需要返回什么？（消息通知、数据列表、无返回等） |
+| **消息通知** | 是否需要消息中心/邮件/短信通知？通知谁？ |
+
+如果用户没有明确说明，主动询问。
+
+### 第二步：后台任务类型注册
+
+在 NCC 系统的「后台任务类型注册」节点新增一条记录：
+
+| 注册项 | 说明 |
+|--------|------|
+| **编码** | 任务类型编码，必填 |
+| **名称** | 任务类型名称，必填 |
+| **所属模块** | 开发模块名（对应 /modules 目录下的子目录，小写），必填 |
+| **消息模板类型** | 使用消息模板时需填 |
+| **所属行业** | 参照行业目录 |
+| **业务插件** | 实现 \`IBackgroundWorkPlugin\` 的完整类路径 |
+
+### 第三步：阈值设置
+
+为后台任务配置可灵活调整的阈值参数：
+
+| 阈值项 | 说明 |
+|--------|------|
+| **阈值名称** | 参数名 |
+| **阈值描述** | 参数说明 |
+| **编辑类型** | 字符型 / 逻辑型 / 整型 / Double型 / 参照基础档案型 |
+| **是否非空** | 是否必填 |
+| **参照名称** | 编辑类型为参照时选择参照档案（人员、部门、客户等） |
+| **是否单选** | 参照是否支持多选 |
+| **默认值** | 参数默认值 |
+
+> **注意**：逻辑型在部署时显示为"是/否"下拉框；参照型会弹出对应的基础档案参照选择界面。
+
+### 第四步：后台任务部署
+
+在「后台任务部署」节点配置任务条目：
+
+| 配置项 | 说明 |
+|--------|------|
+| **条目名称** | 显示标记 |
+| **条目状态** | 激活 / 休眠（默认激活） |
+| **条目信息** | 消息模板 |
+| **类型** | 选择已注册的后台任务类型（决定调用哪个业务插件） |
+| **组织单元** | 限定阈值参照范围 |
+| **阈值列表** | 设置各阈值的操作符和值 |
+
+### 第五步：触发配置
+
+| 触发方式 | 说明 |
+|----------|------|
+| **立即执行** | 部署后立即执行一次 |
+| **定时执行** | 类似预警的 Cron 表达式定时调度 |
+
+### 第六步：消息接收配置（可选）
+
+3 种消息接收方式：
+
+| 方式 | 说明 |
+|------|------|
+| **消息中心** | 发送到 UAP 系统的消息中心 |
+| **电子邮件** | 发送到用户邮箱（需人员档案中配置邮箱地址） |
+| **手机短信** | 短信提示用户（需企业开通短信服务，人员档案中存储手机号） |
+
+### 第七步：编写代码
+
+#### 代码骨架
+
+\`\`\`java
+package nc.hk.bs.{模块}.{业务组件}.task;
+
+import nc.bs.pub.taskcenter.BgWorkingContext;
+import nc.bs.pub.taskcenter.IBackgroundWorkPlugin;
+import nc.bs.pub.pa.PreAlertObject;
+import nc.bs.pub.pa.PreAlertReturnType;
+import nc.vo.pub.BusinessException;
+import nc.bs.logging.Logger;
+
+/**
+ * {简短描述后台任务功能}
+ *
+ * 阈值参数：
+ * - org：组织（参照基础档案型，非空）
+ * - xxx：{其他参数说明}
+ */
+public class {类名} implements IBackgroundWorkPlugin {
+
+    @Override
+    public PreAlertObject executeTask(BgWorkingContext bgwc) throws BusinessException {
+        try {
+            // 1. 获取阈值参数
+            // String paramValue = (String) bgwc.getKeyMap().get("参数名");
+
+            // 2. 获取组织范围（常见模式：有组织按组织，无组织按集团）
+            String[] pkOrgs = bgwc.getPk_orgs();
+            String pkGroup = bgwc.getGroupId();
+            // if (pkOrgs != null && pkOrgs.length > 0) { 按组织 } else { 按集团 }
+
+            // 3. 执行业务逻辑
+
+            // 4. 构建返回对象（⚠️ 不允许返回 null！）
+            PreAlertObject retObj = new PreAlertObject();
+            retObj.setReturnType(PreAlertReturnType.RETURNNOTHING);
+            return retObj;
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            Logger.error("任务执行异常", e);
+            throw new BusinessException("任务执行异常：" + e.getMessage());
+        }
+    }
+}
+\`\`\`
+
+#### 获取阈值参数
+
+\`\`\`java
+// KeyMap 实际类型为 LinkedHashMap<String, Object>
+LinkedHashMap<String, Object> keyMap = context.getKeyMap();
+
+// 获取单个阈值（字符串）
+String paramValue = (String) keyMap.get("参数名");
+
+// 多选字段的值是逗号分隔的字符串
+String multiValue = (String) keyMap.get("多选参数名");
+String[] values = multiValue.split(",");
+
+// ⭐ 常见阈值参数名约定：
+// pk_group  — 集团主键
+// org       — 组织（参照基础档案型）
+// funtype   — 功能类型
+// pk_banktype — 银行类型（多选）
+\`\`\`
+
+#### 构建返回对象
+
+> 🔴 **返回值不允许为 null！** 这是接口注释的硬性要求。
+
+\`\`\`java
+// ===== 情况1：不需要发送消息（最简单） =====
+PreAlertObject retObj = new PreAlertObject();
+retObj.setReturnType(PreAlertReturnType.RETURNNOTHING);
+return retObj;
+
+// ===== 情况2：返回纯文本消息 =====
+PreAlertObject retObj = new PreAlertObject();
+retObj.setReturnType(PreAlertReturnType.RETURNMESSAGE);
+retObj.setMsgTitle("任务执行结果");
+retObj.setMsgContent("处理完成，共处理 XX 条数据");
+return retObj;
+
+// ===== 情况3：返回格式化表格消息（RETURNFORMATMSG + IAlertMessage）⭐ =====
+// 步骤1：创建 IAlertMessage 实现类
+IAlertMessage remsg = new MyAlertMsg();  // 需实现 IAlertMessage 接口
+remsg.setMsgType(AlertMsgType.INFO);     // INFO / WARN / ERROR
+
+// 步骤2：设置表格体数据（Object[][]，每行一个 Object[]）
+Object[][] bodyValue = new Object[dataList.size()][];
+for (int i = 0; i < dataList.size(); i++) {
+    bodyValue[i] = new Object[]{
+        dataList.get(i).getName(),   // 第1列
+        dataList.get(i).getValue(),  // 第2列
+        "结果消息"                     // 第3列
+    };
+}
+remsg.setBodyValue(bodyValue);
+
+// 步骤3：组装 PreAlertObject
+PreAlertObject pao = new PreAlertObject();
+pao.setReturnType(PreAlertReturnType.RETURNFORMATMSG);
+pao.setReturnObj(remsg);       // ⭐ 用 setReturnObj 而非 setMsgContent
+pao.setMsgTitle("任务执行结果(集团)");
+return pao;
+
+// ⚠️ 绝对不要 return null！
+\`\`\`
+
+### 第八步：测试
+
+1. 在后台任务部署界面激活任务
+2. 手动触发执行或等待定时触发
+3. 在「后台任务监控」查看执行状态（等待运行/正在运行/暂停）
+4. 在「后台任务日志」查看执行结果（成功/失败+失败原因）
+5. 失败时详细日志查看：\`home/nclogs/server/pa-log.log\`
+
+## 返回类型详解
+
+| 枚举值 | 说明 | 使用方式 |
+|--------|------|---------|
+| \`RETURNNOTHING\` | 无消息返回 | 仅设 returnType，无需其他设置 |
+| \`RETURNOBJECT\` | 对象类型 | \`pao.setReturnObj(obj)\` |
+| \`RETURNFORMATMSG\` | ⭐ 格式化表格消息 | \`pao.setReturnObj(IAlertMessage实例)\` + \`setMsgTitle()\` |
+| \`RETURNMESSAGE\` | 纯文本消息 | \`pao.setMsgContent("文本")\` + \`setMsgTitle()\` |
+| \`RETURNDATASOURCE\` | 打印模板数据源 | 实现 \`IDataSource\` 接口 |
+| \`RETURNDATASOURCE\`（含元数据） | 元数据+自定义变量 | 实现 \`IMetaDataDataSource\` 接口 |
+| \`RETURNMULTILANGTEXT\` | 多语文本 | 返回多语言文本 |
+| \`RETURN_MULTIPLE_RECEIVER_OBJECT\` | 多接收者不同消息 | 返回 \`MultiReceiverPreAlertObject\` |
+
+### RETURNFORMATMSG 详解（最常用的复杂返回类型）
+
+**适用场景**：需要以表格形式展示任务执行结果（如：多行数据、每行多列信息）
+
+**核心步骤**：
+1. 创建 \`IAlertMessage\` 实现类（需自定义，参考产品代码 \`BalanceAlertMsg\`）
+2. 设置消息类型：INFO / WARN / ERROR
+3. 设置表格数据：\`setBodyValue(Object[][])\` — 二维数组，每行一个 Object[]
+4. 组装 \`PreAlertObject\`：\`setReturnType(RETURNFORMATMSG)\` + \`setReturnObj(IAlertMessage)\`
+
+> 详细用法和产品代码示例见 \`references/product-source-code.md\` 的"源码2"部分。
+
+## 后台任务监控
+
+| 操作 | 说明 |
+|------|------|
+| **执行** | 手动触发等待中的任务 |
+| **删除** | 删除等待/可执行状态的任务实体（部署界面仍可见但不再执行，除非重启中间件或修改条目） |
+| **日志** | 查看任务执行成功/失败状态，失败时显示原因 |
+
+## 包路径规范
+
+客户化前缀为 \`hk\`，后台任务包路径：
+
+\`\`\`
+nc.hk.bs.{模块}.{业务组件}.task
+\`\`\`
+
+- \`bs\` = 业务组件层
+- \`模块\`：so（销售）、pu（采购）、ic（库存）、ar（应收）、ap（应付）、pm（项目管理）等
+- \`业务组件\`：具体业务对象名称
+
+类名建议：\`{业务描述}Task\`，如 \`ProjectSyncTask\`、\`DataCleanupTask\`
+
+## 相关 import 速查
+
+\`\`\`java
+// 后台任务核心接口（两套包路径均可，推荐 taskcenter）
+import nc.bs.pub.taskcenter.IBackgroundWorkPlugin;
+import nc.bs.pub.taskcenter.BgWorkingContext;
+// 或使用 pa 包（等价）
+import nc.bs.pub.pa.IBackgroundWorkPlugin;
+import nc.bs.pub.pa.PreAlertContext;
+import nc.bs.pub.pa.PreAlertObject;
+import nc.bs.pub.pa.PreAlertReturnType;
+
+// 基础框架
+import nc.bs.framework.common.NCLocator;
+import nc.bs.framework.common.InvocationInfoProxy;
+import nc.vo.pub.BusinessException;
+import nc.vo.pubapp.pattern.exception.ExceptionUtils;
+import nc.bs.logging.Logger;
+
+// 服务查找（两种方式）
+// 方式1：NCLocator（通用）
+NCLocator.getInstance().lookup(IXxxService.class);
+// 方式2：AMProxy（资产管理模块专用）
+AMProxy.lookup(IXxxService.class);
+
+// 持久化查询
+import nc.md.persist.framework.IMDPersistenceQueryService;
+import nc.md.persist.framework.MDPersistenceService;
+
+// 数据库操作
+import nc.bs.dao.BaseDAO;
+import nc.bs.dao.DAOException;
+
+// 批量 VO 更新工具（比 BaseDAO 更简便）
+import nc.impl.am.db.VOPersistUtil;
+// VOPersistUtil.update(vos)  — 批量更新 VO 到数据库
+
+// SQL IN 条件构建工具
+import nc.impl.am.common.InSqlManager;
+// InSqlManager.getInSQLValue(String[] / List<String>)  — 将数组转为 ('a','b','c') 格式
+
+// 模块启用检查
+import nc.pubitf.initgroup.InitGroupQuery;
+// InitGroupQuery.isEnabled(pkGroup, funcCode)  — 检查模块是否启用
+
+// 自定义档案（按需）
+import nc.itf.bd.defdoc.IDefdocQryService;
+import nc.itf.bd.defdoc.IDefdocService;
+import nc.vo.bd.defdoc.DefdocVO;
+import nc.vo.bd.meta.BatchOperateVO;
+\`\`\`
+
+## 输出要求
+
+1. **生成完整的 Java 文件**，包含包声明、导入、类注释
+2. **类注释用中文**，说明功能用途和阈值参数
+3. **方法注释说明功能**，复杂的算法/逻辑添加行内注释
+4. **遵循编码规范**：命名、格式、异常处理
+5. 如果需求不明确，先列出需要确认的问题，等用户回答后再生成代码
+6. 需要操作自定义档案/基础数据时，查阅 \`ncc-dev\` 的通用 API 手册
+`,
+  },
+  {
+    name: 'ncc-dev',
+    description: 'NCC（用友NC Cloud）定制开发总技能，涵盖业务插件、后台任务、参照、业务扩展等多种开发场景。 触发场景包括但不限于：NCC客开、NCC二开、用友NC Cloud插件开发、NCC定制开发、 写一个业务插件、写一个事件监听、NCC事件监听、IBusinessListener、doAction、 后台任务、计划任务、定时任务、NCC后台任务开发、 参照、NCC参照开发、自定义参照、 业务扩展、扩展点、NCC扩展开发、 单据转换 runChangeDataAry、saveCommit 保存提交、 编码规则、单据编号、编码规则开发、 自定义档案、DefdocVO、档案同步、 采购发票/销售订单/库存单据的业务插件开发、 审批后/新增后/修改后的事件监听。',
+    content: `# NCC 定制开发总指南
+
+## 版本定位
+
+本技能服务于 **用友 NCC（NC Cloud）**。
+
+> **版本区分**：用友有两个主要产品线——
+> - **旗舰版（BIP / YonBIP）** → 对应技能 \`yonyou-bip-dev\`（与本技能同级目录）
+> - **NCC（NC Cloud）** ← 本技能
+>
+> 收到问题时务必先判断版本，再使用对应技能及其参考资料。不确定时主动询问用户。
+
+### 问题记录路由
+
+当用户要求将问题/解决方案记录到参考资料时：
+- **NCC 问题** → 记录到本技能 \`references/\` 目录（或对应的子技能目录）
+- **旗舰版问题** → 记录到 \`yon-bip-dev\` 的 \`references/\` 目录
+
+## 概述
+
+本 skill 是 NCC 定制开发的**总入口**，负责识别用户需求属于哪个开发场景，然后读取对应的参考资料生成代码。
+
+> **通用素材（事件码、单据类型、编码规范、通用 API）** 所有场景共享，存放在 \`references/common/\` 下。
+> **场景素材（各开发模式的示例代码和模式说明）** 存放在 \`references/scenarios/\` 下。
+
+## 场景路由
+
+根据用户描述自动判断开发场景，读取对应的参考文件：
+
+| 场景 | 触发关键词 | 参考文件 |
+|------|-----------|----------|
+| **业务插件** | 事件监听、审批后/新增后/修改后、IBusinessListener、doAction、单据转换、自动生成、回写字段、审批后协同、自动生单 | \`references/scenarios/plugin-dev.md\` + \`references/scenarios/ncc-coding-patterns.md\` |
+| **审批后自动协同** | 协同、购销协同、自动生单、IPfExchangeService、ISCMPubSaveCommitService、CloudPFlowContext、用户模拟、跨公司 | \`references/scenarios/ncc-coding-patterns.md\` §2 + \`references/scenarios/project-ztxx.md\` §1 |
+| **后台任务** | 后台任务、计划任务、定时任务、定时执行、调度、IBackgroundWorkPlugin、executeTask | \`ncc-background-task\` 子技能 |
+| **参照** | 参照、下拉参照、自定义参照、参照过滤、F7 | \`references/scenarios/ref-model.md\`（待建） |
+| **业务扩展** | 业务扩展、扩展点、扩展注册、处理器 | \`references/scenarios/biz-extension.md\`（待建） |
+| **编码规则** | 编码规则、单据编号、自动编号、编码生成 | \`references/scenarios/coding-rule.md\`（待建） |
+
+## 源码分析工作流
+
+> **触发条件**：用户提到任何 Java 类名（如 \`nc.xxx.XxxClass\`）或要求看某个类的源码时，按以下流程自动执行。
+
+### 版本与路径配置
+
+所有 NCHOME 路径和索引由两个文件管理：
+
+| 文件 | 作用 |
+|------|------|
+| \`ncc_home_path.json\` | 多版本 home 路径 + 默认版本 |
+| \`class_index_<version>.json\` | 每个版本独立的类名→jar 索引 |
+
+> **关于 \`ncc_home_path.json\` 的生成**：该文件记录的是本机 NCC home 路径，每台机器不同，因此被 \`.gitignore\` 排除，不会入库。仓库中提供了 \`ncc_home_path.json.template\`（空模板）作为格式参考。**首次运行 \`build_index.py\` 时会自动创建该文件**，后续再跑其他版本会追加到已有配置中，无需手动编辑。
+
+**\`ncc_home_path.json\` 结构**：
+
+\`\`\`json
+{
+  "default_version": "2111",
+  "versions": {
+    "2111": {
+      "path": "E:/NCProject/NCC/xxx/home",
+      "description": "NCC 2111",
+      "index_file": "class_index_2111.json",
+      "indexed": true
+    }
+  }
+}
+\`\`\`
+
+### 模板配置缺失检查
+
+> **强制规则**：以下文件由用户从 \`.template\` 复制后填写，仓库只提供模板。**AI 必须在每次对话开始时检查这些文件是否存在，如果缺失则主动提醒用户创建，不要静默跳过。**
+
+| 模板文件 | 目标文件 | 说明 |
+|----------|----------|------|
+| \`ncc_home_path.json.template\` | \`ncc_home_path.json\` | 本机 NCC home 路径和版本 |
+| \`../path_config.json.template\` | \`../path_config.json\` | 集中路径配置（用户目录、NCC/BIP Home、知识库等），仓库根目录 |
+
+检查时机：收到用户第一条消息后，在查找资料之前执行。如果目标文件不存在：
+1. 告知用户缺少哪个配置文件
+2. 说明用途
+3. 询问是否现在创建（从 template 复制后让用户填写）
+
+### 0. 版本与路径校验（每次操作前自动执行）
+
+\`\`\`python
+import json, os
+
+with open('ncc_home_path.json') as f:
+    cfg = json.load(f)
+
+# 用户可指定版本，否则用默认版本
+version = cfg['default_version']  # 或用户指定
+home_path = cfg['versions'][version]['path']
+index_file = cfg['versions'][version]['index_file']
+
+if not os.path.isdir(home_path):
+    print(f"⚠️ NCC {version} 的 home 路径不存在: {home_path}")
+    print(f"请提供 NCC {version} 版本的 home 全路径")
+\`\`\`
+
+**路径失效时的提示模板**：
+
+> ⚠️ NCC **{version}** 版本的 home 路径已失效。
+> 请提供一个 NCC **{version}** 版本的 home 全路径给我，我更新配置后继续。
+
+### 多版本行为
+
+| 场景 | 行为 |
+|------|------|
+| 用户未指定版本 | 使用 \`default_version\` 对应的索引和 home |
+| 用户指定版本（如"2105的xxx类"） | 切换到对应版本的索引和 home |
+| 指定版本未建索引 | 提示用户提供该版本 home 路径 → 运行索引构建 |
+| 新增版本 home | 用户提供路径 → 更新 ncc_home_path.json → 构建 class_index_<version>.json |
+
+### 标准流程
+
+1. **版本确定**：默认版本 or 用户指定版本
+2. **路径校验**：失效则提示用户提供新路径
+3. **查已反编译缓存**：\`decompiled/\` 目录（跨版本共享，类名唯一）
+   \`\`\`bash
+   find decompiled/ -name "<类名>.java"
+   \`\`\`
+   - **命中**：直接读源码分析，跳过后续步骤
+   - **未命中**：进入步骤 4
+
+4. **查索引定位 jar**：
+   \`\`\`python
+   import json
+   with open(index_file) as f:       # 如 class_index_2111.json
+       data = json.load(f)
+   jar_rel = data['index'].get('<类名>', 'NOT FOUND')
+   # jar_rel 是相对路径，如 "modules/arap/lib/pubarap_receivablebill.jar"
+   \`\`\`
+
+5. **反编译**（使用对应版本的 ufjdk，无需用户审批）：
+   \`\`\`bash
+   <home_path>/ufjdk/bin/java -jar cfr-0.152.jar --outputdir decompiled/<模块> <home_path>/<jar_rel> <类名>
+   \`\`\`
+   > ⚠️ CFR 反编译为预授权操作，每次反编译**不需要经过用户同意**，直接执行。
+
+6. **读源码分析**：输出关键代码 + 类作用 + 调用关系
+
+### 代码生成时主动校验 ⭐
+
+> **生成任何 NCC 业务代码时**，代码中出现的每个 NCC 平台类，必须按以下规则校验后再输出。
+
+**0. 版本确认（最先执行）** ⚠️
+
+> **NCC 不同版本（1909/2105/2111/2312）的 API 可能不同。**
+
+- **用户已指定版本**：使用对应版本的索引和 home 来校验代码
+- **用户未指定版本**：默认使用 \`ncc_home_path.json\` 中的 \`default_version\`，但**在代码输出前提醒用户**：
+
+> ℹ️ 当前校验基于 **NCC {version}** 版本的源码。如果你的项目是其他版本，请告诉我，我会切换到对应版本重新校验。
+
+**校验流程**：
+
+1. 识别代码中所有 NCC 平台类（接口、VO、工具类、抽象类），排除 JDK 标准类和第三方库（fastjson、commons 等）
+2. 对每个类**主动查源码**（优先缓存 → 未命中则反编译），验证：
+   - **方法签名**：方法名、参数类型/顺序/个数、返回值类型是否完全一致
+   - **导入路径**：import 的包路径是否准确
+   - **接口契约**：如果是接口实现或抽象类继承，必须实现的方法是否完整覆盖
+   - **异常模式**：平台类的异常处理习惯（用 \`ExceptionUtils.wrappException()\` 还是直接 throw）
+   - **空值防护**：平台代码中对 null 的处理模式（直接判空、工具类判空、链式调用前判空）
+3. 发现签名不匹配 → **修正后再输出**，不要让用户遇到编译错误
+
+**校验优先级**：
+
+| 代码中出现的类 | 校验强度 | 说明 |
+|--------------|---------|------|
+| 接口（extends/implements） | **必须校验** | 方法签名错一个字母就编译不过 |
+| 工具类静态方法调用 | **必须校验** | 方法名、参数个数必须精确 |
+| VO 构造/属性访问 | **建议校验** | getter/setter 名需对齐 |
+| 平台常量/枚举 | 按需校验 | 枚举值是否存在 |
+
+**反例**（禁止直接输出未经校验的代码）：
+\`\`\`java
+// ❌ 凭记忆写的，方法签名可能错
+NCLocator.lookup(IPreAlertPlugin.class);  // 实际是 NCLocator.getInstance().lookup()
+
+// ✅ 校验后修正
+NCLocator.getInstance().lookup(IPreAlertPlugin.class);
+\`\`\`
+
+### 索引统计
+
+| 版本 | JDK | 索引文件 | 类数量 | jar 数量 |
+|------|-----|---------|--------|---------|
+| 2111 | 8 | \`class_index_2111.json\` (56 MB) | 1,371,043 | 7,941 |
+| 2312 | 17 | \`class_index_2312.json\` (62 MB) | 1,329,808 | 8,637 |
+
+> 运行 \`python build_index.py <home_path> <version>\` 为新版本构建索引。
+
+> **注意**：同名类可能存在于多个 jar 中，索引保留最后一次命中。如查到的 jar 中代码与预期不符，可用 \`grep\` 在 JSON 中搜索该类的其他位置。
+
+## 通用参考资料
+
+以下资料**所有场景共享**，根据需要读取：
+
+| 文件 | 内容 | 何时读取 |
+|------|------|----------|
+| \`references/common/event-codes.md\` | 45 个业务事件码对照表 | 涉及事件监听时 |
+| \`references/common/bill-types.md\` | 单据类型代码表（采购/销售/库存/财务等） | 涉及单据操作时 |
+| \`references/common/coding-standard.md\` | Java 编码规范（命名/注释/异常处理） | 生成代码时 |
+| \`references/common/common-api.md\` | 通用 API 模式（自定义档案、服务定位、持久化查询、系统参数、事件入口、基础数据接口速查等） | 需要调用通用能力时 |
+| \`references/common/so-vo-reference.md\` | 销售管理模块 VO 与表名对照表 | 涉及销售订单/发货单/销售发票等 VO 操作时 |
+| \`references/common/pu-vo-reference.md\` | 采购管理模块 VO 与表名对照表 | 涉及采购订单/请购单/采购发票等 VO 操作时 |
+| \`references/common/ic-vo-reference.md\` | 库存管理模块 VO 与表名对照表 | 涉及出入库/调拨/盘点/转库等 VO 操作时 |
+| \`references/common/pim-vo-reference.md\` | 立项管理（pim）模块 VO 与表名对照表 | 涉及项目立项/预算/验收/进度计划等 VO 操作时 |
+| \`references/common/ipm-vo-reference.md\` | IPM 基金投资模块 VO 与表名对照表（ipmbd/ipmam/ipmas/ipmdm/ipmexit/ipmfund/ipmip/ipmpb/ipmpe/ipmpg/ipmpl/ipmprm/ipmrisk，含聚合VO） | 涉及基金/投资/产权/风险管理等 VO 操作时 |
+| \`references/common/arap-payablebill-frontend.md\` | 应付单卡片前端实战参考（目录结构、按钮分发、NCModal弹框、数据操作API、缓存机制、联查模式、入库明细弹框） | 涉及应付单/付款单/报销单前端客开、入库明细弹框、EAM集成时 |
+| \`references/common/openapi-dev.md\` | NCC OpenAPI 开发完整指南（Restlet+JAX-RS，5步：写Java类→写.rest文件→写.md文档→**前台注册**→调用测试） | 涉及 OpenAPI、开放接口、REST API、servlet 开发时 |
+| \`references/common/openapi-fip-txbill-pattern.md\` | 资产包 OpenAPI Resources 模式（FIP 外部接口单专用）：\`AbstractRestResource\` + \`transferBill()\` + \`IFipMessageService.sendMessage()\`，仅适用于外部接口单，不适用于付款单等其他单据 | 提到"资产包"开发 OpenAPI / Resources 类 / 外部接口单 OpenAPI 时 |
+
+
+## NCC 数据库查询规则
+
+1. **PostgreSQL 注意**：NCC 2312 测试环境使用 PolarDB PostgreSQL，表在 \`bipuser\` schema 下
+   - SQL 需加 \`bipuser.\` 前缀，如 \`SELECT * FROM bipuser.fa_card WHERE dr = 0\`
+2. **不确定列名时**：\`SELECT column_name FROM information_schema.columns WHERE table_schema='bipuser' AND table_name='表名'\`
+
+**反例**：\`SELECT * FROM fa_card\` → PostgreSQL 上缺 schema
+**正例**：\`SELECT pk_card, code, name FROM bipuser.fa_card WHERE dr = 0\`
+
+### NCC SQL 自验证规则（AI 自动执行）
+
+> 生成包含 SQL 的代码后，**必须自动验证 SQL 正确性**，无需用户提示。
+
+1. **提取 SQL**：从生成的代码中提取 SQL 语句
+2. **改写为安全验证语句**：
+   - SELECT → 加 \`LIMIT 1\`（防止全表扫描）
+   - INSERT/UPDATE/DELETE → 改写为 \`SELECT 列名 FROM bipuser.表名 WHERE 1=0\`（只验证表名+列名存在）
+3. **自动执行**：用 \`datasource_query\` 工具执行，key 形如 \`天九(NCC2312)::test\`（项目名::环境）
+4. ❌ 失败 → 修正后重新生成，不交付半成品
+
+详细规则见 \`yonyou-bip-dev\` 技能中的 \`数据库查询约束.md\`。
+
+## 通用编码规则
+
+### 客户化前缀
+
+客户化包路径前缀为 \`hk\`，组织方式：
+
+\`\`\`
+nc.hk.{层}.{模块}.{业务组件}.{功能}
+\`\`\`
+
+- 层：\`bs\`（业务组件层）、\`bd\`（基础数据层）、\`ui\`（表现层）、\`pf\`（平台层）
+- 模块：\`so\`（销售）、\`pu\`（采购）、\`ic\`（库存）、\`ar\`（应收）、\`ap\`（应付）、\`pm\`（项目管理）等
+
+### 服务接口
+
+NCC 不同端调用接口方式**不同，严禁混用**：
+
+| 端 | 调用方式 |
+|------|------|
+| **client 端** | \`(XxxItf) ServiceLocator.find(XxxItf.class)\` |
+| **public/private 端** | \`(XxxItf) NCLocator.getInstance().lookup(XxxItf.class)\` |
+
+\`\`\`java
+// client 端（只能用 ServiceLocator）
+ISomeService service = (ISomeService) ServiceLocator.find(ISomeService.class);
+
+// public/private 端（必须用 NCLocator）
+ISomeService service = (ISomeService) NCLocator.getInstance().lookup(ISomeService.class);
+
+// 延迟加载模式
+private ISomeService someService;
+private ISomeService getSomeService() {
+    if (someService == null) {
+        someService = (ISomeService) ServiceLocator.find(ISomeService.class); // client端
+        // someService = (ISomeService) NCLocator.getInstance().lookup(ISomeService.class); // public/private端
+    }
+    return someService;
+}
+\`\`\`
+
+### 异常处理
+
+\`\`\`java
+// ✅ 正确：精确捕获，明确位置
+try {
+    // 具体业务操作
+} catch (Exception e) {
+    ExceptionUtils.wrappException(e);
+}
+
+// 业务异常中断操作
+ExceptionUtils.wrappBusinessException("提示信息");
+
+// ❌ 禁止：大段代码整块 try-catch、finally 中 return、捕获后空处理
+\`\`\`
+
+### 空值防护
+
+每一步操作前都检查 null 和空数组：
+\`\`\`java
+if (obj == null) return;
+if (!(obj instanceof SomeVO[])) return;
+SomeVO[] vos = (SomeVO[]) obj;
+if (vos.length == 0) return;
+\`\`\`
+
+### VO 结构
+
+NCC 聚合 VO 采用父子结构：
+- \`vo.getParentVO()\` → 表头 VO（如 \`SaleOrderHVO\`）
+- \`vo.getChildrenVO()\` 或 \`vo.getBVO()\` → 表体 VO 数组（如 \`SaleOrderBVO[]\`）
+
+### 容器和泛型
+
+\`\`\`java
+// ✅ 必须使用泛型
+List<String> list = new ArrayList<>();
+Map<String, List<DefdocVO>> orgGroupMap = new HashMap<>();
+
+// ❌ 不允许
+List list = new ArrayList();
+\`\`\`
+
+## 常用导入速查
+
+\`\`\`java
+// 基础框架
+import nc.bs.businessevent.IBusinessEvent;
+import nc.bs.businessevent.IBusinessListener;
+import nc.bs.framework.common.NCLocator;
+import nc.bs.framework.common.ServiceLocator;
+import nc.bs.framework.common.InvocationInfoProxy;
+import nc.vo.pub.BusinessException;
+import nc.vo.pubapp.pattern.exception.ExceptionUtils;
+import nc.bs.logging.Logger;
+
+// 单据转换和提交
+import nc.itf.uap.pf.IPfExchangeService;
+import nc.vo.pubapp.pflow.PfUserObject;
+import nccloud.pubitf.scmpub.pub.service.ISCMPubSaveCommitService;
+import nccloud.dto.scmpub.script.entity.SCMScriptResultDTO;
+import nc.vo.scmpub.res.billtype.POBillType;
+
+// 持久化查询
+import nc.md.persist.framework.IMDPersistenceQueryService;
+import nc.md.persist.framework.MDPersistenceService;
+import nc.vo.pf.pub.util.SQLUtil;
+
+// 自定义档案
+import nc.itf.bd.defdoc.IDefdocQryService;
+import nc.itf.bd.defdoc.IDefdocService;
+import nc.vo.bd.defdoc.DefdocVO;
+import nc.vo.bd.accessor.IBDData;
+import nc.pubitf.bd.accessor.IGeneralAccessor;
+import nc.pubitf.bd.accessor.GeneralAccessorFactory;
+import nc.itf.bd.pub.IBDMetaDataIDConst;
+
+// 批量操作
+import nc.vo.bd.meta.BatchOperateVO;
+
+// 系统参数
+import nc.pubitf.para.SysInitQuery;
+
+// 组织查询
+import nc.pubitf.org.IOrgUnitPubService;
+
+// 物料查询
+import nc.pubitf.uapbd.IMaterialPubService;
+
+// 客户查询
+import nc.pubitf.uapbd.ICustomerPubService;
+
+// 供应商查询
+import nc.pubitf.uapbd.ISupplierPubService;
+
+// 会计期间
+import nc.pubitf.accperiod.AccountCalendar;
+
+// 工具类
+import nccloud.commons.lang.ArrayUtils;
+import nc.vo.pp.util.StringUtils;
+\`\`\`
+
+## 输出要求
+
+1. **生成完整的 Java 文件**，包含包声明、导入、类注释
+2. **类注释用中文**，说明功能用途
+3. **方法注释说明功能**，复杂的算法/逻辑添加行内注释
+4. **遵循编码规范**：命名、格式、异常处理
+5. 如果需求不明确，先列出需要确认的问题，等用户回答后再生成代码
+6. 如果涉及单据类型代码或事件码，主动查阅通用参考资料中的参考表并确认
+`,
+  },
+  {
+    name: 'ncc-plugin-dev',
+    description: 'NCC（用友NC Cloud）业务插件（事件监听器）开发技能。当用户需要编写、生成、审查 NCC 业务插件代码时使用此技能。 触发场景包括但不限于：写一个审批后/新增后/修改后的事件监听、销售订单审批后自动生成采购入库单、 单据审批后自动回写字段、写一个业务插件、NCC事件监听、IBusinessListener、doAction、 单据转换 runChangeDataAry、saveCommit 保存提交、采购发票/销售订单/库存单据的业务插件开发、 NCC客开、NCC二开、用友NC Cloud插件开发、NCC定制开发。',
+    content: `# NCC 业务插件开发指南
+
+## 版本定位
+
+本技能服务于 **用友 NCC（NC Cloud）**（非旗舰版 BIP）。
+
+> **版本区分**：旗舰版（BIP）→ \`yon-bip-dev\` | NCC → \`yon-ncc-dev\`
+>
+> 收到问题时务必先判断版本。记录问题时注意路由到对应的技能目录。
+
+---
+
+> **本 skill 是 \`ncc-dev\`（NCC 定制开发总技能）的子技能，专注于业务插件（事件监听器）开发。**
+> 通用素材（事件码表、单据类型表、编码规范、通用 API）请查阅 \`ncc-dev\` skill 的 \`references/common/\` 目录。
+
+## 核心概念
+
+**业务插件 = 事件监听器**，是实现 \`nc.bs.businessevent.IBusinessListener\` 接口的 Java 类。
+通过 \`event.getEventType()\` 获取事件类型码（如 1020 表示审批后），在 \`doAction()\` 方法中编写业务逻辑。
+
+> **注意**：\`IBusinessEvent\` 接口中**没有定义事件码常量**，必须在当前类中自定义常量来引用事件码，不要使用魔法值直接写在逻辑中。例如：\`private static final int EVENT_APPROVE_AFTER = 1020;\`
+
+## 参考资料
+
+### 场景专用资料
+
+- **插件示例代码**：读取 \`references/examples.md\` — 三种典型模式的完整代码和解读（单据转换、字段回写、自定义档案同步）
+
+### 通用资料（来自 ncc-dev，按需读取）
+
+- **事件码表**：\`ncc-dev\` skill 的 \`references/common/event-codes.md\` — 查找需要的事件码
+- **单据类型代码**：\`ncc-dev\` skill 的 \`references/common/bill-types.md\` — 查找单据类型代码
+- **编码规范**：\`ncc-dev\` skill 的 \`references/common/coding-standard.md\` — 命名、注释、异常处理等规范
+- **通用 API**：\`ncc-dev\` skill 的 \`references/common/common-api.md\` — 自定义档案操作、持久化查询、批量操作等
+- **销售管理 VO**：\`ncc-dev\` skill 的 \`references/common/so-vo-reference.md\` — 销售管理模块 VO 与表名对照表
+- **采购管理 VO**：\`ncc-dev\` skill 的 \`references/common/pu-vo-reference.md\` — 采购管理模块 VO 与表名对照表
+- **库存管理 VO**：\`ncc-dev\` skill 的 \`references/common/ic-vo-reference.md\` — 库存管理模块 VO 与表名对照表
+
+## 开发流程
+
+### 第一步：理解需求
+
+从用户的描述中提取以下关键信息：
+
+| 需要确认的信息 | 说明 |
+|--------------|------|
+| **源单据** | 哪个单据触发的？（如销售订单 30） |
+| **目标单据** | 要生成/回写哪个单据？（如请购单 20） |
+| **触发时机** | 什么事件触发？（如审批后 1020） |
+| **业务逻辑** | 具体做什么？（过滤条件、转换规则、回写字段等） |
+| **模块代码** | 源单据和目标单据所属的模块（如 so、pu、ic） |
+
+如果用户没有明确说明，主动询问。
+
+> **建议：字段/表名定位顺序**（写码涉及具体表名、字段编码、枚举取值时，建议按下述优先级确认，而不是直接连库猜）：
+> 1. **项目内既有同类产物 / 记忆** — 同需求可能已在别处实现过，搜一下现有 plugin/代码，可直接复用其字段结论。
+> 2. **以上都无法确认的业务语义** — 用 AskUserQuestion 向用户澄清，不要反复猜测。
+>
+> 顺序原则：\`本地字典 → 既有代码/记忆 → 问用户\`，尽量少做"连库猜字段"这种费时且易错的事。
+
+### 第二步：确定包路径和类名
+
+客户化前缀为 \`hk\`，包路径遵循以下规则：
+
+\`\`\`
+nc.hk.bs.{模块}.{业务组件}.listener
+\`\`\`
+
+- \`bs\` = 业务组件层
+- \`模块\`：so（销售）、pu（采购）、ic（库存）、ar（应收）、ap（应付）等
+- \`业务组件\`：具体业务对象名称
+
+类名建议：\`{源单据}{动作描述}Listener\`，如 \`SaleOrderCreatePrayBillListener\`
+
+### 第三步：编写代码骨架
+
+每个业务插件都必须遵循以下骨架：
+
+\`\`\`java
+package nc.hk.bs.{模块}.{业务组件}.listener;
+
+import nc.bs.businessevent.IBusinessEvent;
+import nc.bs.businessevent.IBusinessListener;
+import nc.bs.framework.common.NCLocator;
+import nc.vo.pub.BusinessException;
+import nc.vo.pubapp.pattern.exception.ExceptionUtils;
+
+// 根据需要导入其他类...
+
+/**
+ * {简短描述业务功能}
+ */
+public class {类名} implements IBusinessListener {
+
+    // 事件码常量（IBusinessEvent 中没有定义，需自定义）
+    private static final int EVENT_APPROVE_AFTER = 1020;
+
+    @Override
+    public void doAction(IBusinessEvent event) throws BusinessException {
+        try {
+            // 1. 获取事件数据
+            // 2. 类型转换和空值检查
+            // 3. 业务逻辑处理
+            // 4. 异常封装（非 EJB 边界）
+        } catch (Exception e) {
+            ExceptionUtils.wrappException(e);
+        }
+    }
+}
+\`\`\`
+
+### 第四步：根据场景填充业务逻辑
+
+#### 场景A：单据转换 + 保存提交（最常见）
+
+典型模式：审批后自动从源单据生成目标单据。
+
+\`\`\`java
+// 1. 获取事件对象
+Object obj = busiEvent.getObjs();
+if (obj == null) return;
+if (!(obj instanceof SaleOrderVO[])) return;
+SaleOrderVO[] vos = (SaleOrderVO[]) obj;
+if (vos.length == 0) return;
+
+// 2. 过滤/校验（按需）
+// - 交易类型过滤
+// - 自定义字段条件过滤
+// - 防重复检查（查询目标单据是否已存在）
+
+// 3. 单据转换
+IPfExchangeService transferService = NCLocator.getInstance()
+    .lookup(IPfExchangeService.class);
+TargetBillVO[] result = (TargetBillVO[]) transferService.runChangeDataAry(
+    "源单据类型代码", "目标单据类型代码", 源VO数组, null);
+
+// 4. 设置行号（转换后必须）
+for (TargetBillVO vo : result) {
+    TargetItemVO[] children = vo.getBVO();
+    int count = 0;
+    for (TargetItemVO item : children) {
+        item.setAttributeValue("pseudocolumn", count++);
+        item.setCrowno(count + "0");
+    }
+}
+
+// 5. 保存提交
+PfUserObject pfUserObject = new PfUserObject();
+ISCMPubSaveCommitService saveCommitService =
+    (ISCMPubSaveCommitService) NCLocator.getInstance()
+        .lookup(ISCMPubSaveCommitService.class);
+saveCommitService.saveCommit(result, pfUserObject, TargetBillVO.class,
+    "SAVEBASE", "SAVE", POBillType.XXX.getCode());
+\`\`\`
+
+**关键 API 说明**：
+
+| API | 说明 |
+|-----|------|
+| \`IPfExchangeService.runChangeDataAry(源类型, 目标类型, 源VO, null)\` | 调用单据转换模板，参数为单据类型代码字符串 |
+| \`ISCMPubSaveCommitService.saveCommit(VO, pfObj, clazz, "SAVEBASE", "SAVE", billType)\` | 保存并提交单据 |
+| \`MDPersistenceService.lookupPersistenceQueryService().queryBillOfVOByCond(clazz, whereSql, false)\` | 按条件查询 VO（详见通用 API 手册） |
+
+#### 场景B：字段回写/校验
+
+典型模式：新增/修改后回写关联单据的字段。
+
+\`\`\`java
+// 1. 获取 VO 和字段值
+String targetId = (String) headerVO.getAttributeValue("vdef2");
+
+// 2. 查询目标 VO（通用持久化查询方式）
+IMDPersistenceQueryService queryService =
+    MDPersistenceService.lookupPersistenceQueryService();
+TargetVO[] targetVOs = (TargetVO[]) queryService.queryBillOfVOByCond(
+    TargetVO.class, "pk_source = '" + sourcePk + "' and dr = 0", false);
+
+// 3. 修改字段
+targetVO.setAttributeValue("目标字段", value);
+
+// 4. 保存更新
+BatchOperateVO batchVO = new BatchOperateVO();
+batchVO.setUpdObjs(new TargetVO[]{targetVO});
+someService.batchSave(pk_org, batchVO);
+\`\`\`
+
+**关键点**：
+- 访问自定义字段用 \`getAttributeValue("字段名")\` / \`setAttributeValue("字段名", value)\`
+- 自定义字段通常是 \`vdef1\`、\`vdef2\` 等或 \`def1\`、\`def2\` 等命名
+- 批量更新时按 \`pk_org\` 分组
+
+#### 场景B2：同步数据到自定义档案（DefdocVO）
+
+典型模式：审批后/新增后将单据数据同步写入 BD 自定义档案。
+
+> **自定义档案的完整 API 用法**（查询、新增、更新）请查阅 \`ncc-dev\` 的 \`references/common/common-api.md\`。
+
+**同步策略（先查后写）**：
+
+\`\`\`java
+// 1. 通过档案定义编码加载全部档案记录
+DefdocVO[] allDocs = getDefDocArrayByListCode(DEFDOC_LIST_CODE);
+
+// 2. 在内存中按编码匹配
+DefdocVO existingDoc = null;
+if (allDocs != null) {
+    for (DefdocVO doc : allDocs) {
+        if (projectCode.equals(doc.getCode())) {
+            existingDoc = doc;
+            break;
+        }
+    }
+}
+
+// 3. 存在则更新，不存在则新增
+if (existingDoc != null) {
+    existingDoc.setAttributeValue("def1", projectName);
+    updateDefdoc(existingDoc);
+} else {
+    DefdocVO newDoc = new DefdocVO();
+    newDoc.setCode(projectCode);
+    newDoc.setName(projectName);
+    newDoc.setPk_org(headerVO.getPk_org());
+    newDoc.setAttributeValue("def1", projectName);
+    insertDefdoc(newDoc);
+}
+\`\`\`
+
+#### 场景C：事件分发模式
+
+当一个类需要在多种事件下执行不同逻辑时：
+
+\`\`\`java
+public void doAction(IBusinessEvent event) throws BusinessException {
+    try {
+        int eventType = event.getEventType();
+        Object obj = event.getObjs();
+        if (obj == null) return;
+
+        InvoiceVO[] vos = (InvoiceVO[]) obj;
+
+        switch (eventType) {
+            case 1001: // 新增前
+                checkBeforeInsert(vos);
+                break;
+            case 1002: // 新增后
+                handleAfterInsert(vos);
+                break;
+            case 1003: // 修改前
+                checkBeforeUpdate(oldVos, newVos);
+                break;
+            case 1004: // 修改后
+                handleAfterUpdate(oldVos, newVos);
+                break;
+            case 1005: // 删除前
+                checkBeforeDelete(vos);
+                break;
+            case 1006: // 删除后
+                handleAfterDelete(vos);
+                break;
+        }
+    } catch (Exception e) {
+        ExceptionUtils.wrappException(e);
+    }
+}
+\`\`\`
+
+## 输出要求
+
+1. **生成完整的 Java 文件**，包含包声明、导入、类注释
+2. **类注释用中文**，说明功能用途
+3. **方法注释说明功能**，复杂的算法/逻辑添加行内注释
+4. **遵循编码规范**：命名、格式、异常处理
+5. 如果需求不明确，先列出需要确认的问题，等用户回答后再生成代码
+6. 如果涉及单据类型代码或事件码，主动查阅参考表并确认
+7. 需要操作自定义档案时，查阅 \`ncc-dev\` 的通用 API 手册
+`,
+  },
+  {
     name: 'yon-db-query',
     description: '查用友客开环境的数据。先用 datasource_list 看插件里登记了哪些库，再用 datasource_query 执行 SQL；连接信息、驱动与密码都由插件宿主处理，不需要你去拼连接串或找脚本。',
     whenToUse: '使用者要求查某个项目/环境的数据、验证一条 SQL、核对表结构或数据是否符合预期时。',
@@ -103,6 +1204,159 @@ export const YON_BUNDLED_SKILLS: readonly YonBundledSkill[] = [
 `,
   },
   {
+    name: 'yon-ncc-dev',
+    description: 'NCC（用友 NC Cloud）客开技能。当用户提到 NCC、NC Cloud、NCC2111、NCC2312、NCC2207、 或 NCC 特有的开发模式（资产包接口开发、业务插件/事件监听器 IBusinessListener、 单据转换 IPfExchangeService、集成规则 pub_interule、对照表 pub_intecontrast、 REST API Resource 继承 AbstractRestResource、华科客开模式、OpenAPI 路由注册等）时， 必须使用此技能。也包括 NCC 数据库问题、NCC 服务器问题等。',
+    content: `# NCC（NC Cloud）客开技能
+
+## 版本定位
+
+本技能服务于 **用友 NCC（NC Cloud）**（非旗舰版 BIP）。
+
+> **🔴 强制规则：版本区分**
+>
+> 用友有两个主要产品线，**表结构、实体名、数据字典完全不同**，绝不能混用：
+> - **NCC（NC Cloud）** ← 本技能 \`yon-ncc-dev\`
+> - **旗舰版（BIP / YonBIP）** → 对应技能 \`yonyou-bip-dev\`（与本技能同级目录）
+>
+> **收到问题时，第一步必须是判断版本**：
+> 1. 用户问题中包含 "NCC" → 用本技能
+> 2. 用户问题中包含 "旗舰版" / "BIP" → 查 \`../yonyou-bip-dev/\`
+> 3. 用户问题中版本不明确 → 主动询问是 NCC 还是旗舰版
+>
+> 违反此规则的后果：给用户提供错误的表名/字段名/VO类名，导致代码编译失败或数据错误。
+
+---
+
+## 子技能
+
+| 子技能 | 目录 | 用途 |
+|--------|------|------|
+| \`ncc-dev\` | \`ncc-dev/\` | NCC 通用开发（VO参考、事件码、单据类型、编码规范、通用API） |
+| \`ncc-plugin-dev\` | \`ncc-plugin-dev/\` | NCC 业务插件/事件监听器开发（IBusinessListener、doAction） |
+| \`ncc-background-task\` | \`ncc-background-task/\` | NCC 后台任务/调度任务开发 |
+
+---
+
+## 参考文档
+
+### 资产包接口开发（最重要）
+
+| 文档 | 路径 | 内容 |
+|------|------|------|
+| 资产包接口开发指南 | \`references/NCC资产包接口开发指南.md\` | 框架类、集成规则、代码模板、报销单流程、常见问题 |
+| 资产包接口实战流程 | \`references/NCC资产包接口实战开发流程.md\` | 完整 9 步开发流程（需求→代码→SQL脚本→API注册→测试） |
+| **🆕 集成规则字段速查卡** | \`references/集成规则字段速查卡.md\` | **一页纸速查**：14 字段含义、VFIELDTYPE SQL模板、配置策略表（含按名称翻译）、**易漏两条**、常见 docId |
+| 集成规则配置参考示例 | \`references/集成规则配置参考示例.json\` | 差旅费报销单完整 JSON 配置模板（AI 用，结构化） |
+| **🆕 集成规则配置模板（可读版）** | \`references/集成规则配置模板-可读版.md\` | **人类审核用**：Markdown表格格式，规则主表+表头+表体+陷阱一览 |
+| OpenAPI 开发指南 | \`ncc-dev/references/common/openapi-dev.md\` | 标准 OpenAPI 注册流程（.rest 文件 + opm_apimanager） |
+| FIP 外部接口单模式 | \`ncc-dev/references/common/openapi-fip-txbill-pattern.md\` | 资产包专用模式（\`AbstractRestResource\` + \`IFipMessageService.sendMessage()\`） |
+| 集成规则配置方法 | \`references/问题处理/NCC资产包集成规则配置方法.md\` | bmf 前缀查询流程、常见配置问题 |
+| 集成规则字段截断bug | \`references/问题处理/集成规则参照类型保存报错-字符串截断.md\` | 历史问题记录（已合并到开发指南 §11.5） |
+| **🆕 补丁后前台看不到菜单** | \`references/问题处理/打上资产包补丁后前台看不到应用菜单.md\` | 资产包补丁打上后看不到集成规则/集成日志等节点：权限逐级授权 + 内置菜单 vs 自定义菜单主键 |
+| 缓存查询方法模板 | \`references/NCC缓存查询方法模板.md\` | 4 种编码→ID 查询方法 + IBDMetaDataIDConst 速查表 |
+| **🆕 审核代理 Prompt 模板** | \`references/审核代理-prompt-模板.md\` | 步骤4/5 质量审核代理的验证清单和输出格式 |
+| **🆕 常见参照 VFIELDTYPE 速查** | \`references/常见参照VFIELDTYPE速查.md\` | **VFIELDTYPE 权威源**：40+ 条目按分类组织，优先查此文档再查库 |
+| **🆕 OpenAPI 签名机制详解** | \`references/NCC-OpenAPI-签名机制详解.md\` | Token 获取、OAEP 加密、加盐签名、API 调用、常见错误速查、完整 Python 代码 |
+| **🆕 API 测试工具** | \`tools/NCC-API-POSTER/ncc-api-tester.py\` | NCC OpenAPI 桌面测试工具（GUI），双击 \`.bat\` 启动 |
+| **🆕 NCC API MCP 服务参考** | \`references/ncc-api-mcp-reference.md\` | **AI 调用 ncc-api MCP 时必读**：参数获取来源、集成规则查询、body 构造流程 |
+| **🆕 三方应用配置读取** | \`references/NCC三方应用配置读取.md\` | **读外系统配置的权威源**：\`pub_thirdsys\`/\`pub_thirdparam\` 表结构、\`IThirdSysVOService\` 用法、可粘贴工具类、8 条陷阱、实测样本 |
+| **🆕 GBK 文件编辑** | \`references/GBK文件编辑.md\` | **改 NCC 源码前必读**：源码树是 GBK 而工具链是 UTF-8，直接编辑会静默损坏；三种正确姿势 + \`tools/gbk_edit.py\` 用法与 5 条陷阱 |
+
+#### 🧭 读者导航：我想做 X → 看 Y 文档
+
+| 我想... | 看这份文档 |
+|---------|-----------|
+| 快速理解资产包接口是什么 | [开发指南](./references/NCC资产包接口开发指南.md) §1-§3 |
+| 从头做一个新接口（按步骤走） | [实战流程](./references/NCC资产包接口实战开发流程.md)（跟随 9 步） |
+| 写集成规则 SQL（pub_interuleitem） | [实战流程](./references/NCC资产包接口实战开发流程.md) §4（先写 JSON）→ §5（生成 SQL）|
+| 查某个字段的 VFIELDTYPE 怎么取 | [实战流程](./references/NCC资产包接口实战开发流程.md) §5.3（标准实体/自定义档案/业务VO 三种 SQL 模板） |
+| 查集成规则子表字段含义 | [开发指南](./references/NCC资产包接口开发指南.md) §4.3（14 个字段逐个说明） |
+| 查 bmf 文件中的表体字段前缀 | [集成规则配置方法](./references/问题处理/NCC资产包集成规则配置方法.md)（4 步查询流程 + grep 命令） |
+| 补丁打上了但前台看不到菜单节点 | [补丁后前台看不到应用菜单](./references/问题处理/打上资产包补丁后前台看不到应用菜单.md)（集团管理员 → 超级管理员逐级查） |
+| 写 REST Resource 代码 | [开发指南](./references/NCC资产包接口开发指南.md) §6.1（代码骨架） |
+| 注册 OpenAPI 路由/授权 | [实战流程](./references/NCC资产包接口实战开发流程.md) §7（opm_apimanager + opm_relateapi） |
+| 在代码中做编码→ID 翻译 | [缓存查询方法模板](./references/NCC缓存查询方法模板.md)（4 种方法按场景选用） |
+| 读三方应用（外系统）配置 / 取外系统地址 | [三方应用配置读取](./references/NCC三方应用配置读取.md)（表结构 + 工具类 + 陷阱） |
+| 排查 transferBill 失败 | [开发指南](./references/NCC资产包接口开发指南.md) §11 + [实战流程](./references/NCC资产包接口实战开发流程.md) §9.3 |
+| 配置集成规则报错（vfieldtype 截断） | [开发指南](./references/NCC资产包接口开发指南.md) §11.5（Oracle / 达梦 / PostgreSQL 三版 SQL） |
+| 外系统传了字段但 NCC 单据上是空的 | [开发指南](./references/NCC资产包接口开发指南.md) §11.6（transfer 只映射已配置项；验重键必须单独配） |
+| 报文里表体数组 key 该叫什么 | [开发指南](./references/NCC资产包接口开发指南.md) §11.6 末段（前缀≠数组 key） |
+| **要读/改 NCC 源码文件（中文乱码、搜索搜不到）** | [GBK 文件编辑](./references/GBK文件编辑.md)（\`tools/gbk_edit.py --read / --grep / --edits\`） |
+
+### 通用参考资料
+
+| 文档 | 路径 | 内容 |
+|------|------|------|
+| 通用 API 手册 | \`ncc-dev/references/common/common-api.md\` | 自定义档案、持久化查询、批量操作、服务定位 |
+| 编码规范 | \`ncc-dev/references/common/coding-standard.md\` | 命名、注释、异常处理规范 |
+| 事件码表 | \`ncc-dev/references/common/event-codes.md\` | NCC 业务事件码速查 |
+| 单据类型代码 | \`ncc-dev/references/common/bill-types.md\` | NCC 单据类型代码速查 |
+| 模块VO参考 | \`ncc-dev/references/common/\` | 各模块 VO 与表名对照（so/pu/ic/arap/gl/bd等） |
+
+---
+
+## 开发流程速查
+
+### 资产包接口开发（9步 + 2个审核门）
+
+采用**三步角色工作流**：
+
+\`\`\`
+开发者（我）      →    审核代理（QA）    →    用户（你）
+完成任务            独立验证 + 报告        最终拍板
+\`\`\`
+
+\`\`\`
+1. 确认需求（单据类型、接口文档、端点列表）
+2. 准备资产包模块
+3. 注册三方应用（如需要）
+   ───────────────────────────────────────────
+4. 生成集成规则配置文件（JSON）
+   🚪 审核门 ①：审核代理独立验证 VFIELDTYPE/scope/prefix/字段覆盖
+   → 审核报告 + JSON → 用户终审
+   ───────────────────────────────────────────
+5. 根据 JSON 生成 SQL 脚本（集成规则 + 路由注册 + 授权 + 回滚）
+   🚪 审核门 ②：审核代理验证表列存在/主键唯一/SQL方言/回滚完整性
+   → 审核报告 + SQL → 用户终审
+   ───────────────────────────────────────────
+6. 编写 REST Resource 类（继承 BaseResource → AbstractRestResource）
+7. 补充路由注册 SQL（如步骤5未包含）
+8. 配置对照表（如需要值映射）
+9. 测试与调试
+\`\`\`
+
+> **审核代理说明**：
+> - 审核代理只在**高风险步骤 4 和 5** 启用（这两个步骤依赖数据库查询，错误率高）
+> - 审核代理 Prompt 模板见 \`references/审核代理-prompt-模板.md\`
+> - 审核代理具有独立数据库访问权限，会重新执行开发者的 SQL 进行交叉验证
+> - 审核报告直接提交给用户，⚠️ 警告和 ❌ 错误由用户最终判断
+
+> **强制规则**：任何时候不得直接在数据库执行 INSERT/UPDATE/DELETE/CREATE/ALTER 等变更语句。
+> 必须在项目根目录或桌面生成统一 SQL 脚本文件，由用户执行。
+> **脚本内必须包含对应的还原/回滚脚本**，每条变更语句都要有对应的逆向操作：
+> - INSERT → DELETE（按主键精确删除）
+> - UPDATE → 逆向 UPDATE（恢复原值）
+> - DELETE → INSERT（恢复被删数据）
+> - CREATE TABLE/VIEW → DROP TABLE/VIEW
+> - ALTER TABLE ADD → ALTER TABLE DROP
+> 还原脚本集中放在文件末尾，按依赖顺序排列（先删子表/外键关联，再删主表）。
+
+## 编码/翻译查询方法
+
+**当需要编写档案翻译、编码→ID 查询等代码时，必须使用 [NCC 缓存查询方法模板](references/NCC缓存查询方法模板.md)**，4 种方法按场景选用。
+**旗舰版（BIP/YonBIP）禁止使用此模板。**
+
+| 方法 | 场景 | 代码量 |
+|------|------|--------|
+| GeneralAccessorFactory | 单条编码→ID | 1 行 |
+| CacheVOQuery | 单条编码+组织→ID | ~20 行 |
+| Caffeine + 批量 | 高频批量查询 | ~40 行 |
+| Guava LoadingCache | 高频单条查询 | ~15 行 |
+
+IBDMetaDataIDConst 元数据 ID 速查表见模板文档。
+`,
+  },
+  {
     name: 'yon-wiki',
     description: '查用友知识库里的实体、物理表与字段。写 SQL 或写代码要落到具体表名/列名之前，先用 wiki_lookup 找到实体页，再用 wiki_read 读它的字段清单；不要凭记忆编造表名或列名。',
     whenToUse: '需要确认某个用友单据/实体/业务对象对应的物理表名、数据库列名、domain/schema，或看到报错里的表名、代码里的实体 URI 想弄清它是什么时。',
@@ -158,6 +1412,221 @@ export const YON_BUNDLED_SKILLS: readonly YonBundledSkill[] = [
 - 知识库里没有的实体，如实告诉使用者"知识库未收录"，**不要用记忆里的表名充数**；
 - 知识库路径是使用者的本机配置。查不到任何东西时，先确认 Yon 面板「知识库」里登记了 vault，
   而不是反复换关键词猜。
+`,
+  },
+  {
+    name: 'yonyou-bip-dev',
+    description: '用友 BIP 旗舰版客开技能（YonBIP / 旗舰版 / BIP）。 触发场景：BIP 平台开发、SuperDO/BPO 实体扩展、YMS 异步任务、 单据模板/元数据/字段名查询、OpenAPI、MDF 前端扩展、 旗舰版数据库问题、旗舰版环境配置、Arthas 诊断。 注意：NCC / NC Cloud 产品线请使用 yon-ncc-dev 技能，勿混用。',
+    content: `# 用友 BIP 客开技能
+
+## 版本定位
+
+本技能服务于 **用友旗舰版（BIP / YonBIP）**。
+
+> **🔴 强制规则：版本路由**
+>
+> 用友有两个主要产品线，**表结构、实体名、数据字典完全不同**，绝不能混用：
+> - **旗舰版（BIP / YonBIP）** ← 本技能 \`yonyou-bip-dev\`
+> - **NCC（NC Cloud）** → 对应技能 \`yon-ncc-dev\`（与本技能同级目录）
+>
+> **收到问题时，第一步必须是判断版本**：
+> 1. 用户问题中包含 "NCC" → 查 \`yon-ncc-dev\` 技能，不要用本技能的参考资料
+> 2. 用户问题中包含 "旗舰版" / "BIP" → 用本技能
+> 3. 用户问题中版本不明确 → 主动询问是 NCC 还是旗舰版
+>
+> **查表名/字段名/数据字典时尤其容易犯错**，因为两个产品线可能有同名的业务概念（如"坏账损失"），但底层表完全不同。
+>
+> ⚠️ **NCC 的 \`GeneralAccessorFactory\`、\`CacheVOQuery\`、\`Caffeine\`/\`Guava\` 缓存查询模板（\`../yon-ncc-dev/references/NCC缓存查询方法模板.md\`）禁止在旗舰版使用。** 旗舰版有自己的查询 API，两者完全不兼容。
+>
+> 违反此规则的后果：给用户提供错误的表名/字段名，导致 SQL 执行失败或数据错误。**这是不可接受的**。
+
+## 必看条目，每次请认真阅读并理解以下文档中的内容。
+
+参考文档
+
+\`skill约束.md\`
+\`数据库查询约束.md\`
+\`project-config.md\`（项目列表索引；环境详情请从 Yon 面板的「项目」与「数据源」读取）
+
+> **环境信息查询**：涉及项目环境地址、数据库连接、VPN、服务器、账号密码等，**直接查 Yon 面板**——\`datasource_list\` 会列出已登记的数据源、类型、地址与登录名，不要再读本地文件。
+
+### 模板配置缺失检查
+
+> **强制规则**：以下文件由用户从 \`.template\` 复制后填写，仓库只提供模板。**AI 必须在每次对话开始时检查这些文件是否存在，如果缺失则主动提醒用户创建，不要静默跳过。**
+
+| 模板文件 | 目标文件 | 说明 |
+|----------|----------|------|
+| \`bip_home_path.json.template\` | \`bip_home_path.json\` | 本机 BIP home 路径和版本 |
+| \`../path_config.json.template\` | \`../path_config.json\` | 集中路径配置（用户目录、NCC/BIP Home、知识库、Chrome 调试等），仓库根目录 |
+| \`../yon-ncc-dev/ncc_home_path.json.template\` | \`../yon-ncc-dev/ncc_home_path.json\` | 本机 NCC home 路径和版本 |
+
+检查时机：收到用户第一条消息后，在查找资料之前执行。如果目标文件不存在：
+1. 告知用户缺少哪个配置文件
+2. 说明用途
+3. 询问是否现在创建（从 template 复制后让用户填写）
+
+在回答用户提出的问题时，需要标注问题的类型
+
+- 问题处理类 
+  - 对于问题处理类问题，如果检索参考文档后发现已存在相关或者相近的文档资料，请标注是哪个项目上，版本是多少，什么环境发生了类似的问题。
+  - 在回答问题前，请先梳理排查思路
+  - 最后回答用户的问题
+- 便捷帮助类
+- 其他
+
+
+
+如果用户提出的问题，经过判断是 问题处理类，但是并没有在skill中找到相关的资料，那么需要询问用户是否将当前问题记录到本地作为参考资料
+
+当用户同意或允许时，请参考
+
+\`问题记录规范.md\`将问题记录到本地 references目录下！
+
+
+
+如果用户主动提出，想记录一个问题，或者登记一个问题等等，也请参照 \`问题记录规范.md\`
+
+## 参考资料查找方式（自动扫描，无需手写索引）
+
+> **重要**：查找参考资料时，**直接扫描对应目录**，根据文件名匹配用户问题，不要依赖手写索引文件。
+> 文件名均为中文、描述性强，AI 可直接匹配。
+
+| 问题类型 | 扫描目录 | 说明 |
+|----------|----------|------|
+| 便捷帮助类（SQL/API/脚本/模板等） | \`references/旗舰版/\` | \`ls\` 列出文件名 → 按关键词匹配 → 读取匹配的文档 |
+| 后端开发（Service/规则/插件/调度/事件） | \`references/旗舰版/后端开发/\` | 体系化后端规范（IBillQueryRepository、DispatchTask、BIPEventSubscribe 等） |
+| 前端扩展（MDF/ViewModel/页面脚本） | \`references/旗舰版/前端扩展/\` | MDF 开发框架（架构/模型/事件/模式）+ \`references/旗舰版/\` 下代码片段 |
+| 第三方系统集成（WMS/LIMS/MES/SRM…） | \`references/旗舰版/集成/\` | 按业务域子目录匹配（应收应付、总账、仓储、税务等 13 个域） |
+| 报表 SQL 生成（台账/日报/月报） | \`references/旗舰版/报表SQL/\` | 四阶段报表 SQL 生成流程（需求分析→字段分析→SQL构建→校验交付）；\`05-经验-组织树与子级数量统计.md\` 是「组织树 + 统计子级组织数量」类报表的可复用手册（含报表平台参数/筛选器配置） |
+| 公式配置（YonBuilder/UI模板） | \`references/旗舰版/公式/\` | 公式函数参考 + 36 个业务场景示例 |
+| SQL 模板 | \`references/SQL/\` | 每条 SQL 独立一个文件，扫描匹配 |
+| 问题处理类（报错/异常/故障） | \`references/问题处理/\` | \`ls\` 列出文件名 → 按报错关键词匹配 → 读取匹配的文档 |
+| 项目配置（环境/账号/数据库等） | \`references/projects/\` | 每个项目独立一个文件 |
+| 通用开发规范/事件码/单据类型 | \`references/common/\` | 按需检索 |
+| 已归档旧文档（被新版替换） | \`references/旗舰版/_archive/\` | 旧版参考，新版在对应子目录中 |
+
+
+## 接收到用户的提问，处理流程
+
+**第一步：判断是否属于本技能范围**
+
+| 用户问题 | 处理 |
+|----------|------|
+| 涉及 BIP / 旗舰版 / YonBIP / 用友框架 | → 用本技能，继续第二步 |
+| 涉及 NCC / NC Cloud | → 切换到 \`yon-ncc-dev\` 技能 |
+| 代码/数据库/服务器等后端问题，但未指定产品 | → 视为旗舰版开发问题，用本技能 |
+| 明显非用友产品问题 | → 自行作答，无需参考 skill 文档 |
+
+**第二步：按问题类型分发**
+
+| 问题类型 | 典型关键词 | 扫描目录 |
+|----------|-----------|----------|
+| 报错排查 | 报错、异常、报异常、不生效、崩溃 | \`references/问题处理/\` |
+| 便捷协助 | 生成SQL、写个脚本、模板代码、阿尔萨斯命令 | \`references/旗舰版/\` |
+| 环境/配置/账号 | 环境地址、数据库连接、账号密码、VPN | \`references/projects/\` |
+| 后端开发规范 | Service、规则、插件、调度、事件、IBillQuery | \`references/旗舰版/后端开发/\` |
+| 前端扩展 | MDF、ViewModel、页面脚本、字段联动 | \`references/旗舰版/前端扩展/\` |
+| 第三方集成 | WMS、LIMS、MES、SRM、接口对接 | \`references/旗舰版/集成/\` |
+| 报表SQL | 台账、日报、月报、报表SQL | \`references/旗舰版/报表SQL/\` |
+| 组织树报表 | 组织树、子级组织、上卷、父组织汇总、语义模型、筛选器、参数绑定 | \`references/旗舰版/报表SQL/05-经验-组织树与子级数量统计.md\` |
+| 直联/银企报表 | 直联、直连、银企通道、不可直连、未直连成功、直连率、财务公司账户 | \`references/旗舰版/报表SQL/06-金隅-账户直联情况统计表-字段核查.md\` |
+| 公式配置 | 公式、YonBuilder、计算公式 | \`references/旗舰版/公式/\` |
+
+## 源码索引配置
+
+旗舰版 home 目录的源码索引由以下文件管理：
+
+| 文件 | 作用 |
+|------|------|
+| \`bip_home_path.json\` | 本机 BIP home 路径 + 默认版本 |
+| \`class_index_<version>.json\` | 每个版本独立的类名→jar 索引 |
+
+**\`bip_home_path.json\` 结构**：
+
+\`\`\`json
+{
+  "default_version": "V5",
+  "versions": {
+    "V5": {
+      "path": "E:/download2",
+      "description": "BIP 旗舰版 V5",
+      "index_file": "class_index_BIP_V5.json",
+      "indexed": true
+    }
+  }
+}
+\`\`\`
+
+> **关于 \`bip_home_path.json\` 的生成**：该文件记录的是本机 BIP home 路径，每台机器不同，因此被 \`.gitignore\` 排除，不会入库。仓库中提供了 \`bip_home_path.json.template\`（空模板）作为格式参考。**首次运行 \`build_index.py\` 时会自动创建该文件**，后续再跑其他版本会追加到已有配置中，无需手动编辑。
+
+## 工具脚本
+
+| 脚本 | 路径 | 用途 |
+|------|------|------|
+| 数据源健康检查 | \`datasource_list\` 工具 | 列出已登记的数据源（类型/地址/登录名）与项目绑定情况 |
+| OpenAPI 开发 | \`references/旗舰版/旗舰版OpenAPI开发指南.md\` | BIP 旗舰版 OpenAPI 服务端开发（Controller → YMS 注册 → 发布 → 授权） |
+| OpenAPI 调用(客户端) | \`references/旗舰版/旗舰版调用OpenAPI.md\` | Java 后端调用 BIP OpenAPI（Token、签名、GET/POST） |
+| OpenAPI SDK 调用 | \`references/旗舰版/openapi-sdk调用api的使用示例.md\` | 独立 Maven 工程通过 SDK jar 调用 BIP OpenAPI |
+| Arthas 命令工具 | \`scripts/arthas_exec.py\` | 通过 Tunnel Server HTTP API 执行 Arthas 命令，自动格式化输出，避免手拼 JSON |
+| MDF 前端代码模板 | \`assets/mdf/\` | 9 个 JS 模板（字段联动/参照过滤/校验/弹窗等） |
+| Java 后端代码模板 | \`assets/java/\` | 费用报销集成等场景的 Controller/Service/Factory 模板 |
+| 后端开发总览 | \`references/旗舰版/后端开发/后端开发总览.md\` | server-codegen 完整后端开发指南（含 GUIDE.md） |
+| 前端开发总览 | \`references/旗舰版/前端扩展/前端开发总览.md\` | MDF 三层架构前端开发框架 |
+| 集成开发公共规范 | \`references/旗舰版/集成/_公共规范/\` | MVC 架构、数据持久化、特征字段翻译速查 |
+
+## 健康检查触发
+
+> 当用户说"检查下技能"、"健康检查"、"跑一下健康检查"、"帮我看看配置有没有问题"等类似表达时，直接调用 \`datasource_list\`，检查已登记的数据源与项目绑定情况，并提示缺失项。
+
+## 字段术语与实体 URI
+
+> **触发条件**：当用户提到"字段名"、"数据库列"、"XX有哪些字段"、"XX子表"等涉及 BIP 实体结构的问题时，参考以下术语对照与实体 URI。
+
+### 字段术语对照
+
+> **核心约定**：BIP 元数据中同一个字段有多个标识，用户使用的术语对应关系如下：
+
+| 用户术语 | 元数据字段 | 含义 | 示例 |
+|----------|-----------|------|------|
+| **字段编码** | \`name\` | Java 类中的驼峰属性名，代码中 \`do.getXxx()\` / \`do.setXxx()\` 用的名 | \`bankId\` |
+| 字段名 / 数据库列 | \`fieldName\` / \`columnName\` | 数据库表列名（snake_case） | \`bank_id\` |
+| 显示名 | \`displayName\` | 界面上显示的中文名称 | 银行网点 |
+| 字段URI | \`uri\` | 元数据中字段的完整标识 | \`eaai.eventvoucher.EventVoucherDetailsDO.bankId\` |
+| 类型URI | \`typeUri\` | 引用类型字段指向的实体 URI | \`bd.bank.BankDotVO\` |
+
+> ⚠️ **\`fieldName\` 和 \`name\` 在简单字段上经常相同（都是 snake_case），但在引用字段上不同：\`fieldName\`=数据库列名（如 \`bank_id\`），\`name\`=Java 驼峰名（如 \`bankId\`）。**
+
+### 已知实体 URI 速查（销售订单体系）
+
+| 实体 | URI |
+|------|-----|
+| 销售订单主表 | \`voucher.order.Order\` |
+| 订单明细 | \`voucher.order.OrderDetail\` |
+| 订单明细组 | \`voucher.order.OrderDetailGroup\` |
+| 订单状态 | \`voucher.order.OrderStatus\` |
+| 订单支付状态 | \`voucher.order.OrderPaymentStatus\` |
+| 支付核验 | \`voucher.order.PaymentVerification\` |
+| 收款计划 | \`voucher.order.PaymentSchedules\` |
+| 收款执行明细 | \`voucher.order.PaymentExeDetail\` |
+| 订单多价格 | \`voucher.order.OrderPrice\` |
+| 返利汇总 | \`voucher.order.RebateSum\` |
+| 返利明细 | \`voucher.order.RebateDetail\` |
+| 返利记录 | \`voucher.order.RebateRecord\` |
+| 产品返利记录 | \`voucher.order.ProductRebateRecord\` |
+| 签署主体 | \`voucher.order.SignSubject\` |
+| 附件 | \`voucher.order.OrderAttachment\` |
+| 当前审批人 | \`voucher.order.IBpmCurrentAuditorOrder\` |
+| 业务阶段 | \`voucher.order.OrderIBpmStep\` |
+| 线索参与人 | \`voucher.order.ClueParticipant\` |
+| 头自定义项 | \`voucher.order.OrderDefine\` |
+| 头自由定义 | \`voucher.order.OrderFreeDefine\` |
+
+
+
+
+## 接口测试
+
+- 参考 \`references/旗舰版/Arthas-API测试实战流程.md\`
 `,
   },
 ]
