@@ -142,10 +142,18 @@ export class SkillError extends Error {
 /** The panel-facing surface, reachable in-process as `ctx.yonSkills`. */
 export interface YonSkillsService {
   /**
-   * Every visible skill: this plugin's own first, then the operator's.
-   * @returns the list rows plus whether every source could be read. Read
-   *   without a `cwd`, so project-local skill directories are out of scope —
-   *   this panel manages global skills.
+   * Every visible skill: this plugin's own first, then every other
+   * deployment-level contribution.
+   *
+   * The read selects the registry's **global layer**, which is where this
+   * plugin's own registrations land and where DSH expects deployment-level
+   * providers to land (its own bundle patch says so: "deployment-level
+   * providers — repository plugins, a host skill-filesystem row — register into
+   * its global layer"). A skill discovered from disk is deliberately not here:
+   * DSH mounts `skill-filesystem` inside each agent preset, so those skills
+   * belong to a scope that a request with no session behind it cannot name.
+   * That is the right boundary for a panel that manages what this plugin ships.
+   * @returns the list rows plus whether every source could be read.
    */
   list(): Promise<SkillListPayload>
 

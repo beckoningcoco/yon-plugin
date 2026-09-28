@@ -270,6 +270,12 @@ export function SkillManager({ t, onClose, ...api }: SkillManagerProps) {
             )}
           </div>
 
+          {/* Said out loud, not left to be inferred: the operator's own skills
+              live in an agent preset's scope layer, and a request from this
+              panel cannot name that scope. An empty second group would read as
+              "your skills are gone" instead of "this panel does not cover them". */}
+          <p className={cn(base.note)}>{t('skill.scopeHint')}</p>
+
           {needle !== '' && visible.length === 0 && (
             <p className={cn(base.note)}>{t('skill.searchEmpty', { query: query.trim() })}</p>
           )}

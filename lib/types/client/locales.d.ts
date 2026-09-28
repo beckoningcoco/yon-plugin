@@ -91,6 +91,7 @@ export declare const zh: {
     'skill.empty': string;
     'skill.pickHint': string;
     'skill.partial': string;
+    'skill.scopeHint': string;
     'skill.loading': string;
     'skill.readFailed': string;
     'skill.retry': string;
@@ -183,6 +184,7 @@ export declare const en: {
     'skill.empty': string;
     'skill.pickHint': string;
     'skill.partial': string;
+    'skill.scopeHint': string;
     'skill.loading': string;
     'skill.readFailed': string;
     'skill.retry': string;
