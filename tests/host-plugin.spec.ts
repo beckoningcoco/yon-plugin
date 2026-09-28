@@ -11,8 +11,8 @@
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
 import {
-  DATASOURCE_TOOL_NAMES, DOMAIN_NAME, SKILL_DOMAIN_NAME, WIKI_TOOL_NAMES, YON_BUNDLED_SKILLS,
-  YON_SKILL_SOURCE, apply, inject, YON_TOOL_NAMES,
+  DATASOURCE_TOOL_NAMES, DOMAIN_NAME, GBK_TOOL_NAMES, SKILL_DOMAIN_NAME, WIKI_TOOL_NAMES,
+  YON_BUNDLED_SKILLS, YON_SKILL_SOURCE, apply, inject, YON_TOOL_NAMES,
 } from '../src/index.ts'
 
 /** An always-empty `KvTable`, enough for the store to construct and refresh. */
@@ -102,7 +102,7 @@ describe('dsh-plugin-yon-panel host half', () => {
 
     expect(register).not.toHaveBeenCalled()
     expect(registerTool).toHaveBeenCalledTimes(
-      YON_TOOL_NAMES.length + DATASOURCE_TOOL_NAMES.length + WIKI_TOOL_NAMES.length,
+      YON_TOOL_NAMES.length + DATASOURCE_TOOL_NAMES.length + WIKI_TOOL_NAMES.length + GBK_TOOL_NAMES.length,
     )
     expect(ctx.get('yonProjects')).toBeDefined()
   })
@@ -111,11 +111,11 @@ describe('dsh-plugin-yon-panel host half', () => {
     const { registerTool, disposeTool, fiber } = await bench()
 
     expect(registerTool.mock.calls.map(call => (call[0] as { name: string }).name))
-      .toEqual([...YON_TOOL_NAMES, ...DATASOURCE_TOOL_NAMES, ...WIKI_TOOL_NAMES])
+      .toEqual([...YON_TOOL_NAMES, ...DATASOURCE_TOOL_NAMES, ...WIKI_TOOL_NAMES, ...GBK_TOOL_NAMES])
 
     await fiber.dispose()
     expect(disposeTool).toHaveBeenCalledTimes(
-      YON_TOOL_NAMES.length + DATASOURCE_TOOL_NAMES.length + WIKI_TOOL_NAMES.length,
+      YON_TOOL_NAMES.length + DATASOURCE_TOOL_NAMES.length + WIKI_TOOL_NAMES.length + GBK_TOOL_NAMES.length,
     )
   })
 

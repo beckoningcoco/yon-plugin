@@ -32,6 +32,7 @@ import { DATASOURCE_TOOL_NAMES, registerYonDataSourceTools } from './host/dataso
 import { createWikiStore } from './host/wiki-store.ts'
 import { createYonWikiService, type YonWikiService } from './host/wiki-service.ts'
 import { registerYonWikiTools, WIKI_TOOL_NAMES } from './host/wiki-tools.ts'
+import { GBK_TOOL_NAMES, registerYonGbkTools } from './host/gbk-tool.ts'
 
 export { DOMAIN_NAME, YON_DOMAIN } from './host/domain.ts'
 export { SKILL_DOMAIN_NAME, YON_SKILL_DOMAIN } from './host/skill-domain.ts'
@@ -47,6 +48,7 @@ export type { YonDataSourcesService } from './host/datasource-service.ts'
 export { DATASOURCE_TOOL_NAMES } from './host/datasource-tools.ts'
 export { WikiError } from './host/wiki-service.ts'
 export { WIKI_TOOL_NAMES } from './host/wiki-tools.ts'
+export { GBK_TOOL_NAMES, GbkError } from './host/gbk-tool.ts'
 export { defaultWikiStorePath } from './host/wiki-store.ts'
 export { guessVaults } from './host/wiki-index.ts'
 export type {
@@ -137,6 +139,11 @@ export async function apply(ctx: Context): Promise<void> {
   ctx.provide('yonWiki', wiki)
 
   ctx.effect(() => registerYonWikiTools(ctx, wiki), 'yon-panel: wiki tools')
+
+  // The GBK editor: one tool over the script this package ships, because a NCC
+  // customisation tree is GBK on disk and a general-purpose save corrupts it
+  // silently rather than failing.
+  ctx.effect(() => registerYonGbkTools(ctx), 'yon-panel: gbk tools')
 
   // A skill registered through the registry exists exactly as long as this
   // plugin does, which is what makes these skills shippable without ever
