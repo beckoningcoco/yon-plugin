@@ -1,6 +1,6 @@
 /** The yon_btn sidebar-foot action and the panel it opens above itself. */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type CSSProperties } from 'react'
 import {
   Tooltip, useAnchoredPosition, useDismissOnOutsidePointer,
 } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -16,6 +16,15 @@ export type YonPanelRootProps =
   & PropsRenderSlots<'yon.panel.item'>
   & InjectFace<YonPanelRootFace>
   & PropsLocale<'yonPanel'>
+
+/**
+ * The panel's style for the frame between opening and the first measurement.
+ *
+ * `visibility: hidden` still lays the element out, which is the point: the
+ * anchor hook has to measure a real height to place an upward panel, and
+ * `display: none` would measure zero and bring back the bug this guards against.
+ */
+const HIDDEN_UNTIL_PLACED: CSSProperties = { visibility: 'hidden' }
 
 /**
  * The trigger's glyph: a single-Y monogram in one icon-sized outlined block. It
@@ -66,11 +75,17 @@ export function YonPanelRoot({ usePanel, onToggle, onSetOpen, renderSlot, t }: Y
 
   return (
     <div ref={root} className={css.action}>
-      {open && anchor !== null && (
+      {/* Mounted whenever it is open, even before the first measurement: the
+          anchor hook needs the panel's real height to place an upward panel
+          (`top = anchorTop - gap - height`), and measuring a panel that is not
+          mounted yet yields zero — which would hang the panel from its top edge
+          and grow it downward over the sidebar. Hidden for that first frame
+          instead, so nothing paints at the wrong place. */}
+      {open && (
         <section
           ref={panel}
           className={css.panel}
-          style={anchor}
+          style={anchor ?? HIDDEN_UNTIL_PLACED}
           role="dialog"
           aria-label={t('panel.title')}
         >

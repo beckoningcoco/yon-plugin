@@ -11,7 +11,19 @@ import { createYonPanelStore } from '../src/client/panel-store.ts'
 import { en, zh } from '../src/client/locales.ts'
 import { YonPanelRoot, type YonPanelRootProps } from '../src/client/YonPanelRoot.tsx'
 
-afterEach(cleanup)
+/**
+ * What the anchor hook reports. Hoisted so the mock factory below can read it,
+ * and mutable so a case can stand in for the frame before the first measurement
+ * (when a real hook has no coordinates yet).
+ */
+const anchorState = vi.hoisted(() => ({
+  value: { left: 12, top: 12 } as Record<string, unknown> | null,
+}))
+
+afterEach(() => {
+  cleanup()
+  anchorState.value = { left: 12, top: 12 }
+})
 
 /**
  * The shares this surface actually reads. The framework's global standard seats
@@ -98,6 +110,24 @@ describe('yon panel surface', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
+  it('mounts the panel before it has coordinates, hidden', () => {
+    // The regression this guards: an upward panel is placed at
+    // `anchorTop - gap - height`, so a panel that is not mounted for the first
+    // measurement reports height zero and hangs downward over the sidebar. It
+    // has to be in the layout from the first frame, just not visible yet.
+    anchorState.value = null
+    harness()
+
+    fireEvent.click(screen.getByRole('button', { name: TRIGGER }))
+
+    // Queried by role alone, with `hidden: true`: a hidden element sits outside
+    // the accessibility tree, so it has no accessible name left to match on —
+    // and being laid out yet unpainted is exactly the state under test.
+    const panel = screen.getByRole('dialog', { hidden: true })
+    expect(panel.style.visibility).toBe('hidden')
+    expect(panel.style.top).toBe('')
+  })
+
   it('closes on Escape while open', () => {
     harness()
     fireEvent.click(screen.getByRole('button', { name: TRIGGER }))
@@ -160,6 +190,6 @@ describe('yon panel surface', () => {
 // unit under test is this plugin's own surface.
 vi.mock('@deepseek-ai/dsh-client-ui-primitives', () => ({
   Tooltip: ({ children }: { children: ReactElement }) => children,
-  useAnchoredPosition: () => ({ left: 12, top: 12 }),
+  useAnchoredPosition: () => anchorState.value,
   useDismissOnOutsidePointer: () => {},
 }))
