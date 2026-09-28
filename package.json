@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-yon-panel",
   "version": "0.1.0",
-  "description": "Yon button panel for the DSH web client: a sidebar-foot action opening a panel of plugin-contributed buttons, with built-in project management and bundled skills",
+  "description": "Yon button panel for the DSH web client: a sidebar-foot action opening a panel of plugin-contributed buttons, with built-in project management, bundled skills and database data sources",
   "keywords": [
     "dsh",
     "deepseek-harness",
@@ -44,6 +44,7 @@
     "lib/client.js",
     "lib/client.js.map",
     "lib/types/**/*.d.ts",
+    "resources/**/*",
     "cordis.patch.yml",
     "README.md"
   ],

@@ -19,6 +19,21 @@
  *   GET    /yon/api/skills                   list (this plugin's, then the operator's)
  *   GET    /yon/api/skills/<name>            one skill, body included
  *   PATCH  /yon/api/skills/<name>            switch one bundled skill on or off
+ *
+ *   GET    /yon/api/datasources              list (one row per connection env)
+ *   PUT    /yon/api/datasources/<key>        create or replace one env branch
+ *   DELETE /yon/api/datasources/<key>        drop one env branch
+ *   POST   /yon/api/datasources/<key>/probe  run SELECT 1 through the bundled script
+ *   PUT    /yon/api/datasources/<key>/binding bind the connection group to a project
+ *
+ * A datasource key is `<configKey>::<env>` and carries non-ASCII text, so every
+ * route segment below is decoded (by {@link segmentsOf}) and every client call
+ * encodes it. The key is opaque to this layer: it is split only where the
+ * service expects a group and a branch.
+ *
+ * No response on this route ever carries a password. That is a property of the
+ * service's own return types rather than a filter applied here — see
+ * `datasource-catalog.ts` — so a future route cannot forget to strip one.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
@@ -28,6 +43,7 @@ import {
 } from '../shared/types.ts'
 import { ProjectError, type YonProjectsService } from './service.ts'
 import { SkillError, type YonSkillsService } from './skill-registry.ts'
+import { DataSourceError, type YonDataSourcesService } from './datasource-service.ts'
 
 /** Largest request body accepted, in bytes. */
 const MAX_BODY_BYTES = 1_000_000
@@ -115,6 +131,111 @@ function segmentsOf(pathname: string): string[] | undefined {
 }
 
 /**
+ * Split one datasource key into the group name and the environment branch.
+ *
+ * The split takes the LAST separator, the same way the shared helper does, so a
+ * group name that itself contains `::` still round-trips.
+ * @param key - the composite key from the URL.
+ * @returns the parts, or undefined when the key carries no separator.
+ */
+function keyParts(key: string): { configKey: string; env: string } | undefined {
+  const at = key.lastIndexOf('::')
+  if (at <= 0) return undefined
+  const env = key.slice(at + 2)
+  if (env === '') return undefined
+  return { configKey: key.slice(0, at), env }
+}
+
+/**
+ * Serve the `/yon/api/datasources` branch.
+ *
+ * Writes here touch the operator's own document, which is the same file the
+ * panel edits; there is no privileged verb, so a key the caller cannot name is
+ * simply not found.
+ * @param req - the request; read for the body on writes.
+ * @param res - the response.
+ * @param method - HTTP method.
+ * @param segments - the decoded path segments after the API prefix.
+ * @param sources - the datasource service.
+ */
+async function handleDataSources(
+  req: IncomingMessage,
+  res: ServerResponse,
+  method: string,
+  segments: readonly string[],
+  sources: YonDataSourcesService,
+): Promise<void> {
+  const key = segments[1]
+  const tail = segments[2]
+
+  // /yon/api/datasources
+  if (key === undefined) {
+    if (method !== 'GET') {
+      sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+      return
+    }
+    sendJson(res, 200, await sources.list())
+    return
+  }
+
+  // /yon/api/datasources/<key>
+  if (tail === undefined) {
+    if (method === 'PUT') {
+      const parts = keyParts(key)
+      if (parts === undefined) {
+        sendFailure(res, 400, 'invalid-input', `无法解析数据源键「${key}」`)
+        return
+      }
+      const body = await objectBody(req)
+      const row = await sources.save({
+        configKey: parts.configKey,
+        env: parts.env,
+        dbType: typeof body.dbType === 'string' ? body.dbType : '',
+        host: typeof body.host === 'string' ? body.host : '',
+        port: typeof body.port === 'number' ? body.port : Number.parseInt(String(body.port), 10),
+        ...typeof body.serviceName === 'string' ? { serviceName: body.serviceName } : {},
+        ...body.users === undefined || body.users === null || typeof body.users !== 'object'
+          ? {}
+          : { users: body.users as Record<string, string> },
+        ...typeof body.projectId === 'string' ? { projectId: body.projectId } : {},
+      })
+      sendJson(res, 200, { source: row })
+      return
+    }
+    if (method === 'DELETE') {
+      await sources.remove(key)
+      sendJson(res, 200, { removed: key })
+      return
+    }
+    sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+    return
+  }
+
+  // /yon/api/datasources/<key>/probe
+  if (tail === 'probe' && method === 'POST') {
+    const body = await readJsonBody(req).then(
+      value => (value !== null && typeof value === 'object' && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : {}),
+    )
+    const result = await sources.probe(key, typeof body.user === 'string' ? body.user : undefined)
+    sendJson(res, 200, { result })
+    return
+  }
+
+  // /yon/api/datasources/<key>/binding
+  if (tail === 'binding' && method === 'PUT') {
+    const body = await objectBody(req)
+    const projectId = body.projectId
+    await sources.bind(key, typeof projectId === 'string' ? projectId : undefined)
+    sendJson(res, 200, { bound: typeof projectId === 'string' ? projectId : '' })
+    return
+  }
+
+  sendFailure(res, 404, 'not-found', `no route for ${method} /yon/api/datasources/...`)
+}
+
+/**
  * Serve the `/yon/api/skills` branch.
  *
  * A skill the operator owns is listed and readable but can never be switched:
@@ -163,16 +284,18 @@ async function handleSkills(
 }
 
 /**
- * Register the project and skill APIs on the carrier service.
+ * Register the project, skill and datasource APIs on the carrier service.
  * @param ctx - host context carrying `webServer`.
  * @param service - the project store to expose.
  * @param skills - the skill service to expose.
+ * @param sources - the datasource service to expose.
  * @returns the disposer removing the route.
  */
 export function registerYonApi(
   ctx: Context,
   service: YonProjectsService,
   skills: YonSkillsService,
+  sources: YonDataSourcesService,
 ): () => void {
   const carrier = ctx.get('webServer') as RouteRegistrar | undefined
   if (carrier === undefined) {
@@ -193,6 +316,10 @@ export function registerYonApi(
         }
         if (segments[0] === 'skills') {
           await handleSkills(req, res, method, segments[1], skills)
+          return
+        }
+        if (segments[0] === 'datasources') {
+          await handleDataSources(req, res, method, segments, sources)
           return
         }
         if (segments[0] !== 'projects') {
@@ -296,7 +423,7 @@ export function registerYonApi(
         // swallowed cause would leave nothing to debug with.
         console.error('[yon-panel] /yon/api failure', error)
         try {
-          if (error instanceof ProjectError || error instanceof SkillError) {
+          if (error instanceof ProjectError || error instanceof SkillError || error instanceof DataSourceError) {
             sendFailure(res, error.code === 'not-found' ? 404 : 400, error.code, error.message)
           } else {
             sendFailure(res, 500, 'internal', error instanceof Error ? error.message : String(error))

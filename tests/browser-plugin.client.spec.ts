@@ -65,7 +65,9 @@ describe('dsh-plugin-yon-panel browser plugin', () => {
 
     const action = registrations.find(entry => entry.name === 'sidebar.footer.action')
 
-    expect(registrations).toHaveLength(3)
+    // The footer action plus one entry per built-in surface: project, skills,
+    // datasources.
+    expect(registrations).toHaveLength(4)
     expect(action?.options.id).toBe('yon-btn')
     expect(action?.options.order).toBe(10)
     expect(action?.options.children).toEqual({
@@ -109,13 +111,13 @@ describe('dsh-plugin-yon-panel browser plugin', () => {
     expect(panelFace.hooks.panel.getSnapshot().overlayDepth).toBe(0)
   })
 
-  it('registers the skill entry beside the project one, in that order', async () => {
+  it('registers the three built-in entries in order: project, skills, datasources', async () => {
     const { registrations } = await bench()
 
     const entries = registrations.filter(item => item.name === 'yon.panel.item')
 
-    expect(entries.map(entry => entry.options.id)).toEqual(['project', 'skills'])
-    expect(entries.map(entry => entry.options.order)).toEqual([10, 20])
+    expect(entries.map(entry => entry.options.id)).toEqual(['project', 'skills', 'datasources'])
+    expect(entries.map(entry => entry.options.order)).toEqual([10, 20, 30])
   })
 
   it('gives the skill entry the skill operations and the overlay announcement', async () => {

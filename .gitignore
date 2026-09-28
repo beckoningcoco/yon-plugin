@@ -6,3 +6,6 @@ node_modules/
 # tsc emits the browser half's modules too, but the browser half ships as the
 # single bundled artifact lib/client.js; these per-module files are not published.
 lib/client/
+
+# 迁移脚本留下的备份文件（apply-datasource-panel.mjs 等）
+*.bak-*

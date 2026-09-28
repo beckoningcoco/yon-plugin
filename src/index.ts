@@ -1,14 +1,19 @@
 /**
- * Yon panel, host half: opens the project and skill-switch domains, publishes
- * them as `ctx.yonProjects` and `ctx.yonSkills`, offers the projects to the
- * agent as tools, contributes this plugin's own skills to the skill registry,
- * and — where a web server exists — serves both over `/yon/api`.
+ * Yon panel, host half: opens the project, skill-switch and datasource domains,
+ * publishes them as `ctx.yonProjects`, `ctx.yonSkills` and `ctx.yonDataSources`,
+ * offers the projects and the data sources to the agent as tools, contributes
+ * this plugin's own skills to the skill registry, and — where a web server
+ * exists — serves all three over `/yon/api`.
  *
  * Other plugins reach the data in three stable ways, none of which requires
  * importing this package: in-process through the services (`inject:
- * ['yonProjects']`, for a picker), by the agent through the `project_*` tools,
- * or from any browser half through the prefix route
- * (`fetch('/yon/api/projects')`).
+ * ['yonProjects']`, for a picker), by the agent through the tools, or from any
+ * browser half through the prefix route (`fetch('/yon/api/projects')`).
+ *
+ * The data sources are the one part that is not stored in a storage domain.
+ * They live in a JSON document under the operator's DSH directory because the
+ * bundled query script reads that file directly — see `datasource-store.ts` for
+ * why that trade is worth making.
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -20,6 +25,10 @@ import { SKILL_DOMAIN_NAME, YON_SKILL_DOMAIN } from './host/skill-domain.ts'
 import {
   createYonSkillsService, SkillError, YON_SKILL_SOURCE, type YonSkillsService,
 } from './host/skill-registry.ts'
+import { createDataSourceStore } from './host/datasource-store.ts'
+import { createDataSourceRunner } from './host/datasource-probe.ts'
+import { createYonDataSourcesService, type YonDataSourcesService } from './host/datasource-service.ts'
+import { DATASOURCE_TOOL_NAMES, registerYonDataSourceTools } from './host/datasource-tools.ts'
 
 export { DOMAIN_NAME, YON_DOMAIN } from './host/domain.ts'
 export { SKILL_DOMAIN_NAME, YON_SKILL_DOMAIN } from './host/skill-domain.ts'
@@ -30,9 +39,14 @@ export type { YonBundledSkill } from './host/skill-catalog.ts'
 export { ProjectError } from './host/service.ts'
 export type { YonProjectsService } from './host/service.ts'
 export { YON_TOOL_NAMES, YON_WRITE_TOOL_NAMES } from './host/tools.ts'
+export { DataSourceError } from './host/datasource-service.ts'
+export type { YonDataSourcesService } from './host/datasource-service.ts'
+export { DATASOURCE_TOOL_NAMES } from './host/datasource-tools.ts'
+export { defaultStorePath } from './host/datasource-store.ts'
 export type {
-  CreateProjectInput, JsonValue, ProjectDetail, ProjectSummary, ProjectStatus, SkillDetail,
-  SkillView, UpdateProjectInput,
+  CreateProjectInput, DataSourceBinding, DataSourceListPayload, DataSourceProbeResult,
+  DataSourceView, JsonValue, ProjectDetail, ProjectSummary, ProjectStatus,
+  SaveDataSourceInput, SkillDetail, SkillView, UpdateProjectInput,
 } from './shared/types.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -41,6 +55,8 @@ declare module '@deepseek-ai/cordis' {
     yonProjects: YonProjectsService
     /** This plugin's bundled skills and their switches. */
     yonSkills: YonSkillsService
+    /** The operator's database connections, and the runner that tries them. */
+    yonDataSources: YonDataSourcesService
   }
 }
 
@@ -48,15 +64,17 @@ declare module '@deepseek-ai/cordis' {
  * What this half cannot work without: durable storage for the records, and the
  * tool registry that carries them to the model.
  *
- * The web server and the skill registry are deliberately NOT here. Listing one
- * makes this plugin sit pending forever on any deployment that has none — and a
- * pending entry takes the whole profile down (`--profile headless` fails with
- * "1 entry did not activate"). Both are waited for separately, below.
+ * The web server, the skill registry and the subprocess service are deliberately
+ * NOT here. Listing one makes this plugin sit pending forever on any deployment
+ * that has none — and a pending entry takes the whole profile down (`--profile
+ * headless` fails with "1 entry did not activate"). All three are waited for
+ * separately, below, and the datasource runner reads its own service lazily on
+ * every call for the same reason.
  */
 export const inject = ['storageDomain', 'tools']
 
 /**
- * Open both domains, publish the services, and serve their API.
+ * Open all three stores, publish the services, and serve their API.
  * @param ctx - host context.
  */
 export async function apply(ctx: Context): Promise<void> {
@@ -81,6 +99,21 @@ export async function apply(ctx: Context): Promise<void> {
   ctx.effect(() => skills.dispose, 'yon-panel: bundled skills')
   ctx.provide('yonSkills', skills.service)
 
+  // The data sources: one JSON document the operator owns, plus the runner that
+  // executes statements against it through the script this package ships. The
+  // runner is built with the store's own path, so the file the panel edits and
+  // the file the script reads cannot be two different files.
+  const store = createDataSourceStore()
+  const runner = createDataSourceRunner(ctx, store.path)
+  const dataSources = createYonDataSourcesService(store, service, runner)
+  ctx.effect(() => dataSources.dispose, 'yon-panel: datasource store')
+  ctx.provide('yonDataSources', dataSources.service)
+
+  ctx.effect(
+    () => registerYonDataSourceTools(ctx, dataSources.service),
+    'yon-panel: datasource tools',
+  )
+
   // A skill registered through the registry exists exactly as long as this
   // plugin does, which is what makes these skills shippable without ever
   // writing into the operator's own skill directories: installing the plugin
@@ -96,6 +129,9 @@ export async function apply(ctx: Context): Promise<void> {
   // server (headless, a terminal profile) still gets the stores and the tools;
   // the route simply never appears there.
   ctx.inject(['webServer'], (web) => {
-    web.effect(() => registerYonApi(web, service, skills.service), 'yon-panel: project api')
+    web.effect(
+      () => registerYonApi(web, service, skills.service, dataSources.service),
+      'yon-panel: project api',
+    )
   })
 }

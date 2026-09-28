@@ -5,13 +5,17 @@
  * plugin owns the surface and its open state only; what a button does belongs
  * to the package that adds it.
  *
- * Two buttons ship here: project management, and the skills this plugin
- * contributes. The second is not a second kind of seat — it is the same seat
- * taken twice, which is the point of the seat existing.
+ * Three buttons ship here: project management, the skills this plugin
+ * contributes, and the operator's database connections. None of them is a second
+ * kind of seat — all three take the same one, which is the point of the seat
+ * existing. The datasource entry is the one that also borrows an operation from
+ * a sibling: its binding picker offers the project list through the project API
+ * itself, so both surfaces name the same projects by the same rule.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis';
 import { type YonPanelKey } from './locales.ts';
 export type { YonPanelItemOwnerProps, YonPanelRootFace, YonPanelSnapshot } from './slots.ts';
+export type { DataSourceItemFace, ProjectItemFace, SkillItemFace } from './slots.ts';
 export type { YonPanelKey } from './locales.ts';
 declare module '@deepseek-ai/dsh-client-ui-slots' {
     interface LocaleNamespaceMap {

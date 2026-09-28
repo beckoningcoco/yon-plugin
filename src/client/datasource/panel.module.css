@@ -1,0 +1,64 @@
+/* Datasource-surface pieces the shared dialog chrome does not cover: the title
+   line, the type picker, the host/port pair, and the address reader. Everything
+   structural — the pane split, the list, the property grid, the form rows, the
+   error strip — comes from the shared stylesheet, so this surface, the project
+   surface and the skill surface stay one family.
+
+   Every colour here is a theme alias. The one control the atoms do not ship is
+   the native select, which is styled to sit at the same height as an Input
+   beside it rather than to look like a new component. */
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* A type the bundled script has no connector for. Dimmed rather than hidden or
+   disabled: the row is still a real connection the operator may be about to fix. */
+.rowUnsupported {
+  opacity: 0.55;
+}
+
+/* An address is read digit by digit, so it gets the monospaced face and a
+   consistent digit width, exactly as the field values elsewhere do. */
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* The native picker, matched to the Input atom's box: same height, same hairline,
+   same radius. Appearance is left alone so the platform's own dropdown renders. */
+.select {
+  width: 100%;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 6px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Host and port on one line: the pair reads as one address, and splitting them
+   across two full-width rows would waste the height the details below need. */
+.pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  gap: 8px;
+}

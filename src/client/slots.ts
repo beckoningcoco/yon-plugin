@@ -3,6 +3,7 @@
 // Type-only: ui-sidebar's SlotMap merge — the `sidebar.footer.action` seat this
 // entry occupies, rendered at the sidebar foot directly above the settings row.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import type { DataSourceApi } from './datasource/api.ts'
 import type { ProjectApi } from './project/api.ts'
 import type { SkillApi } from './skill/api.ts'
 
@@ -36,8 +37,31 @@ export type SkillItemFace = SkillApi & {
 }
 
 /**
+ * Data face the panel's datasource entry receives: the datasource API, the
+ * project list its binding picker needs, and the same panel-level gesture.
+ *
+ * The project list arrives as the project API's own operation rather than a
+ * second implementation of the same call, so the picker offers exactly the
+ * projects the project surface offers — archived ones excluded by the same rule,
+ * with no second copy of that rule to keep in step.
+ */
+export type DataSourceItemFace = DataSourceApi & {
+  /**
+   * The projects a connection may be bound to.
+   * @param includeArchived - keep soft-deleted projects in the answer.
+   * @returns the summaries.
+   */
+  listProjects: ProjectApi['listProjects']
+  /**
+   * Announce a layer standing above the panel (the datasource surface).
+   * @returns the release for that layer.
+   */
+  pushOverlay(): () => void
+}
+
+/**
  * Bare observable source: the getSnapshot/subscribe pair the DSH renderer binds
- * into a \`use<Name>\` selector hook. Declared here rather than imported, so this
+ * into a `use<Name>` selector hook. Declared here rather than imported, so this
  * plugin carries no compile-time dependency on one harness release's type names.
  */
 export interface PanelSource<T> {

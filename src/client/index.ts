@@ -5,9 +5,12 @@
  * plugin owns the surface and its open state only; what a button does belongs
  * to the package that adds it.
  *
- * Two buttons ship here: project management, and the skills this plugin
- * contributes. The second is not a second kind of seat — it is the same seat
- * taken twice, which is the point of the seat existing.
+ * Three buttons ship here: project management, the skills this plugin
+ * contributes, and the operator's database connections. None of them is a second
+ * kind of seat — all three take the same one, which is the point of the seat
+ * existing. The datasource entry is the one that also borrows an operation from
+ * a sibling: its binding picker offers the project list through the project API
+ * itself, so both surfaces name the same projects by the same rule.
  */
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
@@ -18,14 +21,17 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: the renderer-owned slots service.
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { createYonPanelStore } from './panel-store.ts'
+import { createDataSourceApi } from './datasource/api.ts'
 import { createProjectApi } from './project/api.ts'
 import { createSkillApi } from './skill/api.ts'
+import { DataSourceItem } from './DataSourceItem.tsx'
 import { ProjectItem } from './ProjectItem.tsx'
 import { SkillItem } from './SkillItem.tsx'
 import { YonPanelRoot } from './YonPanelRoot.tsx'
 import { en, zh, type YonPanelKey } from './locales.ts'
 
 export type { YonPanelItemOwnerProps, YonPanelRootFace, YonPanelSnapshot } from './slots.ts'
+export type { DataSourceItemFace, ProjectItemFace, SkillItemFace } from './slots.ts'
 export type { YonPanelKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -54,6 +60,7 @@ export function apply(ctx: ClientContext): void {
   // entry's inject face below, so no component builds a URL or fetches.
   const projectApi = createProjectApi()
   const skillApi = createSkillApi()
+  const dataSourceApi = createDataSourceApi()
 
   // A fresh list id adds this action beside the shipped footer actions, above
   // the settings row; the children table declares (and thereby authorizes) the
@@ -99,4 +106,20 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: () => ({ ...skillApi, pushOverlay: () => panel.pushOverlay() }),
   }, SkillItem))
+
+  // The datasource cell, third. Its face carries the project list as well,
+  // because binding a connection to a project is one of the operations this
+  // surface performs — and reusing the project API's own call is what keeps the
+  // picker from inventing a second, subtly different project list.
+  ctx.slots.inject('yon.panel.item', () => ctx.slots.register({
+    name: 'yon.panel.item',
+    id: 'datasources',
+    order: 30,
+    locale: NS,
+    inject: () => ({
+      ...dataSourceApi,
+      listProjects: projectApi.listProjects,
+      pushOverlay: () => panel.pushOverlay(),
+    }),
+  }, DataSourceItem))
 }
