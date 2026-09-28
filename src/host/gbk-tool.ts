@@ -278,7 +278,7 @@ const VALUE = {
   required: ['ok', 'output'],
   properties: {
     ok: { type: 'boolean' },
-    exitCode: { type: ['number', 'null'] },
+    exitCode: { oneOf: [{ type: 'number' }, { type: 'null' }] },
     output: { type: 'string' },
     error: { type: 'string' },
   },

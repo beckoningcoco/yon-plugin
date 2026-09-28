@@ -35,6 +35,7 @@ export { DATASOURCE_TOOL_NAMES } from './host/datasource-tools.ts';
 export { WikiError } from './host/wiki-service.ts';
 export { WIKI_TOOL_NAMES } from './host/wiki-tools.ts';
 export { GBK_TOOL_NAMES, GbkError } from './host/gbk-tool.ts';
+export { KNOWLEDGE_TOOL_NAMES, KnowledgeError } from './host/knowledge-tools.ts';
 export { defaultWikiStorePath } from './host/wiki-store.ts';
 export { guessVaults } from './host/wiki-index.ts';
 export type { WikiHit, WikiLookupResult, WikiMatch, WikiPageContent, WikiVaultView, YonWikiService, } from './host/wiki-service.ts';
