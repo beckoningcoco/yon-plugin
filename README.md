@@ -211,6 +211,7 @@ pnpm pack        # 打包，prepack 会先 build
 - **host 半改动需要重启 DSH 才生效**（client 半能靠 HMR 热更）
 - `src/shared/types.ts` 是两半共用的数据契约，前后端不会漂移
 - 基线 externals 名单抄自 harness 的 `@deepseek-ai/dsh-client-web/src/platform.ts`；升级 DSH 大版本时对照一次
+- **构建是可复现的**：CSS Module 的类名映射按名排序输出，所以提交的 `lib/` 与重新构建的结果逐字节一致（lightningcss 自己给出的导出顺序会变，排序就是为了消掉这个假差异）。这一点可以自己验：跑完 `pnpm build` 之后 `git status` 应该是干净的
 
 ### 为什么 `lib/` 被提交进 git
 
