@@ -34,6 +34,7 @@ import { createYonWikiService, type YonWikiService } from './host/wiki-service.t
 import { registerYonWikiTools, WIKI_TOOL_NAMES } from './host/wiki-tools.ts'
 import { GBK_TOOL_NAMES, registerYonGbkTools } from './host/gbk-tool.ts'
 import { KNOWLEDGE_TOOL_NAMES, registerYonKnowledgeTools } from './host/knowledge-tools.ts'
+import { CLASS_TOOL_NAMES, registerYonClassTools } from './host/class-tools.ts'
 
 export { DOMAIN_NAME, YON_DOMAIN } from './host/domain.ts'
 export { SKILL_DOMAIN_NAME, YON_SKILL_DOMAIN } from './host/skill-domain.ts'
@@ -51,6 +52,8 @@ export { WikiError } from './host/wiki-service.ts'
 export { WIKI_TOOL_NAMES } from './host/wiki-tools.ts'
 export { GBK_TOOL_NAMES, GbkError } from './host/gbk-tool.ts'
 export { KNOWLEDGE_TOOL_NAMES, KnowledgeError } from './host/knowledge-tools.ts'
+export { CLASS_TOOL_NAMES, ClassIndexError } from './host/class-tools.ts'
+export { classIndexDir, classIndexPath } from './host/class-index.ts'
 export { defaultWikiStorePath } from './host/wiki-store.ts'
 export { guessVaults } from './host/wiki-index.ts'
 export type {
@@ -151,6 +154,12 @@ export async function apply(ctx: Context): Promise<void> {
   // directories. A bundled skill body cannot name a runtime path, so without these
   // two tools the documents would ship and stay unreachable.
   ctx.effect(() => registerYonKnowledgeTools(ctx), 'yon-panel: knowledge tools')
+
+  // The class index: build one over an installation, then ask it which jar holds a
+  // class. The other half of "read the platform's own implementation" — the
+  // reference documents cover what someone wrote down, this covers what did not
+  // get written down.
+  ctx.effect(() => registerYonClassTools(ctx), 'yon-panel: class index tools')
 
   // A skill registered through the registry exists exactly as long as this
   // plugin does, which is what makes these skills shippable without ever
