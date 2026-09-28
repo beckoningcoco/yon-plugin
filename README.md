@@ -26,7 +26,14 @@ pnpm pack && dsh plugin --profile web add ./dsh-plugin-yon-panel-0.1.0.tgz
 dsh plugin --profile web remove dsh-plugin-yon-panel
 ```
 
-安装后启动，侧栏底部（设置按钮上方）出现 `Y` 图标。
+装完启动，侧栏底部（设置按钮上方）出现 `Y` 图标。
+
+> ⚠️ **不要手动再往 profile 的 `cordis.patch.yml` 里写一遍这个插件行。**
+> `dsh plugin add` 已经把包写进 `dsh.profile.bundles`，插件行由那一层提供；profile 的 patch 层再 `insert`
+> 一次同一个 `id`，**冷启动会直接失败**：
+> `failed to apply loader entry include: duplicate loader entry id: yon-panel`。
+> 阴险之处在于：运行中的热重载会按 `id` 去重，所以这个错误在服务器跑着的时候完全看不出来，
+> 直到你下一次重启才发现。需要"不重启就挂上"时，请另起一个独立 profile/端口的实例验证，别动生产 profile 的 patch 层。
 
 ## 项目存储（Host 半）
 
