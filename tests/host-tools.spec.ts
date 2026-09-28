@@ -11,9 +11,9 @@
 import { Context } from '@deepseek-ai/cordis'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  isYonWriteTool, needsApproval, previewWrite, registerYonProjectTools, YON_TOOL_NAMES,
-  YON_WRITE_TOOL_NAMES,
-  type YonToolDefinition, type YonToolExecution,
+  dispositionOf, isDestructiveWrite, isYonWriteTool, permissionsOf, previewWrite,
+  registerYonProjectTools, YON_TOOL_NAMES, YON_WRITE_TOOL_NAMES,
+  type YonPermissions, type YonSessionLike, type YonToolDefinition, type YonToolExecution,
 } from '../src/host/tools.ts'
 import { createYonProjectsService, type YonProjectsService } from '../src/host/service.ts'
 import type { ProjectFieldRow, ProjectRow, YonDomain } from '../src/host/domain.ts'
@@ -43,9 +43,23 @@ function fakeTable<K extends string, V>() {
 /** A signal stand-in: these tools never await anything cancellable. */
 const liveSignal = new AbortController().signal
 
+/** A session stand-in whose log carries whatever permission events a case needs. */
+function sessionWith(permissions: YonPermissions | undefined): YonSessionLike {
+  const events: Array<{ type: string; data: unknown }> = []
+  if (permissions?.sandbox !== undefined) events.push({ type: 'sandbox/mode', data: { mode: permissions.sandbox } })
+  if (permissions?.approval !== undefined) events.push({ type: 'approval/policy', data: { policy: permissions.approval } })
+  return { seq: events.length, eventAt: (seq: number) => events[seq] }
+}
+
 /** One recorded execution, as the registry would hand it over. */
-function execution(name: string, args: unknown): YonToolExecution {
-  return { name, arguments: args, callId: 'call-1', signal: liveSignal }
+function execution(name: string, args: unknown, permissions?: YonPermissions): YonToolExecution {
+  return {
+    name,
+    arguments: args,
+    callId: 'call-1',
+    signal: liveSignal,
+    agent: { session: sessionWith(permissions) },
+  }
 }
 
 /** Mount the tools over a real store and a recording registry. */
@@ -104,10 +118,14 @@ function bench() {
   }
 
   /** Ask the registration's own gate what it would decide for one call. */
-  const gate = async (name: string, args: unknown): Promise<{ kind: string; reason?: string }> =>
+  const gate = async (
+    name: string,
+    args: unknown,
+    permissions?: YonPermissions,
+  ): Promise<{ kind: string; reason?: string }> =>
     await ctx.waterfall(
       'tools/pre-execute',
-      execution(name, args),
+      execution(name, args, permissions),
       () => Promise.resolve({ kind: 'allow' as const }),
     ) as { kind: string; reason?: string }
 
@@ -188,6 +206,46 @@ describe('project tools', () => {
 
     expect(decision.kind).toBe('ask')
     expect(decision.reason).toContain('归档这个项目')
+  })
+
+  it('asks in a workspace-write session', async () => {
+    const { gate, seed } = bench()
+    await seed('proj', '', { '旧字段': 'x' })
+
+    const workspaceWrite: YonPermissions = { sandbox: 'workspace-write', approval: 'ask' }
+
+    expect((await gate('project_update', { project: 'proj', remove_fields: ['旧字段'] }, workspaceWrite)).kind)
+      .toBe('ask')
+  })
+
+  it('does not ask in a session that has said nobody should be asked', async () => {
+    const { gate, seed } = bench()
+    await seed('proj', '', { '旧字段': 'x' })
+
+    // Full access: the sandbox is wide open and the session chose not to be
+    // prompted, so a destructive write runs instead of failing for want of
+    // somebody to approve it.
+    const fullAccess: YonPermissions = { sandbox: 'danger-full-access', approval: 'never' }
+
+    expect(await gate('project_delete', { project: 'proj' }, fullAccess)).toEqual({ kind: 'allow' })
+    expect(await gate('project_update', { project: 'proj', remove_fields: ['旧字段'] }, fullAccess))
+      .toEqual({ kind: 'allow' })
+  })
+
+  it('refuses every write in a read-only session', async () => {
+    const { gate, seed } = bench()
+    await seed('proj', '')
+
+    const readOnly: YonPermissions = { sandbox: 'read-only', approval: 'ask' }
+
+    const destructive = await gate('project_update', { project: 'proj', remove_fields: ['x'] }, readOnly)
+    expect(destructive.kind).toBe('deny')
+    expect(destructive.reason).toContain('仅可查看')
+
+    // Read-only means read-only: an additive write is refused too, and it is
+    // refused rather than asked about, because there is no answer that helps.
+    expect((await gate('project_create', { name: '新项目' }, readOnly)).kind).toBe('deny')
+    expect((await gate('project_update', { project: 'proj', set_fields: { a: 1 } }, readOnly)).kind).toBe('deny')
   })
 
   it('names the field it would delete, with its current value', async () => {
@@ -392,23 +450,66 @@ describe('write previews', () => {
   })
 })
 
-describe('when a write needs approval', () => {
+describe('what one write would cost', () => {
   it('covers exactly the destructive shapes', () => {
-    // Reads and additive writes run straight through.
-    expect(needsApproval('project_list', {})).toBe(false)
-    expect(needsApproval('project_read', { project: 'x' })).toBe(false)
-    expect(needsApproval('project_create', { name: 'x' })).toBe(false)
-    expect(needsApproval('project_update', { project: 'x', set_fields: { a: 1 } })).toBe(false)
-    expect(needsApproval('project_update', { project: 'x', name: 'y', code: 'z', status: 'done' })).toBe(false)
-    expect(needsApproval('project_update', { project: 'x', remove_fields: [] })).toBe(false)
-    expect(needsApproval('project_update', { project: 'x', remove_fields: ['  '] })).toBe(false)
+    // Reads and additive writes lose nothing.
+    expect(isDestructiveWrite('project_list', {})).toBe(false)
+    expect(isDestructiveWrite('project_read', { project: 'x' })).toBe(false)
+    expect(isDestructiveWrite('project_create', { name: 'x' })).toBe(false)
+    expect(isDestructiveWrite('project_update', { project: 'x', set_fields: { a: 1 } })).toBe(false)
+    expect(isDestructiveWrite('project_update', { project: 'x', name: 'y', code: 'z', status: 'done' })).toBe(false)
+    expect(isDestructiveWrite('project_update', { project: 'x', remove_fields: [] })).toBe(false)
+    expect(isDestructiveWrite('project_update', { project: 'x', remove_fields: ['  '] })).toBe(false)
 
-    // Anything that destroys something stops to ask.
-    expect(needsApproval('project_update', { project: 'x', archived: false })).toBe(true)
-    expect(needsApproval('project_update', { project: 'x', remove_fields: ['a'] })).toBe(true)
-    expect(needsApproval('project_delete', { project: 'x' })).toBe(true)
+    // Anything that destroys something does.
+    expect(isDestructiveWrite('project_update', { project: 'x', archived: false })).toBe(true)
+    expect(isDestructiveWrite('project_update', { project: 'x', remove_fields: ['a'] })).toBe(true)
+    expect(isDestructiveWrite('project_delete', { project: 'x' })).toBe(true)
 
     // Unreadable arguments are not a licence to write without asking.
-    expect(needsApproval('project_update', 'nonsense')).toBe(true)
+    expect(isDestructiveWrite('project_update', 'nonsense')).toBe(true)
+  })
+})
+
+describe('what the session permits', () => {
+  it('reads the newest permission knobs from the log', () => {
+    const session: YonSessionLike = {
+      seq: 4,
+      eventAt: (seq) => [
+        { type: 'sandbox/mode', data: { mode: 'read-only' } },
+        { type: 'approval/policy', data: { policy: 'ask' } },
+        { type: 'sandbox/mode', data: { mode: 'danger-full-access' } },
+        { type: 'approval/policy', data: { policy: 'never' } },
+      ][seq],
+    }
+
+    expect(permissionsOf(session)).toEqual({ sandbox: 'danger-full-access', approval: 'never' })
+  })
+
+  it('reports nothing for a session that never set a knob', () => {
+    expect(permissionsOf(undefined)).toEqual({ sandbox: undefined, approval: undefined })
+    expect(permissionsOf({ seq: 1, eventAt: () => ({ type: 'user/message' }) }))
+      .toEqual({ sandbox: undefined, approval: undefined })
+  })
+
+  it('maps every permission preset to one disposition', () => {
+    const table: Array<[YonPermissions, boolean, string]> = [
+      // Read-only refuses writes outright, destructive or not.
+      [{ sandbox: 'read-only', approval: 'ask' }, false, 'refuse'],
+      [{ sandbox: 'read-only', approval: 'never' }, true, 'refuse'],
+      // A session that wants to be asked gets asked, for destructive writes only.
+      [{ sandbox: 'workspace-write', approval: 'ask' }, false, 'run'],
+      [{ sandbox: 'workspace-write', approval: 'ask' }, true, 'ask'],
+      // Full access runs destructive writes: nobody is available to approve, by
+      // the operator's own choice.
+      [{ sandbox: 'danger-full-access', approval: 'never' }, false, 'run'],
+      [{ sandbox: 'danger-full-access', approval: 'never' }, true, 'run'],
+      // An unset policy keeps the safe default rather than becoming a licence.
+      [{ sandbox: undefined, approval: undefined }, true, 'ask'],
+    ]
+
+    for (const [permissions, destructive, expected] of table) {
+      expect(dispositionOf(destructive, permissions)).toBe(expected)
+    }
   })
 })

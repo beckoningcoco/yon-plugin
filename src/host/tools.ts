@@ -43,6 +43,23 @@ export interface YonToolCallView {
   readonly rawInput?: unknown
 }
 
+/**
+ * The slice of a session this package reads: its committed event log.
+ *
+ * The permission knobs live in that log (`sandbox/mode`, `approval/policy`)
+ * rather than behind a service this plugin would have to depend on, and reading
+ * the newest value of each is how a write learns what its session permits.
+ */
+export interface YonSessionLike {
+  readonly seq: number
+  eventAt(seq: number): { readonly type: string; readonly data?: unknown } | undefined
+}
+
+/** The slice of an agent a tool call carries. */
+export interface YonAgentLike {
+  readonly session?: YonSessionLike
+}
+
 /** Identity and cancellation of one running tool call. */
 export interface YonToolExecution {
   /** The registered tool being called. */
@@ -51,6 +68,8 @@ export interface YonToolExecution {
   readonly arguments: unknown
   readonly callId: string
   readonly signal: AbortSignal
+  /** The agent on whose behalf the call runs; absent for a direct dispatch. */
+  readonly agent?: YonAgentLike
 }
 
 /** One tool definition, as the registry consumes it. */
@@ -106,7 +125,7 @@ export const YON_TOOL_NAMES = [
   'project_delete',
 ] as const
 
-/** The subset that changes stored data; each one is gated behind an approval. */
+/** The subset that changes stored data; the gate inspects each of these. */
 export const YON_WRITE_TOOL_NAMES = ['project_create', 'project_update', 'project_delete'] as const
 
 const WRITE_TOOLS: ReadonlySet<string> = new Set<string>(YON_WRITE_TOOL_NAMES)
@@ -334,30 +353,84 @@ function projectText(value: ProjectValue): string {
 }
 
 /**
- * Whether one write must wait for the operator's approval.
+ * Whether one write destroys something.
  *
- * The operator asked for this split deliberately: a change that only adds or
- * updates something is cheap to make and cheap to notice — the tool result lists
- * exactly what changed — while a change that destroys something (removing a
- * field, deleting a project, archiving it out of the default list) is neither.
- * Creating a project destroys nothing, so it runs straight through.
- *
- * A deployment that wants every write confirmed changes this one function to
- * return `true`; the preview below is already written for that case.
+ * The split the operator asked for is not "which tool" but "what would be lost":
+ * a change that only adds or updates is cheap to make and cheap to notice — the
+ * result lists exactly what changed — while removing a field, deleting a project
+ * or archiving it out of the default list is neither. Creating a project
+ * destroys nothing.
  * @param name - the tool being called.
  * @param args - the arguments of that call.
- * @returns true when the call must be approved before it runs.
+ * @returns true when running the call could lose data.
  */
-export function needsApproval(name: string, args: unknown): boolean {
+export function isDestructiveWrite(name: string, args: unknown): boolean {
   if (name === 'project_delete') return true
   if (name !== 'project_update') return false
   // Unreadable arguments are the tool's problem to reject, but they are not a
-  // reason to write without asking.
+  // reason to treat a call as harmless.
   if (args === null || typeof args !== 'object' || Array.isArray(args)) return true
   const input = args as Record<string, unknown>
   if (typeof input.archived === 'boolean') return true
   const removeFields = Array.isArray(input.remove_fields) ? input.remove_fields : []
   return removeFields.some(entry => typeof entry === 'string' && entry.trim() !== '')
+}
+
+/** The session's permission knobs, as the newest value of each committed event. */
+export interface YonPermissions {
+  /** `read-only` refuses every write; the other two allow them. */
+  readonly sandbox: 'read-only' | 'workspace-write' | 'danger-full-access' | undefined
+  /** `ask` wants a person for a destructive write; `never` wants nobody asked. */
+  readonly approval: 'ask' | 'never' | undefined
+}
+
+/**
+ * Read the permission knobs from one session's log, newest value winning.
+ * @param session - the calling agent's session, when the call has one.
+ * @returns the effective knobs; an absent field means the log never set it.
+ */
+export function permissionsOf(session: YonSessionLike | undefined): YonPermissions {
+  let sandbox: YonPermissions['sandbox'] = undefined
+  let approval: YonPermissions['approval'] = undefined
+  if (session === undefined) return { sandbox, approval }
+  for (let seq = session.seq - 1; seq >= 0; seq -= 1) {
+    const event = session.eventAt(seq)
+    if (event === undefined) continue
+    if (event.type === 'sandbox/mode' && sandbox === undefined) {
+      const mode = (event.data as { mode?: unknown } | undefined)?.mode
+      if (mode === 'read-only' || mode === 'workspace-write' || mode === 'danger-full-access') {
+        sandbox = mode
+      }
+    } else if (event.type === 'approval/policy' && approval === undefined) {
+      const policy = (event.data as { policy?: unknown } | undefined)?.policy
+      if (policy === 'ask' || policy === 'never') approval = policy
+    }
+    if (sandbox !== undefined && approval !== undefined) break
+  }
+  return { sandbox, approval }
+}
+
+/** What should happen to one write. */
+export type YonWriteDisposition = 'run' | 'ask' | 'refuse'
+
+/**
+ * Decide one write from what it would cost and what its session permits.
+ *
+ * The policy follows the session instead of overruling it. A read-only session
+ * refuses every write, because that is what read-only means. An additive write
+ * runs wherever writing is allowed at all. A destructive write asks in a session
+ * that wants to be asked, and — deliberately — runs in one that has said it does
+ * not: `never` there means "nobody is available to approve", which is the
+ * operator's own choice rather than an accident to fail closed on. An unset
+ * policy keeps the safe default and asks.
+ * @param destructive - whether the call could lose data.
+ * @param permissions - the session's effective knobs.
+ * @returns how the gate should answer.
+ */
+export function dispositionOf(destructive: boolean, permissions: YonPermissions): YonWriteDisposition {
+  if (permissions.sandbox === 'read-only') return 'refuse'
+  if (!destructive) return 'run'
+  return permissions.approval === 'never' ? 'run' : 'ask'
 }
 
 /**
@@ -686,13 +759,24 @@ export function registerYonProjectTools(ctx: Context, projects: YonProjectsServi
     presentCall: args => card(`Delete project “${String(args.project)}”`, 'other'),
   }))
 
-  // The gate. Adding and updating run straight through; a write that destroys
-  // something stops here, where `ask` resolves only through an approval —
-  // anything but `allowed-once` fails closed, so a destructive call nobody saw
+  // The gate: the session's own permission preset decides, and this package
+  // follows it rather than overruling it. Read-only refuses every write; an
+  // additive write runs wherever writing is allowed; a destructive write asks in
+  // a session that wants to be asked and runs in one that asked not to be. The
+  // `ask` branch resolves only through an approval, so a call nobody saw still
   // cannot run.
   disposers.push(ctx.on('tools/pre-execute', (exec, next) => {
     if (!WRITE_TOOLS.has(exec.name)) return next()
-    if (!needsApproval(exec.name, exec.arguments)) return next()
+    const destructive = isDestructiveWrite(exec.name, exec.arguments)
+    const disposition = dispositionOf(destructive, permissionsOf(exec.agent?.session))
+    if (disposition === 'run') return next()
+    if (disposition === 'refuse') {
+      return {
+        kind: 'deny' as const,
+        reason: '当前会话是「仅可查看」权限，不能改动项目配置。'
+          + '要完成改动，请把会话切到「工作区内修改」或「完全权限」（/permission workspace-write）。',
+      }
+    }
     const preview = previewWrite(projects, exec.name, exec.arguments)
     return Promise.resolve(preview === undefined ? next() : { kind: 'ask' as const, reason: preview })
   }))
