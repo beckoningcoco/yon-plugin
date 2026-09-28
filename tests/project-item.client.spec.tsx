@@ -33,6 +33,7 @@ vi.mock('@deepseek-ai/dsh-client-ui-primitives', () => ({
   Tooltip: ({ children }: Record<string, unknown>) => children as ReactElement,
   useAnchoredPosition: () => ({ left: 12, top: 12 }),
   useDismissOnOutsidePointer: () => {},
+  writeClipboard: async () => true,
 }))
 
 afterEach(cleanup)

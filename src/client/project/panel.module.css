@@ -44,9 +44,12 @@
 
 /* ── the list column ─────────────────────────────────────────────────────── */
 
+/* Narrow enough that the detail column gets the room: the list holds a name, a
+   code and a field count, and the wider the rows get the less the pane beside
+   them has for values. */
 .listPane {
   flex: none;
-  width: 244px;
+  width: 212px;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -401,7 +404,9 @@
   cursor: pointer;
 }
 
-.rowRemove {
+/* One row's trailing icon control. The neutral hover is the default; the remove
+   control and the copy control each state their own outcome. */
+.rowIcon {
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -419,8 +424,29 @@
   cursor: pointer;
 }
 
-.rowRemove:hover {
+.rowIcon:not(:disabled):hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.rowIcon:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.rowRemove:hover:not(:disabled) {
   background: var(--dsw-alias-interactive-bg-hover-danger);
+  color: var(--dsw-alias-state-error-primary);
+}
+
+/* Copy feedback lives in the button that was pressed. */
+.rowCopied,
+.rowCopied:not(:disabled):hover {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.rowCopyFailed,
+.rowCopyFailed:not(:disabled):hover {
   color: var(--dsw-alias-state-error-primary);
 }
 

@@ -11,8 +11,9 @@
  * a dialog renders its children into an element labelled by its title, and a
  * button refuses to fire while disabled.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ReactElement } from 'react'
 import type { JsonValue, ProjectDetail } from '../src/shared/types.ts'
 import type { ProjectApi } from '../src/client/project/api.ts'
@@ -61,9 +62,13 @@ vi.mock('@deepseek-ai/dsh-client-ui-primitives', () => ({
   Tooltip: ({ children }: Record<string, unknown>) => children as ReactElement,
   useAnchoredPosition: () => ({ left: 12, top: 12 }),
   useDismissOnOutsidePointer: () => {},
+  writeClipboard: vi.fn(async () => true),
 }))
 
 afterEach(cleanup)
+
+// Every case starts from a clipboard that accepts the write.
+beforeEach(() => { vi.mocked(writeClipboard).mockClear() })
 
 // jsdom implements no scrolling, and the surface scrolls a freshly created
 // project into view. Without this the effect throws and React unmounts the tree.
@@ -334,6 +339,40 @@ describe('project surface', () => {
     fireEvent.click(screen.getByText(at('project.fieldAdd')))
 
     await waitFor(() => { expect(api.setField).toHaveBeenCalledWith('p1', '端口', ['8080', '8443']) })
+  })
+
+  it('copies a field value from its own row', async () => {
+    bench({
+      p1: { name: 'proj', code: '', status: 'active', archived: false, fields: { 环境信息: { host: '10.0.0.1' } } },
+    })
+
+    fireEvent.click(await screen.findByLabelText('复制「环境信息」的值'))
+
+    await waitFor(() => {
+      expect(vi.mocked(writeClipboard)).toHaveBeenCalledWith('{"host":"10.0.0.1"}')
+    })
+    // The button that was pressed reports the outcome.
+    await screen.findByLabelText(at('project.copied'))
+  })
+
+  it('says so when the host refuses the clipboard', async () => {
+    vi.mocked(writeClipboard).mockResolvedValueOnce(false)
+    bench({
+      p1: { name: 'proj', code: '', status: 'active', archived: false, fields: { 环境信息: '10.0.0.1' } },
+    })
+
+    fireEvent.click(await screen.findByLabelText('复制「环境信息」的值'))
+
+    await screen.findByLabelText(at('project.copyFailed'))
+  })
+
+  it('offers nothing to copy on an empty value', async () => {
+    bench({
+      p1: { name: 'proj', code: '', status: 'active', archived: false, fields: { 备注: '' } },
+    })
+
+    const copy = await screen.findByLabelText('复制「备注」的值') as HTMLButtonElement
+    expect(copy.disabled).toBe(true)
   })
 
   it('asks before removing a field', async () => {

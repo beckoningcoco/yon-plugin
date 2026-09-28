@@ -13,7 +13,7 @@
  * uses for a destructive act; the row's own cross only opens it.
  */
 import { useEffect, useRef, useState } from 'react'
-import { Button, Input, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, Input, Modal, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { JsonValue } from '../../shared/types.ts'
 import { cn } from '../cn.ts'
@@ -22,6 +22,46 @@ import css from './panel.module.css'
 
 /** How long the "saved" note stays on a row before the row goes quiet again. */
 const SAVED_LINGER_MS = 1600
+
+/** How long the copy button holds its result before going quiet again. */
+const COPY_LINGER_MS = 1600
+
+/**
+ * The copy glyph: two offset frames, drawn here rather than imported so the mark
+ * does not track one harness release's icon names.
+ * @returns the decorative svg.
+ */
+function CopyMark() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect x="5.5" y="5.5" width="9" height="9" rx="2" stroke="currentColor" strokeWidth="1.2" />
+      <path
+        d="M10.5 3.5a2 2 0 0 0-2-2h-5a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+/**
+ * The copy button's outcome glyph.
+ * @returns the decorative svg.
+ */
+function CheckMark() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M3.5 8.5l3 3 6-7"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
 
 /** Per-row save state, owned here rather than by the project. */
 type RowState = 'saving' | 'saved' | 'failed'
@@ -73,10 +113,31 @@ interface FieldRowProps {
  */
 function FieldRow({ fieldKey, value, state, t, onSave, onRetry, onAskRemove }: FieldRowProps) {
   const [text, setText] = useState(() => formatValue(value))
+  // The copy result belongs to this row's button; nothing else needs to know.
+  const [copy, setCopy] = useState<'copied' | 'failed'>()
+  const copyTimer = useRef<ReturnType<typeof setTimeout>>()
 
   // A store round trip republishes the value; a failed save leaves `value`
   // untouched, so the operator's text survives to be retried.
   useEffect(() => { setText(formatValue(value)) }, [value])
+
+  useEffect(() => () => {
+    if (copyTimer.current !== undefined) clearTimeout(copyTimer.current)
+  }, [])
+
+  /** Put the row's current text on the clipboard and say what happened. */
+  const copyValue = (): void => {
+    const settleCopy = (outcome: 'copied' | 'failed'): void => {
+      setCopy(outcome)
+      if (copyTimer.current !== undefined) clearTimeout(copyTimer.current)
+      copyTimer.current = setTimeout(() => { setCopy(undefined) }, COPY_LINGER_MS)
+    }
+    // What is on screen is what leaves: an edit that is not saved yet still copies.
+    void writeClipboard(text).then(
+      accepted => { settleCopy(accepted ? 'copied' : 'failed') },
+      () => { settleCopy('failed') },
+    )
+  }
 
   return (
     <div className={cn(css.fieldRow)}>
@@ -107,7 +168,23 @@ function FieldRow({ fieldKey, value, state, t, onSave, onRetry, onAskRemove }: F
         )}
       <button
         type="button"
-        className={cn(css.rowRemove)}
+        className={cn(
+          css.rowIcon,
+          copy === 'copied' ? css.rowCopied : undefined,
+          copy === 'failed' ? css.rowCopyFailed : undefined,
+        )}
+        aria-label={copy === 'copied'
+          ? t('project.copied')
+          : copy === 'failed' ? t('project.copyFailed') : t('project.copyValueLabel', { name: fieldKey })}
+        title={t('project.copyValue')}
+        disabled={text === ''}
+        onClick={copyValue}
+      >
+        {copy === 'copied' ? <CheckMark /> : <CopyMark />}
+      </button>
+      <button
+        type="button"
+        className={cn(css.rowIcon, css.rowRemove)}
         aria-label={`${t('project.fieldRemove')}: ${fieldKey}`}
         title={t('project.fieldRemove')}
         onClick={onAskRemove}
@@ -300,7 +377,7 @@ export function FieldTable({
           </Button>
           <button
             type="button"
-            className={cn(css.rowRemove)}
+            className={cn(css.rowIcon)}
             aria-label={t('project.cancel')}
             title={t('project.cancel')}
             onClick={() => { onAddingChange(false) }}

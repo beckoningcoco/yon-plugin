@@ -55,6 +55,10 @@ export declare const zh: {
     'project.fieldSaving': string;
     'project.fieldSaved': string;
     'project.fieldFailed': string;
+    'project.copyValue': string;
+    'project.copyValueLabel': string;
+    'project.copied': string;
+    'project.copyFailed': string;
     'project.search': string;
     'project.searchEmpty': string;
     'project.empty': string;
@@ -118,6 +122,10 @@ export declare const en: {
     'project.fieldSaving': string;
     'project.fieldSaved': string;
     'project.fieldFailed': string;
+    'project.copyValue': string;
+    'project.copyValueLabel': string;
+    'project.copied': string;
+    'project.copyFailed': string;
     'project.search': string;
     'project.searchEmpty': string;
     'project.empty': string;
