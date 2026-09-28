@@ -1,10 +1,14 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    // The host half is emitted as plain ESM: Node loads it directly, so every
+    // relative import becomes `./x.js` and every bare import stays a real import
+    // resolved from this package's dependencies. Only the browser half needs a
+    // bundler (it must be wrapped as a loader factory), and tsdown owns that.
     "noEmit": false,
-    "emitDeclarationOnly": true,
     "declaration": true,
-    "outDir": "lib/types",
+    "outDir": "lib",
+    "declarationDir": "lib/types",
     "rootDir": "src"
   },
   "include": ["src"]

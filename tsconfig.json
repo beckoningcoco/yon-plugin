@@ -10,11 +10,14 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "verbatimModuleSyntax": true,
-    "allowImportingTsExtensions": true,
+    // Sources spell relative imports with their `.ts` extension and the compiler
+    // rewrites them to `.js` on emit — the same convention the harness uses, so
+    // one source tree serves both the type check and the emitted host half.
+    "rewriteRelativeImportExtensions": true,
     "isolatedModules": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": []
+    "types": ["node"]
   },
   "include": ["src", "tests"]
 }

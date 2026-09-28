@@ -1,14 +1,16 @@
 /**
- * Self-contained build for the two faces of this plugin.
+ * Bundles the browser half only.
+ *
+ * The host half is emitted by `tsc -p tsconfig.lib.json` as plain ESM, which
+ * Node loads directly; a bundler there would only get in the way (it left this
+ * package's own relative modules as unresolvable `./x.ts` imports, and bundling
+ * a harness library would give the host a second copy of it).
  *
  * A DSH client plugin bundle is not an ordinary ES module: the shell fetches it
  * outside Vite's graph and evaluates it as a closure factory
  * (`window.__ModuleLoader__.load({ id, factory })`) whose `require` is answered
- * by the page's frozen module table. This config reproduces that contract
- * without depending on the harness repository, so the plugin can live, build,
- * and publish from its own repository.
+ * by the page's frozen module table. Two rules keep the artifact correct:
  *
- * Two rules keep the artifact correct:
  * 1. Every module specifier the shell seeds into its table stays a `require()`
  *    call (see {@link PLATFORM_MODULES}); anything else is inlined, because a
  *    `require()` the table cannot answer throws at activation.
@@ -98,59 +100,44 @@ function cssModulesInline(): NonNullable<UserConfig['plugins']>[number] {
   }
 }
 
-export default [
-  // Host half: the empty apply that gives a Loader row a module to import.
-  {
-    name: ID,
-    entry: { index: 'src/index.ts' },
-    outDir: 'lib',
-    format: ['esm'],
-    platform: 'node',
-    target: 'es2024',
-    dts: false,
-    // The shell imports `lib/index.js` by exact name (package.json main/exports).
-    fixedExtension: false,
-    clean: false,
+export default {
+  name: `${ID}/client`,
+  entry: { client: 'src/client/index.ts' },
+  outDir: 'lib',
+  format: ['cjs'],
+  platform: 'browser',
+  target: 'es2024',
+  dts: false,
+  // The shell imports `lib/client.js` by exact name; `.cjs` would miss.
+  fixedExtension: false,
+  // Plugin code is fetched outside Vite's module graph, so its own bundle must
+  // carry the source mapping the browser uses.
+  sourcemap: true,
+  clean: false,
+  deps: {
+    neverBundle: isExternal,
+    // Anything the module table cannot answer must be inlined: the `require`
+    // handed to the factory is synchronous and cannot wait for a fetch.
+    alwaysBundle: (specifier: string) => !isExternal(specifier),
   },
-  // Browser half: the loader's lazy-CJS factory artifact.
-  {
-    name: `${ID}/client`,
-    entry: { client: 'src/client/index.ts' },
-    outDir: 'lib',
-    format: ['cjs'],
-    platform: 'browser',
-    target: 'es2024',
-    dts: false,
-    fixedExtension: false,
-    // Plugin code is fetched outside Vite's module graph, so its own bundle must
-    // carry the source mapping the browser uses.
-    sourcemap: true,
-    clean: false,
-    deps: {
-      neverBundle: isExternal,
-      // Anything the module table cannot answer must be inlined: the `require`
-      // handed to the factory is synchronous and cannot wait for a fetch.
-      alwaysBundle: (specifier: string) => !isExternal(specifier),
-    },
-    inputOptions: {
-      resolve: {
-        conditionNames: ['production', 'browser', 'import', 'module', 'default'],
-      },
-    },
-    // Bundled dependencies read these at module scope; the substitution keeps a
-    // CJS artifact from tripping over `import.meta`.
-    define: {
-      'process.env.NODE_ENV': JSON.stringify('production'),
-      'import.meta.env.MODE': JSON.stringify('production'),
-      'import.meta.env': JSON.stringify({ MODE: 'production' }),
-    },
-    plugins: [cssModulesInline()],
-    outputOptions: {
-      entryFileNames: 'client.js',
-      sourcemapExcludeSources: false,
-      banner: `window.__ModuleLoader__.load({ id: ${JSON.stringify(ID)}, factory: (require) => {`,
-      footer: 'return module.exports; } });',
-      intro: 'var module = { exports: {} }; var exports = module.exports;',
+  inputOptions: {
+    resolve: {
+      conditionNames: ['production', 'browser', 'import', 'module', 'default'],
     },
   },
-] satisfies UserConfig[]
+  // Bundled dependencies read these at module scope; the substitution keeps a
+  // CJS artifact from tripping over `import.meta`.
+  define: {
+    'process.env.NODE_ENV': JSON.stringify('production'),
+    'import.meta.env.MODE': JSON.stringify('production'),
+    'import.meta.env': JSON.stringify({ MODE: 'production' }),
+  },
+  plugins: [cssModulesInline()],
+  outputOptions: {
+    entryFileNames: 'client.js',
+    sourcemapExcludeSources: false,
+    banner: `window.__ModuleLoader__.load({ id: ${JSON.stringify(ID)}, factory: (require) => {`,
+    footer: 'return module.exports; } });',
+    intro: 'var module = { exports: {} }; var exports = module.exports;',
+  },
+} satisfies UserConfig
