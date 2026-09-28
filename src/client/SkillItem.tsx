@@ -1,65 +1,56 @@
 /**
- * The panel's built-in entry: one icon cell that opens the project surface.
+ * The panel's second built-in entry: one icon cell that opens the skill surface.
  *
- * The surface is a dialog rather than a region of the panel body — a 280px strip
- * cannot hold a list beside a field table — and this entry owns it, so opening it
- * needs no cross-seat coordination. While the surface is up the entry also tells
- * the panel to stand down, and when it closes the entry hands focus back to the
- * cell that opened it.
+ * Like the project cell it owns the dialog it opens, so opening it needs no
+ * cross-seat coordination and the panel's own dismissals stand down while it is
+ * up. The two cells are one visual part by construction — they share the entry
+ * stylesheet — because a panel whose buttons are laid out differently from each
+ * other reads as two features that happened to land in the same box.
  */
 import { useEffect, useRef, useState } from 'react'
 import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   InjectFace, PropsLocale, PropsRuntime,
 } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ProjectItemFace } from './slots.ts'
-import { ProjectManager } from './project/ProjectManager.tsx'
+import type { SkillItemFace } from './slots.ts'
+import { SkillManager } from './skill/SkillManager.tsx'
 import css from './panel-item.module.css'
 
 /**
  * Composed props of this panel button seat: the owner share carries the panel's
- * live open state, and the inject face carries the project operations plus the
+ * live open state, and the inject face carries the skill operations plus the
  * overlay announcement.
  */
-export type ProjectItemProps =
+export type SkillItemProps =
   PropsRuntime<'yon.panel.item'>
-  & InjectFace<ProjectItemFace>
+  & InjectFace<SkillItemFace>
   & PropsLocale<'yonPanel'>
 
 /**
- * The entry's glyph: a filing-box outline drawn here instead of imported, so the
- * mark's shape and name do not track one harness release's icon set.
+ * The entry's glyph: a sheet with a folded corner. Drawn here instead of
+ * imported, so the mark's shape tracks nothing but this file.
  * @returns the decorative svg.
  */
-function FolderMark() {
+function DocMark() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <rect
-        x="1.75"
-        y="3.25"
-        width="12.5"
-        height="9.5"
-        rx="1.75"
-        stroke="currentColor"
-        strokeWidth="1.2"
-      />
-      <path d="M1.75 6h12.5" stroke="currentColor" strokeWidth="1.2" />
       <path
-        d="M5.25 3.25V2.4a.9.9 0 0 1 .9-.9h3.7a.9.9 0 0 1 .9.9v.85"
+        d="M3.6 2.3h5.3l3.5 3.5v6.9a.9.9 0 0 1-.9.9H3.6a.9.9 0 0 1-.9-.9V3.2a.9.9 0 0 1 .9-.9Z"
         stroke="currentColor"
         strokeWidth="1.2"
         strokeLinejoin="round"
       />
+      <path d="M8.75 2.5v3.4h3.4" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
     </svg>
   )
 }
 
 /**
- * Render the entry cell and, while open, the project surface.
+ * Render the entry cell and, while open, the skill surface.
  * @param props - composed slot props.
  * @returns the cell, plus the dialog when it is showing.
  */
-export function ProjectItem({ t, pushOverlay, ...api }: ProjectItemProps) {
+export function SkillItem({ t, pushOverlay, ...api }: SkillItemProps) {
   const [open, setOpen] = useState(false)
   const trigger = useRef<HTMLButtonElement | null>(null)
   // The face may be rebuilt by the host between renders; the announcement must
@@ -83,23 +74,23 @@ export function ProjectItem({ t, pushOverlay, ...api }: ProjectItemProps) {
 
   return (
     <>
-      <Tooltip label={t('item.project')} side="bottom" delayMs={300}>
+      <Tooltip label={t('item.skills')} side="bottom" delayMs={300}>
         <span className={css.cell}>
           <button
             ref={trigger}
             type="button"
             className={css.item}
             data-active={open ? '' : undefined}
-            aria-label={t('item.project')}
+            aria-label={t('item.skills')}
             aria-expanded={open}
             aria-haspopup="dialog"
             onClick={() => { setOpen(value => !value) }}
           >
-            <FolderMark />
+            <DocMark />
           </button>
         </span>
       </Tooltip>
-      {open && <ProjectManager t={t} onClose={() => { setOpen(false) }} {...api} />}
+      {open && <SkillManager t={t} onClose={() => { setOpen(false) }} {...api} />}
     </>
   )
 }

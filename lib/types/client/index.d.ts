@@ -4,6 +4,10 @@
  * `yon.panel.item` seat every feature package contributes its buttons to. This
  * plugin owns the surface and its open state only; what a button does belongs
  * to the package that adds it.
+ *
+ * Two buttons ship here: project management, and the skills this plugin
+ * contributes. The second is not a second kind of seat — it is the same seat
+ * taken twice, which is the point of the seat existing.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis';
 import { type YonPanelKey } from './locales.ts';

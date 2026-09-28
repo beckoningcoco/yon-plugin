@@ -15,6 +15,10 @@
  *   POST   /yon/api/projects/<id>/archive           soft delete / restore
  *   PUT    /yon/api/projects/<id>/fields/<fieldKey> write one dynamic field
  *   DELETE /yon/api/projects/<id>/fields/<fieldKey> drop one dynamic field
+ *
+ *   GET    /yon/api/skills                   list (this plugin's, then the operator's)
+ *   GET    /yon/api/skills/<name>            one skill, body included
+ *   PATCH  /yon/api/skills/<name>            switch one bundled skill on or off
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
@@ -23,6 +27,7 @@ import {
   type UpdateProjectInput,
 } from '../shared/types.ts'
 import { ProjectError, type YonProjectsService } from './service.ts'
+import { SkillError, type YonSkillsService } from './skill-registry.ts'
 
 /** Largest request body accepted, in bytes. */
 const MAX_BODY_BYTES = 1_000_000
@@ -110,12 +115,65 @@ function segmentsOf(pathname: string): string[] | undefined {
 }
 
 /**
- * Register the project API on the carrier service.
+ * Serve the `/yon/api/skills` branch.
+ *
+ * A skill the operator owns is listed and readable but can never be switched:
+ * `setEnabled` accepts only a name this plugin ships, and the service refuses
+ * anything else. The panel therefore cannot use this route to disturb a skill
+ * living in `~/.agents/skills`.
+ * @param req - the request; read for the switch body.
+ * @param res - the response.
+ * @param method - HTTP method.
+ * @param name - the skill-name segment, absent for the collection.
+ * @param skills - the skill service.
+ */
+async function handleSkills(
+  req: IncomingMessage,
+  res: ServerResponse,
+  method: string,
+  name: string | undefined,
+  skills: YonSkillsService,
+): Promise<void> {
+  if (name === undefined) {
+    if (method !== 'GET') {
+      sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+      return
+    }
+    sendJson(res, 200, await skills.list())
+    return
+  }
+  if (method === 'GET') {
+    const skill = await skills.read(name)
+    if (skill === undefined) {
+      sendFailure(res, 404, 'not-found', `no skill "${name}"`)
+      return
+    }
+    sendJson(res, 200, { skill })
+    return
+  }
+  if (method === 'PATCH') {
+    const body = await objectBody(req)
+    if (typeof body.enabled !== 'boolean') {
+      throw new SkillError('invalid-input', 'body must carry a boolean "enabled"')
+    }
+    sendJson(res, 200, { skill: await skills.setEnabled(name, body.enabled) })
+    return
+  }
+  sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+}
+
+/**
+ * Register the project and skill APIs on the carrier service.
  * @param ctx - host context carrying `webServer`.
- * @param service - the store to expose.
+ * @param service - the project store to expose.
+ * @param skills - the skill service to expose.
  * @returns the disposer removing the route.
  */
-export function registerYonApi(ctx: Context, service: YonProjectsService): () => void {
+export function registerYonApi(
+  ctx: Context,
+  service: YonProjectsService,
+  skills: YonSkillsService,
+): () => void {
   const carrier = ctx.get('webServer') as RouteRegistrar | undefined
   if (carrier === undefined) {
     throw new Error('yon-panel: the webServer service is unavailable, so /yon/api cannot be served')
@@ -129,7 +187,15 @@ export function registerYonApi(ctx: Context, service: YonProjectsService): () =>
         const url = new URL(req.url ?? '/', 'http://localhost')
         const method = req.method ?? 'GET'
         const segments = segmentsOf(url.pathname)
-        if (segments === undefined || segments[0] !== 'projects') {
+        if (segments === undefined) {
+          sendFailure(res, 404, 'not-found', `no route for ${method} ${url.pathname}`)
+          return
+        }
+        if (segments[0] === 'skills') {
+          await handleSkills(req, res, method, segments[1], skills)
+          return
+        }
+        if (segments[0] !== 'projects') {
           sendFailure(res, 404, 'not-found', `no route for ${method} ${url.pathname}`)
           return
         }
@@ -230,7 +296,7 @@ export function registerYonApi(ctx: Context, service: YonProjectsService): () =>
         // swallowed cause would leave nothing to debug with.
         console.error('[yon-panel] /yon/api failure', error)
         try {
-          if (error instanceof ProjectError) {
+          if (error instanceof ProjectError || error instanceof SkillError) {
             sendFailure(res, error.code === 'not-found' ? 404 : 400, error.code, error.message)
           } else {
             sendFailure(res, 500, 'internal', error instanceof Error ? error.message : String(error))

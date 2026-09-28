@@ -10,7 +10,7 @@
 import { useRef, useState } from 'react'
 import { Input } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useComposingGuard } from './useComposing.ts'
-import css from './panel.module.css'
+import css from '../panel.module.css'
 
 /** Props of one in-place editable value. */
 export interface InlineTextProps {

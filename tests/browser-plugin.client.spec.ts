@@ -65,7 +65,7 @@ describe('dsh-plugin-yon-panel browser plugin', () => {
 
     const action = registrations.find(entry => entry.name === 'sidebar.footer.action')
 
-    expect(registrations).toHaveLength(2)
+    expect(registrations).toHaveLength(3)
     expect(action?.options.id).toBe('yon-btn')
     expect(action?.options.order).toBe(10)
     expect(action?.options.children).toEqual({
@@ -107,6 +107,29 @@ describe('dsh-plugin-yon-panel browser plugin', () => {
     expect(panelFace.hooks.panel.getSnapshot().overlayDepth).toBe(1)
     release()
     expect(panelFace.hooks.panel.getSnapshot().overlayDepth).toBe(0)
+  })
+
+  it('registers the skill entry beside the project one, in that order', async () => {
+    const { registrations } = await bench()
+
+    const entries = registrations.filter(item => item.name === 'yon.panel.item')
+
+    expect(entries.map(entry => entry.options.id)).toEqual(['project', 'skills'])
+    expect(entries.map(entry => entry.options.order)).toEqual([10, 20])
+  })
+
+  it('gives the skill entry the skill operations and the overlay announcement', async () => {
+    const { registrations } = await bench()
+
+    const entry = registrations.find(item => item.options.id === 'skills')
+    const face = (entry?.options.inject as () => Record<string, unknown>)()
+
+    // The skill surface: every operation the panel calls, and no URL. The switch
+    // is here, but the host is what refuses a name this plugin does not ship.
+    for (const method of ['listSkills', 'getSkill', 'setSkillEnabled', 'pushOverlay']) {
+      expect(typeof face[method]).toBe('function')
+    }
+    expect(face.listProjects).toBeUndefined()
   })
 
   it('registers its dictionaries under the plugin namespace', async () => {

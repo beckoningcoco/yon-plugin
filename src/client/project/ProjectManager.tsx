@@ -23,7 +23,7 @@ import type { ProjectApi } from './api.ts'
 import { CreateProjectDialog, type CreateProjectDraft } from './CreateProjectDialog.tsx'
 import { FieldTable } from './FieldTable.tsx'
 import { InlineText } from './InlineText.tsx'
-import css from './panel.module.css'
+import css from '../panel.module.css'
 
 /** Below this many projects the list is short enough to read without a search box. */
 const SEARCH_THRESHOLD = 8

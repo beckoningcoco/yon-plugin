@@ -1,19 +1,5 @@
-/**
- * The browser half's only route to the store: thin calls against `/yon/api`.
- *
- * It lives outside the components on purpose. The apply world builds one of
- * these and hands the methods to components through an inject face, so a
- * component never fetches, never subscribes, and never learns a URL.
- */
 import { type CreateProjectInput, type JsonValue, type ProjectDetail, type ProjectSummary, type UpdateProjectInput } from '../../shared/types.ts';
-/** One failed call, carrying the API's machine code. */
-export declare class ProjectApiError extends Error {
-    /** Machine code the API reported (`not-found`, `invalid-input`, `internal`, …). */
-    readonly code: string;
-    constructor(
-    /** Machine code the API reported (`not-found`, `invalid-input`, `internal`, …). */
-    code: string, message: string);
-}
+export { ApiError as ProjectApiError } from '../request.ts';
 /** The project operations the UI drives. */
 export interface ProjectApi {
     /**

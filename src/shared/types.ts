@@ -96,5 +96,51 @@ export interface ProjectPayload {
 /** One mutation that removes something answers with the affected project. */
 export type ProjectMutationPayload = ProjectPayload
 
+/** One skill as the panel lists it. */
+export interface SkillView {
+  /** Kebab-case identifier the registry addresses it by. */
+  readonly name: string
+  /** One line, as the model sees it while choosing a skill. */
+  readonly description: string
+  readonly whenToUse?: string
+  /** Discovery origin; `yon-panel` for skills this plugin ships. */
+  readonly source: string
+  /** Providing registry layer; `runtime` for skills this plugin registers. */
+  readonly provider: string
+  /**
+   * Whether this plugin ships and owns the skill. Only a managed skill can be
+   * switched off: the rest come from the operator's own skill directories, and
+   * this panel shows them read-only rather than pretending to own them.
+   */
+  readonly managed: boolean
+  /** Whether the skill is currently offered to a session. */
+  readonly enabled: boolean
+  readonly modelInvocable: boolean
+  readonly userInvocable: boolean
+}
+
+/** One skill with its instruction body, for the detail pane. */
+export interface SkillDetail extends SkillView {
+  /** Markdown body, frontmatter removed. */
+  readonly content: string
+}
+
+/** Body of `PATCH /yon/api/skills/<name>`. */
+export interface SetSkillEnabledInput {
+  readonly enabled: boolean
+}
+
+/** `GET /yon/api/skills` payload. */
+export interface SkillListPayload {
+  readonly skills: readonly SkillView[]
+  /** False when a skill source could not be read; the list is then partial. */
+  readonly complete: boolean
+}
+
+/** `GET /yon/api/skills/<name>` and the switch payload. */
+export interface SkillPayload {
+  readonly skill: SkillDetail
+}
+
 /** Where the API lives, shared by the host's route table and the client's calls. */
 export const API_PREFIX = '/yon/api'

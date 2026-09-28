@@ -13,7 +13,7 @@ import { Button, Input, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { cn } from '../cn.ts'
 import { useComposingGuard } from './useComposing.ts'
-import css from './panel.module.css'
+import css from '../panel.module.css'
 
 /** What the dialog hands back on create. */
 export interface CreateProjectDraft {

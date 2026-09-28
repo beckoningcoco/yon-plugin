@@ -4,6 +4,7 @@
 // entry occupies, rendered at the sidebar foot directly above the settings row.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { ProjectApi } from './project/api.ts'
+import type { SkillApi } from './skill/api.ts'
 
 /**
  * Data face the panel's built-in entry receives: the project API, closed over the
@@ -15,6 +16,20 @@ export type ProjectItemFace = ProjectApi & {
   /**
    * Announce a layer standing above the panel (the project surface). The panel's
    * own Escape and outside-click dismissals stand down while one is up.
+   * @returns the release for that layer.
+   */
+  pushOverlay(): () => void
+}
+
+/**
+ * Data face the panel's skill entry receives: the skill API plus the same
+ * panel-level gesture. Kept a separate face rather than merged into
+ * {@link ProjectItemFace}, because a feature package must be able to receive
+ * exactly the operations it uses.
+ */
+export type SkillItemFace = SkillApi & {
+  /**
+   * Announce a layer standing above the panel (the skill surface).
    * @returns the release for that layer.
    */
   pushOverlay(): () => void

@@ -1,57 +1,19 @@
 /**
- * The browser half's only route to the store: thin calls against `/yon/api`.
+ * The project calls the UI drives: thin calls against `/yon/api/projects`.
  *
  * It lives outside the components on purpose. The apply world builds one of
  * these and hands the methods to components through an inject face, so a
  * component never fetches, never subscribes, and never learns a URL.
  */
+import { request } from '../request.ts'
 import {
-  API_PREFIX, type CreateProjectInput, type JsonValue, type ProjectDetail,
+  type CreateProjectInput, type JsonValue, type ProjectDetail,
   type ProjectSummary, type UpdateProjectInput,
 } from '../../shared/types.ts'
 
-/** One failed call, carrying the API's machine code. */
-export class ProjectApiError extends Error {
-  constructor(
-    /** Machine code the API reported (`not-found`, `invalid-input`, `internal`, …). */
-    readonly code: string,
-    message: string,
-  ) {
-    super(message)
-    this.name = 'ProjectApiError'
-  }
-}
-
-/** A response body that may or may not carry a failure. */
-interface FailureBody {
-  readonly code?: unknown
-  readonly message?: unknown
-}
-
-/**
- * Perform one JSON call, turning a non-2xx answer into {@link ProjectApiError}.
- * @param path - path after the API prefix (e.g. `/projects`).
- * @param init - fetch options; the JSON content type is added here.
- * @returns the parsed body.
- */
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_PREFIX}${path}`, {
-    ...init,
-    headers: { 'content-type': 'application/json', ...init.headers },
-  })
-  const text = await response.text()
-  const body: unknown = text === '' ? undefined : JSON.parse(text) as unknown
-  if (!response.ok) {
-    const failure = (body ?? {}) as FailureBody
-    throw new ProjectApiError(
-      typeof failure.code === 'string' ? failure.code : `http-${response.status}`,
-      typeof failure.message === 'string' && failure.message !== ''
-        ? failure.message
-        : `HTTP ${response.status}`,
-    )
-  }
-  return body as T
-}
+// The shared failure keeps this module's name for it: callers and specs already
+// reach for `ProjectApiError` here.
+export { ApiError as ProjectApiError } from '../request.ts'
 
 /** Field-name URL segment: any text the operator typed. */
 const fieldSegment = (fieldKey: string): string => encodeURIComponent(fieldKey)

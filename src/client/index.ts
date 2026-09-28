@@ -4,6 +4,10 @@
  * `yon.panel.item` seat every feature package contributes its buttons to. This
  * plugin owns the surface and its open state only; what a button does belongs
  * to the package that adds it.
+ *
+ * Two buttons ship here: project management, and the skills this plugin
+ * contributes. The second is not a second kind of seat — it is the same seat
+ * taken twice, which is the point of the seat existing.
  */
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
@@ -15,7 +19,9 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { createYonPanelStore } from './panel-store.ts'
 import { createProjectApi } from './project/api.ts'
+import { createSkillApi } from './skill/api.ts'
 import { ProjectItem } from './ProjectItem.tsx'
+import { SkillItem } from './SkillItem.tsx'
 import { YonPanelRoot } from './YonPanelRoot.tsx'
 import { en, zh, type YonPanelKey } from './locales.ts'
 
@@ -47,6 +53,7 @@ export function apply(ctx: ClientContext): void {
   // One API client per apply: components receive its operations through the
   // entry's inject face below, so no component builds a URL or fetches.
   const projectApi = createProjectApi()
+  const skillApi = createSkillApi()
 
   // A fresh list id adds this action beside the shipped footer actions, above
   // the settings row; the children table declares (and thereby authorizes) the
@@ -81,4 +88,15 @@ export function apply(ctx: ClientContext): void {
     // stops answering Escape and outside clicks while it is up.
     inject: () => ({ ...projectApi, pushOverlay: () => panel.pushOverlay() }),
   }, ProjectItem))
+
+  // The skill cell, beside it: same seat, same contract, its own surface. The
+  // shell addresses neither entry by name, so adding a button is exactly this —
+  // one more registration against the same seat.
+  ctx.slots.inject('yon.panel.item', () => ctx.slots.register({
+    name: 'yon.panel.item',
+    id: 'skills',
+    order: 20,
+    locale: NS,
+    inject: () => ({ ...skillApi, pushOverlay: () => panel.pushOverlay() }),
+  }, SkillItem))
 }

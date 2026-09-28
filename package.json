@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-yon-panel",
   "version": "0.1.0",
-  "description": "Yon button panel for the DSH web client: a sidebar-foot action (above Settings) opening a panel of buttons contributed by other plugins",
+  "description": "Yon button panel for the DSH web client: a sidebar-foot action opening a panel of plugin-contributed buttons, with built-in project management and bundled skills",
   "keywords": [
     "dsh",
     "deepseek-harness",
@@ -53,10 +53,10 @@
     "zod": "^4.4.3"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json && tsdown",
+    "build": "node scripts/build-skills.mjs && tsc -p tsconfig.lib.json && tsdown",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "verify": "node scripts/verify-artifact.mjs",
+    "verify": "node scripts/build-skills.mjs --check && node scripts/verify-artifact.mjs",
     "prepack": "npm run build"
   },
   "peerDependencies": {

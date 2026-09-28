@@ -4,8 +4,9 @@ DSH（DeepSeek Harness）Web GUI 的 **Yon 按钮面板** 插件，带一个**�
 
 | 半边 | 做什么 |
 |---|---|
-| 浏览器半 | 侧栏底部、设置按钮**上方**一个 `Y` 图标 → 点开是按钮面板；面板里的按钮由任意插件通过 `yon.panel.item` 席位贡献 |
+| 浏览器半 | 侧栏底部、设置按钮**上方**一个 `Y` 图标 → 点开是按钮面板，里面两个内建格子：**项目管理** 与 **YONSKILL**；面板里的按钮由任意插件通过 `yon.panel.item` 席位贡献 |
 | Host 半 | 「项目」存储（主表 + 动态字段子表），以三种方式对外开放：`ctx.yonProjects` 服务（同进程插件）、`project_*` agent 工具（在对话里说人话改配置）、`/yon/api` HTTP 路由（任何前端） |
+| Host 半 | 插件**自带技能**：`skills/*/SKILL.md` 在构建时内联，插件挂载时注册进 DSH 的技能目录，**卸载时自动消失**；开关存在 `yon_skills` 领域里 |
 
 **安装不需要改动 DSH 仓库**：UI 占用 ui-sidebar 已声明的 `sidebar.footer.action` 席位，数据落在 DSH 自带的 storage 子系统上。
 
@@ -69,8 +70,13 @@ project_fields  子表：动态字段，一行一个
 | `POST` | `/yon/api/projects/<id>/archive` | 软删除 / 恢复（`{ archived }`，缺省 `true`） |
 | `PUT` | `/yon/api/projects/<id>/fields/<字段名>` | 写一个动态字段 `{ value }` |
 | `DELETE` | `/yon/api/projects/<id>/fields/<字段名>` | 删一个动态字段 |
+| `GET` | `/yon/api/skills` | 技能列表：本插件自带的在前、你自己的在后，另带 `complete`（来源是否全部读到） |
+| `GET` | `/yon/api/skills/<技能名>` | 一个技能，含正文 |
+| `PATCH` | `/yon/api/skills/<技能名>` | 开关本插件自带的某个技能 `{ enabled }` |
 
 字段名走 URL 段，需要 `encodeURIComponent`（中文/斜杠都没问题）。
+
+> ⚠️ `PATCH /yon/api/skills/<技能名>` **只接受本插件自带的技能名**，其它名字一律 404。这条路由无法用来改动你自己技能目录里的任何东西。
 
 ### 同进程引用（给其他插件）
 
@@ -86,6 +92,16 @@ const stop = ctx.yonProjects.subscribe(() => {   // 变更通知（来自 domain
 ```
 
 写入同理：`create` / `update` / `setField` / `removeField` / `remove`。
+
+技能服务同理：
+
+```ts
+export const inject = ['yonSkills']
+
+const { skills, complete } = await ctx.yonSkills.list()  // 自带技能在前，自己的在后
+await ctx.yonSkills.setEnabled('yon-devkit', false)      // 只对本插件自带的技能有效，其余抛 not-found
+const detail = await ctx.yonSkills.read('yon-devkit')    // 含正文
+```
 
 ### 数据落在哪、用什么介质
 
@@ -147,9 +163,54 @@ Host 半把这份存储同时注册成 **agent 工具**，所以你可以直接�
 
 > ⚠️ **需要重启 DSH**：工具是 host 半注册的，改完插件必须重启才生效（浏览器半只需要刷新页面）。
 
+### 插件自带技能
+
+插件在 `skills/<名字>/SKILL.md` 里预制技能。构建时正文被**内联**进 `lib/host/skill-catalog.generated.js`，插件挂载时通过 `ctx.skills.register()` 注册进 DSH 的技能目录：
+
+```
+skills/yon-devkit/SKILL.md            ← 你编辑的源文件（普通技能 bundle，带 frontmatter）
+        ↓  pnpm build（scripts/build-skills.mjs）
+src/host/skill-catalog.generated.ts   ← 生成物，已提交，不要手改
+        ↓  tsc
+lib/host/skill-catalog.generated.js   ← 随包发布
+        ↓  插件挂载时 ctx.skills.register()
+当前会话的技能目录                     ← 出现在模型的技能列表和 /技能名 里
+```
+
+**为什么内联，而不是安装时写文件**：
+
+- **卸载即消失，零残留**。技能是「随插件生命周期存在」的同进程值，从不落到你的技能目录里，所以不存在「删一半失败留下半个 bundle」这种事。注册返回的是 Cordis 的 effect disposer，插件卸载时自动注销并让技能目录缓存失效。
+- **不用解析运行时路径**。运行时读文件，得先相对一个可能被 loader 从任意位置加载的 bundle 定位 `skills/`，而且在没有真实文件系统的部署上直接失败。
+- **注册是同步的**，插件一挂载，技能目录就是完整的。
+
+**优先级**（DSH 自己的规则，不是本插件定的，数字小者胜）：
+
+| rank | 位置 | 来源 |
+|---|---|---|
+| 100 | `<git 根>/.dsh/skills` | project-dsh |
+| 200 | `<git 根>/.agents/skills` | project-agents |
+| 300 | `customSkillDirs` | custom |
+| — | **本插件注册的运行时技能** | runtime |
+| 400 | `~/.dsh/skills` | user-dsh |
+| 500 | `~/.agents/skills` | user-agents |
+| 600 | `$DSH_BUNDLED_SKILL_DIR` | bundled |
+
+也就是说自带技能**压过你装在 `~/.agents/skills` 里的同名技能，但压不过某个项目仓库里 pin 住的版本**。本插件因此刻意只用新名字，不碰你现有的通用技能。
+
+当前只带一个占位技能 `yon-devkit`（用友客开项目的配置入口，正文里划清了与 `yon-ncc-dev` / `yonyou-bip-dev` 的分工）。
+
+**开关**：`YONSKILL` 面板里可以单独停用某个自带技能，状态存在 `yon_skills` 领域（`$DSH_HOME/storages/yon_skills/skill_preferences/*.json`），下次启动按它决定注册哪些。停用只是不注册，不删任何东西。
+
+> ⚠️ **需要重启 DSH**：技能由 host 半注册。改完 `skills/*.md` 要 `pnpm build` 并重启，只刷新页面不会重新注册。
+
 ## 按钮面板（浏览器半）
 
-侧栏底部的 `Y` 图标点开是 280px 的小面板；面板内有一个内建格子「项目管理」（图标 + 悬停显示完整描述）。
+侧栏底部的 `Y` 图标点开是 280px 的小面板。面板内有两个内建格子（悬停显示名字）：
+
+| 格子 | 名字 | 打开什么 |
+|---|---|---|
+| 文件夹图标 | 项目管理 | 项目列表 + 字段编辑 |
+| 文档图标 | **YONSKILL** | 技能面板 |
 
 ### 项目管理界面怎么用
 
@@ -180,6 +241,25 @@ Host 半把这份存储同时注册成 **agent 工具**，所以你可以直接�
 - **危险操作按风险分级**：删字段是局部小影响 → 小对话框确认；删项目不可逆 → 勾选式风险确认。
 - **组件不取数、不订阅**：`createProjectApi()` 在 `apply` 里建一次，通过条目的 inject face 投影进组件，组件拿到的是一组回调 —— 所以组件测试可以完全脱开 host 跑。
 
+### 技能面板（YONSKILL）怎么用
+
+同样是原生对话框，左右两栏，技能按来源**分成两组**：
+
+| 操作 | 怎么做 |
+|---|---|
+| 看技能 | 点左栏一行；↑/↓ 也能走；技能到 8 个以上时出现搜索框（按名字或描述过滤） |
+| 看用途 | 右栏显示描述、触发时机（有的话）、来源 |
+| 看正文 | 右栏底部是技能正文原文（等宽、可滚动） |
+| 开关自带技能 | 「插件提供」组里的技能，右栏有「停用 / 启用」按钮；停用的行变暗并标「已停用」 |
+| 关闭 | 右上角 ×、点遮罩、或按 Esc |
+
+两组的分工是**强制**的，不只是文案：
+
+- **插件提供**：插件自带（`source = yon-panel`），可以停用 / 启用。
+- **你自己已安装**：来自 `~/.agents/skills` 等你自己的技能目录，面板**只读**。host 侧的 `PATCH /yon/api/skills/<名字>` 只接受本插件自带的技能名，别的名字一律 404 —— 所以就算将来前端写错，也动不了你的技能。
+
+> ℹ️ 列表只覆盖**全局**技能（用户目录 + bundled）。某个项目仓库里的 `<项目>/.dsh/skills` 是按会话工作目录解析的，面板不传 cwd，因此不列出它们。
+
 给面板加按钮（本插件不用改）：
 
 ```ts
@@ -195,9 +275,9 @@ ctx.slots.inject('yon.panel.item', () => ctx.slots.register({
 ```sh
 pnpm install
 pnpm typecheck   # tsc --noEmit（host + client + tests）
-pnpm test        # vitest（101 个用例）
-pnpm build       # tsc 出 host 半（ESM），tsdown 出浏览器半（loader factory）
-pnpm verify      # 产物自检：loader 契约、externals、样式注入、host ESM、patch 层
+pnpm test        # vitest（116 个用例）
+pnpm build       # 先把 skills/*.md 内联成 TS，再 tsc 出 host 半，最后 tsdown 出浏览器半
+pnpm verify      # 产物自检（loader 契约、externals、样式注入、host ESM、patch 层、技能目录）
 pnpm pack        # 打包，prepack 会先 build
 ```
 
@@ -212,6 +292,7 @@ pnpm pack        # 打包，prepack 会先 build
 - `src/shared/types.ts` 是两半共用的数据契约，前后端不会漂移
 - 基线 externals 名单抄自 harness 的 `@deepseek-ai/dsh-client-web/src/platform.ts`；升级 DSH 大版本时对照一次
 - **构建是可复现的**：CSS Module 的类名映射按名排序输出，所以提交的 `lib/` 与重新构建的结果逐字节一致（lightningcss 自己给出的导出顺序会变，排序就是为了消掉这个假差异）。这一点可以自己验：跑完 `pnpm build` 之后 `git status` 应该是干净的
+- **技能正文由 codegen 内联**：`pnpm build` 会先跑 `scripts/build-skills.mjs`，把 `skills/<名字>/SKILL.md` 的前言与正文写进 `src/host/skill-catalog.generated.ts`（已提交）。`pnpm verify` 用 `--check` 抓漂移 —— 改了 `SKILL.md` 却忘了重新生成，会在这一步失败，而不是悄悄发布旧内容
 
 ### 为什么 `lib/` 被提交进 git
 
@@ -226,22 +307,38 @@ pnpm pack        # 打包，prepack 会先 build
 - **无跨记录事务**：原子性单位是一条记录。`create({ name, fields })` 是「主表 1 写 + 子表 N 写」，中途失败可能留下缺字段的项目（字段缺失可容忍，界面显示为空）
 - **领域版本不是迁移器**：改主表 schema 后旧记录会被校验拒绝、导致领域打不开；演进时请升 `version` 并把旧记录缺的字段声明为 optional
 - **无二级索引**：按字段筛选/排序只能在应用层做（数据全量在内存；这类需求出现时说明该字段该「转正」成主表列，或改用 SQLite 关系表）
+- **自带技能只在装了插件的 profile 里存在**：它们是运行时注册的，所以换个没装插件的 profile、或用别的工具（Claude Code 等）读 `~/.agents/skills`，都看不到它们 —— 这正是「不跟通用技能混在一起」的代价
+- **技能名撞车是静默的**：DSH 的规则是运行时技能压过用户在 `~/.agents/skills` 里的同名技能，被压掉的那份不报错、也不出现在技能列表里。本插件因此只用全新名字（当前只有 `yon-devkit`）
+- **技能面板只管全局技能**：`<工作目录>/.dsh/skills` 这类项目级技能按会话工作目录解析，面板不传 cwd，所以不列出它们
+- **技能改动要重启**：`skills/*.md` 属于 host 半数据，改完必须 `pnpm build` + 重启 DSH（刷新页面不够）
 
 ## 源码地图
 
 | 文件 | 职责 |
 |---|---|
-| `src/index.ts` | Host 入口：打开领域、发布 `ctx.yonProjects`、挂 `/yon/api` |
-| `src/host/domain.ts` | 领域与两张表的 zod schema、路径安全的记录键编码 |
+| `src/index.ts` | Host 入口：打开两个领域、发布 `ctx.yonProjects` / `ctx.yonSkills`、注册自带技能、挂 `/yon/api` |
+| `skills/<名字>/SKILL.md` | 插件自带技能的**源文件**（普通技能 bundle，你编辑这个） |
+| `scripts/build-skills.mjs` | 把 `skills/*/SKILL.md` 内联成 TS；`--check` 用来抓漂移 |
+| `src/host/domain.ts` | 项目领域与两张表的 zod schema、路径安全的记录键编码 |
 | `src/host/service.ts` | 项目存储服务：主子表聚合、级联删除、写入校验、变更订阅、按 id/名称/编码定位 |
 | `src/host/tools.ts` | 面向 agent 的工具：5 个 `project_*` 工具 + 跟随会话权限档的写操作闸门（拒绝 / 直写 / 确认） |
-| `src/host/http.ts` | `/yon/api` 前缀路由与错误映射（没有 web server 的部署下不挂载） |
-| `src/shared/types.ts` | 前后端共用的数据契约 |
-| `src/client/index.ts` | 浏览器半入口：席位注册、面板 store、内建条目、API 客户端的注入面 |
+| `src/host/skill-domain.ts` | `yon_skills` 领域：一个技能一条开关记录 |
+| `src/host/skill-registry.ts` | 自带技能的注册 / 注销 / 开关，以及 `ctx.skills` 的本地契约声明 |
+| `src/host/skill-catalog.ts` | 自带技能的类型定义，以及「为什么内联」的说明 |
+| `src/host/skill-catalog.generated.ts` | **生成物**（已提交、勿手改）：自带技能的名字 / 描述 / 正文 |
+| `src/host/http.ts` | `/yon/api` 前缀路由（projects + skills）与错误映射（没有 web server 的部署下不挂载） |
+| `src/shared/types.ts` | 前后端共用的数据契约（项目 + 技能） |
+| `src/client/index.ts` | 浏览器半入口：席位注册、面板 store、两个内建条目、API 客户端的注入面 |
 | `src/client/YonPanelRoot.tsx` | 侧栏底部触发按钮、面板外壳、分层后的关闭行为 |
 | `src/client/panel-store.ts` | 面板开合状态 + 覆盖层层数（一次 Esc 只关一层） |
 | `src/client/ProjectItem.tsx` | 内建的「项目管理」条目（图标格子 + 打开界面 + 焦点归还） |
-| `src/client/project/api.ts` | `/yon/api` 的瘦封装：组件唯一的数据入口 |
+| `src/client/SkillItem.tsx` | 内建的「YONSKILL」条目（同上，共用一套图标格样式） |
+| `src/client/request.ts` | 两个 API 客户端共用的 `/yon/api` JSON 调用与错误类型 |
+| `src/client/project/api.ts` | 项目接口的瘦封装：组件唯一的数据入口 |
+| `src/client/skill/api.ts` | 技能接口的瘦封装 |
+| `src/client/skill/SkillManager.tsx` | 技能面板：分组列表、正文阅读、只对自带技能开放开关 |
+| `src/client/panel.module.css` | 两个面板共用的对话框样式（原 `project/panel.module.css`） |
+| `src/client/panel-item.module.css` | 两个内建格子共用的图标格样式（原 `ProjectItem.module.css`） |
 | `src/client/project/ProjectManager.tsx` | 项目界面：列表、搜索、属性编辑、危险操作分级 |
 | `src/client/project/FieldTable.tsx` | 动态字段表：逐行保存状态、失败重试、删除确认 |
 | `src/client/project/InlineText.tsx` | 就地可编辑文本（回车/失焦保存，Esc 放弃） |

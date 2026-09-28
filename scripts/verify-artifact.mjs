@@ -10,7 +10,7 @@
  * The assertions read the artifacts semantically rather than byte-for-byte: the
  * compiler and the bundler are free to lay their wrappers out differently.
  */
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 
@@ -70,8 +70,29 @@ if (existsSync(join(root, domainPath))) {
   )
   check(!UNREWRITTEN_IMPORT.test(domain), `${domainPath}: a relative import still points at .ts`)
 }
-for (const sibling of ['lib/host/service.js', 'lib/host/http.js', 'lib/shared/types.js']) {
+for (const sibling of [
+  'lib/host/service.js', 'lib/host/http.js', 'lib/host/skill-domain.js',
+  'lib/host/skill-registry.js', 'lib/shared/types.js',
+]) {
   check(existsSync(join(root, sibling)), `${sibling} is missing`)
+}
+
+// ── the bundled skills: inlined at build time, so a bad generate ships blind ─
+// A plugin whose skill catalog failed to generate would install cleanly and
+// offer nothing — the kind of failure nobody notices until they need it.
+const catalogPath = 'lib/host/skill-catalog.generated.js'
+check(existsSync(join(root, catalogPath)), `${catalogPath} is missing (run scripts/build-skills.mjs)`)
+if (existsSync(join(root, catalogPath))) {
+  const catalog = read(catalogPath)
+  const bundles = existsSync(join(root, 'skills'))
+    ? readdirSync(join(root, 'skills'), { withFileTypes: true })
+      .filter(entry => entry.isDirectory() && !entry.name.startsWith('.'))
+      .map(entry => entry.name)
+    : []
+  check(bundles.length > 0, 'skills/: the plugin ships no skill bundle')
+  for (const name of bundles) {
+    check(catalog.includes(name), `${catalogPath}: the bundled skill "${name}" is absent from the catalog`)
+  }
 }
 
 // ── the browser half: the loader's closure-factory artifact ──────────────────

@@ -18,7 +18,7 @@ import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { JsonValue } from '../../shared/types.ts'
 import { cn } from '../cn.ts'
 import { useComposingGuard } from './useComposing.ts'
-import css from './panel.module.css'
+import css from '../panel.module.css'
 
 /** How long the "saved" note stays on a row before the row goes quiet again. */
 const SAVED_LINGER_MS = 1600
