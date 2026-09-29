@@ -75,7 +75,7 @@
   display: flex;
   gap: 2px;
   margin: 2px 0 14px;
-  border-bottom: 1px solid var(--dsw-alias-border-l);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
 }
 
 .tab {
@@ -176,7 +176,7 @@
 .levelBar {
   height: 7px;
   border-radius: 4px;
-  background: var(--dsw-alias-scrollbar-bg-l);
+  background: var(--dsw-alias-border-l1);
   overflow: hidden;
 }
 
@@ -221,7 +221,7 @@
 }
 
 .gapItem {
-  border-bottom: 1px solid var(--dsw-alias-border-l);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
 }
 
 .gapRow {
@@ -361,7 +361,7 @@
   gap: 8px;
   margin-top: 14px;
   padding: 10px 12px;
-  border: 1px solid var(--dsw-alias-border-l);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
 }
 

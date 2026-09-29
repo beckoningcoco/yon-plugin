@@ -29,6 +29,7 @@
  * tab has no business writing a verdict it did not compute.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { DigestLogEntryView, DigestSummaryPayload } from '../../shared/types.ts'
@@ -76,6 +77,26 @@ function shortTime(at: string): string {
 /** 百分比；null 显示破折号。 */
 function percent(value: number | null | undefined): string {
   return typeof value === 'number' ? `${(value * 100).toFixed(1)}%` : '—'
+}
+
+/**
+ * The mark on an empty or still-loading pane — the same gauge as the panel entry,
+ * larger, so an empty surface still says what it is a surface *of*.
+ * @returns the decorative svg.
+ */
+function EmptyMark() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M2.6 12.2a5.6 5.6 0 0 1 10.8 0"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+      />
+      <path d="M8 12.2 10.9 8.6" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+      <path d="M3.1 13.6h9.8" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+    </svg>
+  )
 }
 
 /**
@@ -167,7 +188,7 @@ export function DigestManager({ summary, onClose, t }: DigestManagerProps) {
         </p>
       )}
 
-      <div className={cn(base.body)}>
+      <div className={cn(base.body, css.body)}>
         <section className={cn(base.detailPane)} aria-label={t('digest.title')}>
           <div className={css.toolbar}>
             <p className={cn(css.tally, loading ? css.dim : undefined)}>{tally}</p>
@@ -202,30 +223,41 @@ export function DigestManager({ summary, onClose, t }: DigestManagerProps) {
             {METRIC_ORDER.map((key) => {
               const value = averages[key]
               const shown = typeof value === 'number'
+              // The component contributes the ratio; the geometry lives in the
+              // stylesheet, so a bar that has to align with its own label stays
+              // aligned when the padding changes.
+              const ratio = shown ? Math.max(0.02, Math.min(1, value)) : 0
               return (
-                <div key={key} className={css.averageCell} data-empty={shown ? undefined : ''}>
+                <div
+                  key={key}
+                  className={css.averageCell}
+                  data-empty={shown ? undefined : ''}
+                  style={{ '--bar-ratio': String(ratio) } as CSSProperties}
+                >
                   <span className={css.averageLabel}>{METRIC_LABELS[key] ?? key}</span>
                   <span className={css.averageValue}>{percent(value ?? null)}</span>
-                  <span
-                    className={css.averageBar}
-                    style={{ inlineSize: `${shown ? Math.max(2, Math.round(value * 100)) : 0}%` }}
-                    aria-hidden="true"
-                  />
+                  <span className={css.averageBar} aria-hidden="true" />
                 </div>
               )
             })}
           </div>
 
-          {loading
-            ? <p className={cn(base.note)}>{t('digest.loadingList')}</p>
-            : rows.length === 0
-              ? (
-                <p className={cn(base.note)}>
-                  {all.length === 0 ? t('digest.empty') : t('digest.emptyFiltered')}
+          {loading || rows.length === 0
+            ? (
+              // The shared empty block rather than a bare paragraph: it centres the
+              // pane the way the other four surfaces do, and its `flex: 1` fills the
+              // height so an empty ledger does not leave the dialog looking half-drawn.
+              <div className={cn(base.empty)}>
+                <span className={cn(base.emptyMark)} aria-hidden="true"><EmptyMark /></span>
+                <p className={cn(base.emptyTitle)}>
+                  {loading
+                    ? t('digest.loadingList')
+                    : all.length === 0 ? t('digest.empty') : t('digest.emptyFiltered')}
                 </p>
-              )
-              : (
-                <ul className={css.logList}>
+              </div>
+            )
+            : (
+              <ul className={css.logList}>
                   {rows.map((entry) => {
                     const key = keyOf(entry)
                     const open = openKey === key
@@ -290,6 +322,9 @@ export function DigestManager({ summary, onClose, t }: DigestManagerProps) {
             <p className={css.foot}>
               <span>{t('digest.logAt')}</span>
               <span className={css.mono}>{data.path}</span>
+              {all.length < (head?.total ?? 0) && (
+                <span>{t('digest.showing', { shown: all.length, total: head?.total ?? 0 })}</span>
+              )}
               {head?.since !== undefined && (
                 <span className={css.footSince}>{t('digest.since', { at: shortTime(head.since) })}</span>
               )}

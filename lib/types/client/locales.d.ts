@@ -248,6 +248,7 @@ export declare const zh: {
     'digest.empty': string;
     'digest.emptyFiltered': string;
     'digest.since': string;
+    'digest.showing': string;
     'digest.logAt': string;
     'digest.fieldLabel': string;
     'digest.fieldSource': string;
@@ -501,6 +502,7 @@ export declare const en: {
     'digest.empty': string;
     'digest.emptyFiltered': string;
     'digest.since': string;
+    'digest.showing': string;
     'digest.logAt': string;
     'digest.fieldLabel': string;
     'digest.fieldSource': string;

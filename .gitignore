@@ -9,3 +9,9 @@ lib/client/
 
 # 迁移脚本留下的备份文件（apply-datasource-panel.mjs 等）
 *.bak-*
+
+# 预览的产物：渲染出的 HTML 与截图。脚本本身（preview/、preview.config.ts）进
+# 仓库——它解决的是「改完 UI 看不到效果」，下次还用得上；每次跑都重新生成的
+# 中间产物不进。
+preview/*.html
+preview/*.png

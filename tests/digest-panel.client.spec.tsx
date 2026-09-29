@@ -122,7 +122,7 @@ describe('检查器面板', () => {
 
   it('均值那一行写明依据是几次验收，不写「最近若干次」', async () => {
     show(payload([entry()], { averagedOver: 7 }))
-    expect(await screen.findByText(/最近 7 次验收/)).toBeTruthy()
+    expect(await screen.findByText(/取自 7 次有判定/)).toBeTruthy()
   })
 
   it('没有可算均值的记录时说明原因，而不是显示一排 0%', async () => {
