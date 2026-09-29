@@ -64,6 +64,14 @@ export interface DigestSweep {
     readonly under: string;
     /** 扫到的 .md 总数。 */
     readonly scanned: number;
+    /**
+     * 递归过程中读不到的目录（绝对路径）。
+     *
+     * 非空表示**这次统计不完整**：可能只是某个子目录读不到，也可能是 `root` 或
+     * `under` 整个指错了——后者会让 `scanned` 为 0，而 0 很容易被读成「库里是空的」。
+     * 两者必须分得开。
+     */
+    readonly unreadableDirs: readonly string[];
     /** 各结局的组数/份数。 */
     readonly counts: Readonly<Record<SweepStatus, number>>;
     /** `no-source-field` 那一桶按 `source_type` 的分布；`(未标)` 表示没有该字段。 */

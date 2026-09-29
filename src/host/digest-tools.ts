@@ -288,6 +288,21 @@ function renderSweep(sweep: DigestSweep): string {
   const c = sweep.counts
   lines.push(`知识库体检：${sweep.under}/`)
   lines.push(`  扫描 ${sweep.scanned} 份产物`)
+  // 「扫到 0 份」不等于「库是空的」。路径指错时 readdir 失败，此前被 catch 吞成
+  // 空数组，于是报告平静地说「扫描 0 份」——那读起来像库确实空，不像路径写错。
+  if (sweep.scanned === 0) {
+    lines.push('')
+    lines.push('  ⚠ 一份产物都没扫到。这通常不是「库里是空的」，而是 vault 根或 under')
+    lines.push('     指错了——先确认那个路径存在、里面确实有 .md，再重跑。')
+  }
+  if (sweep.unreadableDirs.length > 0) {
+    lines.push('')
+    lines.push(`  ⚠ 有 ${sweep.unreadableDirs.length} 个目录读不到，下面的统计不完整：`)
+    for (const unreadable of sweep.unreadableDirs.slice(0, 5)) lines.push(`       ${unreadable}`)
+    if (sweep.unreadableDirs.length > 5) {
+      lines.push(`       …另有 ${sweep.unreadableDirs.length - 5} 个`)
+    }
+  }
   lines.push('')
   lines.push(`  能验收        ${String(c.audited).padStart(5)} 份   合格 ${sweep.passing} / 不合格 ${sweep.failing}`)
   if (sweep.neverAudited > 0) {

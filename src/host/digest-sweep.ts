@@ -117,6 +117,14 @@ export interface DigestSweep {
   readonly under: string
   /** 扫到的 .md 总数。 */
   readonly scanned: number
+  /**
+   * 递归过程中读不到的目录（绝对路径）。
+   *
+   * 非空表示**这次统计不完整**：可能只是某个子目录读不到，也可能是 `root` 或
+   * `under` 整个指错了——后者会让 `scanned` 为 0，而 0 很容易被读成「库里是空的」。
+   * 两者必须分得开。
+   */
+  readonly unreadableDirs: readonly string[]
   /** 各结局的组数/份数。 */
   readonly counts: Readonly<Record<SweepStatus, number>>
   /** `no-source-field` 那一桶按 `source_type` 的分布；`(未标)` 表示没有该字段。 */
@@ -207,16 +215,35 @@ export function frontmatterValueOf(text: string, key: string): string | undefine
   return value === '' ? undefined : value
 }
 
-/** 递归列出目录下的全部 .md。 */
-async function markdownUnder(dir: string): Promise<readonly string[]> {
-  const found: string[] = []
-  const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
+/**
+ * 递归列出目录下的全部 .md，并把**读不到的目录**一并带回来。
+ *
+ * 为什么不能只写 `catch(() => [])`：那样「目录不存在」和「目录是空的」返回同一个
+ * 值——空数组。于是 `root` 或 `under` 指错时，体检会平静地报「扫描 0 份产物」，
+ * 而那读起来像「这个库确实是空的」，不像「你把路径写错了」。和重叠排除那处是同
+ * 一个形状：**参数没生效，却回一个合法的零**。
+ *
+ * @param dir - 要扫描的目录。
+ * @returns 找到的文件，以及读不到的目录（含顶层与各层子目录）。
+ */
+async function markdownUnder(dir: string): Promise<{ files: string[], unreadable: string[] }> {
+  const files: string[] = []
+  const unreadable: string[] = []
+  const entries = await readdir(dir, { withFileTypes: true }).catch(() => {
+    unreadable.push(dir)
+    return []
+  })
   for (const entry of entries) {
     const full = path.join(dir, entry.name)
-    if (entry.isDirectory()) found.push(...await markdownUnder(full))
-    else if (entry.isFile() && entry.name.endsWith('.md')) found.push(full)
+    if (entry.isDirectory()) {
+      const sub = await markdownUnder(full)
+      files.push(...sub.files)
+      unreadable.push(...sub.unreadable)
+    } else if (entry.isFile() && entry.name.endsWith('.md')) {
+      files.push(full)
+    }
   }
-  return found
+  return { files, unreadable }
 }
 
 /** 绝对路径 → 相对 root 的正斜杠路径。 */
@@ -255,7 +282,7 @@ export async function sweepDigests(input: {
   readonly verdicts?: ReadonlyMap<string, SweepVerdict>
 }): Promise<DigestSweep> {
   const under = input.under ?? 'wiki'
-  const files = await markdownUnder(path.join(input.root, under))
+  const { files, unreadable: unreadableDirs } = await markdownUnder(path.join(input.root, under))
 
   const counts: Record<SweepStatus, number> = {
     audited: 0, 'no-source-field': 0, 'source-missing': 0, 'skipped-large': 0, unreadable: 0,
@@ -393,6 +420,7 @@ export async function sweepDigests(input: {
     passing,
     failing,
     neverAudited,
+    unreadableDirs,
     entries: input.limit === undefined ? ordered : ordered.slice(0, input.limit),
   }
 }

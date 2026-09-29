@@ -309,6 +309,27 @@ describe('批量体检', () => {
     expect(sweep.failing).toBe(0)
   })
 
+  it('under 指错时不装作「库是空的」，而是点明目录读不到', async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'digest-sweep-'))
+    const root = dir
+    // 「路径不存在」与「目录是空的」此前回同一个值——空数组。于是路径指错时，
+    // 报告平静地说「扫描 0 份产物」，读起来像库确实空，不像参数没生效。
+    const sweep = await sweepDigests({ root, under: '并不存在的目录', config })
+    expect(sweep.scanned).toBe(0)
+    expect(sweep.unreadableDirs.length).toBeGreaterThan(0)
+    expect(sweep.unreadableDirs[0]).toContain('并不存在的目录')
+  })
+
+  it('目录存在但没有 .md 时不算读不到——「空」和「读不到」要分得开', async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'digest-sweep-'))
+    const root = dir
+    const { mkdir } = await import('node:fs/promises')
+    await mkdir(path.join(root, 'wiki'), { recursive: true })
+    const sweep = await sweepDigests({ root, config })
+    expect(sweep.scanned).toBe(0)
+    expect(sweep.unreadableDirs).toEqual([])
+  })
+
   it('sourceKey 抹平斜杠方向与大小写', () => {
     // 日志里是运行当时拼出来的绝对路径，这边是 path.join 拼的，斜杠方向与大小写
     // 都不保证一致。对不上不会报错，只会静默地把全部组报成「从未验收」。
