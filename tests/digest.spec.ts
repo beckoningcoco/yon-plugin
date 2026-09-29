@@ -20,8 +20,10 @@ import { DEFAULT_DIGEST_CONFIG } from '../src/host/digest-config.ts'
 import { headingsOf, planDigest } from '../src/host/digest-plan.ts'
 import {
   auditDigest, bodyOnly, chineseTerms, constraints, identifierCounts, identifiers, sections,
+  type OverlapCheck,
 } from '../src/host/digest-audit.ts'
 import { sourceKey, sourcePathOf, sweepDigests } from '../src/host/digest-sweep.ts'
+import { overlapLines } from '../src/host/digest-tools.ts'
 
 const config = DEFAULT_DIGEST_CONFIG
 
@@ -230,6 +232,44 @@ describe('摸底分段', () => {
     const plan = await planDigest(file, config)
     expect(plan.pageMarks).toBe(2)
     expect(plan.lines).toBe(4)
+  })
+})
+
+describe('重叠项的渲染', () => {
+  /** 一份重叠明细，只填渲染要看的字段。数字取自实测那次重做。 */
+  const overlapOf = (over: Partial<OverlapCheck> = {}): OverlapCheck => ({
+    scannedFiles: 13083, knownTerms: 145818, total: 302,
+    hit: 113, rate: 113 / 302,
+    hitWithProducts: 234, rateWithProducts: 234 / 302,
+    excludedFiles: 6, excludeMissed: false,
+    ...over,
+  })
+
+  it('两个口径并列——这一项此前只长在门禁分支上，验收模式一直看不到', () => {
+    const text = overlapLines(overlapOf(), true, 0.85, false).join('\n')
+    expect(text).toContain('37.4%')
+    expect(text).toContain('77.5%')
+    expect(text).toContain('不是与已有内容的重复')
+  })
+
+  it('门禁模式不报「排除没生效」——那里的 product 是占位，必然排不到', () => {
+    // 门禁的 product 就是源文档自身，它在 raw/articles/ 下，不在被扫描的三个目录
+    // 里，于是 excludeMissed 恒为 true。警告此前只加在门禁分支，于是每次门禁都
+    // 误报一次——正是这条误报，让人以为「这条警告不可信」。
+    const gate = overlapLines(
+      overlapOf({ hitWithProducts: 113, rateWithProducts: 113 / 302, excludedFiles: 0, excludeMissed: true }),
+      null, 0.85, true,
+    ).join('\n')
+    expect(gate).not.toContain('一个都没匹配到')
+    expect(gate).toContain('有增量')
+  })
+
+  it('验收模式下排除没生效时必须说出来', () => {
+    const text = overlapLines(
+      overlapOf({ hitWithProducts: 113, rateWithProducts: 113 / 302, excludedFiles: 0, excludeMissed: true }),
+      true, 0.85, false,
+    ).join('\n')
+    expect(text).toContain('一个都没匹配到')
   })
 })
 
