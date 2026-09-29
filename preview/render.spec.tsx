@@ -108,7 +108,7 @@ const FULL: DigestSummaryPayload = {
         label: 'D:/yon-bip-obsidian / wiki', source: 'D:/yon-bip-obsidian/yon-bip-obsidian',
         product: '', pages: 0, failed: [], metrics: {},
         sourceBytes: 0, productBytes: 0, ms: 12054,
-        scanned: 13100, passing: 1, failing: 11,
+        scanned: 13100, passing: 1, failing: 11, neverAudited: 11,
       }),
       entry({
         at: '2026-09-30T02:41:02.000Z', label: '容器云技术红皮书',
