@@ -225,7 +225,12 @@ export const DEFAULT_DIGEST_CONFIG: DigestConfig = {
       'Promise', 'Note', 'Tips', 'Example', 'Page', 'Table', 'Figure',
     ],
   },
-  pageMarkPattern: '[（(]\\s*p\\.?\\s*\\d+\\s*[）)]|第\\s*\\d+\\s*页',
+  // 三种写法都要认：`（p23）`（正文里的小节标注）、`第 23 页`，以及 `p23` / `p23–p31`
+  // 这种**不带括号**的形式——来源行常写成「PDF 物理页 p23–p31」，不认它的话，一页
+  // 把每节都标了页码却照样算「没标」：实测 4 页、151 个小节只有 67 处被计入，溯源密度
+  // 44.4% 卡在阈值之下；作者把来源行从 22 条加到 132 条，这个数一动不动，于是误判成
+  // 「该指标不随内容联动」。**是格式没被认出，不是指标坏了。**
+  pageMarkPattern: '[（(]\\s*p\\.?\\s*\\d+\\s*[）)]|第\\s*\\d+\\s*页|\\bp\\.?\\s*\\d+',
   constraintPattern: '必须|禁止|不得|不能|不支持|不可以|需要注意|注意：|建议|务必|仅支持|只支持|限制|错误做法|正确做法',
   requiredFields: ['platform_version', 'last_verified', 'status', 'source_type', 'sources'],
   knownFields: [

@@ -465,7 +465,10 @@ function squeeze(text: string): string {
 function checkStructure(pages: readonly Page[], config: DigestConfig): readonly StructureCheck[] {
   const known = new Set(config.knownFields)
   return pages.map((page) => {
-    const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(page.text)
+    // BOM 是可选的：`bodyOnly` 一直容忍它，这里此前不容忍，于是同一份带 BOM 的页面
+    // 会被判「缺 (无 frontmatter)」——而它明明有。Windows 上的编辑器与
+    // `Set-Content -Encoding utf8` 都会写 BOM，不能假设不会遇到。
+    const fm = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---/.exec(page.text)
     if (fm === null) {
       return { file: page.file, ok: false, missing: ['(无 frontmatter)'], extra: [] }
     }
