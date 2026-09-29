@@ -36,6 +36,7 @@ import { GBK_TOOL_NAMES, registerYonGbkTools } from './host/gbk-tool.ts'
 import { KNOWLEDGE_TOOL_NAMES, registerYonKnowledgeTools } from './host/knowledge-tools.ts'
 import { CLASS_TOOL_NAMES, registerYonClassTools } from './host/class-tools.ts'
 import { registerYonWikiWriteTools, WIKI_WRITE_TOOL_NAMES } from './host/wiki-write.ts'
+import { DIGEST_TOOL_NAMES, registerYonDigestTools } from './host/digest-tools.ts'
 
 export { DOMAIN_NAME, YON_DOMAIN } from './host/domain.ts'
 export { SKILL_DOMAIN_NAME, YON_SKILL_DOMAIN } from './host/skill-domain.ts'
@@ -55,6 +56,13 @@ export { GBK_TOOL_NAMES, GbkError } from './host/gbk-tool.ts'
 export { KNOWLEDGE_TOOL_NAMES, KnowledgeError } from './host/knowledge-tools.ts'
 export { CLASS_TOOL_NAMES, ClassIndexError } from './host/class-tools.ts'
 export { WIKI_WRITE_TOOL_NAMES, WikiWriteError } from './host/wiki-write.ts'
+export { DIGEST_TOOL_NAMES } from './host/digest-tools.ts'
+export {
+  DEFAULT_DIGEST_CONFIG, digestConfigPath, loadDigestConfig, saveDigestConfig,
+} from './host/digest-config.ts'
+export { auditDigest } from './host/digest-audit.ts'
+export type { DigestAudit, CountRate, Verdicts } from './host/digest-audit.ts'
+export type { DigestConfig, DigestThresholds } from './host/digest-config.ts'
 export { classIndexDir, classIndexPath } from './host/class-index.ts'
 export { defaultWikiStorePath } from './host/wiki-store.ts'
 export { guessVaults } from './host/wiki-index.ts'
@@ -172,6 +180,14 @@ export async function apply(ctx: Context): Promise<void> {
   // reference documents cover what someone wrote down, this covers what did not
   // get written down.
   ctx.effect(() => registerYonClassTools(ctx), 'yon-panel: class index tools')
+
+  // The digestion auditor: the one tool that judges the other tools' output.
+  //
+  // Everything else here produces knowledge; this one asks whether what was
+  // produced is actually there. It needs the wiki service only to resolve a
+  // vault id into a path for the overlap gate, which is why it is registered
+  // here rather than alongside the knowledge tools.
+  ctx.effect(() => registerYonDigestTools(ctx, wiki), 'yon-panel: digest audit tool')
 
   // A skill registered through the registry exists exactly as long as this
   // plugin does, which is what makes these skills shippable without ever
