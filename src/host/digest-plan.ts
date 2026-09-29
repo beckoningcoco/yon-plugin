@@ -128,8 +128,9 @@ export function rejectTitle(title: string, level: number, config: DigestConfig):
   if (!/[\u4e00-\u9fa5A-Za-z]/.test(title)) return '没有中文或字母'
   if (/^[、，。；：,.;:（）()【】]/.test(title)) return '以标点开头'
   // 顿号只禁**结尾**：`3.2 扩展脚本中实现加入迁移按钮的逻辑、` 是正文条目；
-  // 而 `推单、拉单与回写` 中部带顿号，是正常的小节名。
-  if (/[。；，,;、！？]$/.test(title)) return '以句读结尾'
+  // 而 `推单、拉单与回写` 中部带顿号，是正常的小节名。半角句点同理——它在名字里
+  // 是分隔符（`MDF.node`），在句尾才是句号，所以只禁结尾。
+  if (/[。；，,;、！？.]$/.test(title)) return '以句读结尾'
   if (/^\d/.test(title)) return '以数字开头'
   if (/^(年|月|日|修订|页)/.test(title)) return '版本或页眉用语'
   const max = level === 1 ? config.sections.maxChapterTitleLength : config.sections.maxTitleLength
