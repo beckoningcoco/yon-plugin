@@ -397,4 +397,16 @@ describe('重叠门禁', () => {
     const audit = await auditDigest({ source, product: product.replace(/\\/g, '/'), config, vault: root })
     expect(audit.overlap?.hit).toBe(0)
   })
+
+  it('排除路径一个都没命中时，明确标出来——静默失效比报错危险', async () => {
+    const { root, source } = await scaffold()
+    // 源文档存在，但它在 raw/articles/ 下，不在被扫描的 wiki/* 三个目录里：
+    // 这正是「产物给成了库外副本」时的形态。实测它把 47.8% 虚报成 88.9%，
+    // 而全程没有任何报错，88.9% 足以触发出「重叠过高、不值得做」的判定。
+    const audit = await auditDigest({ source, product: source, config, vault: root })
+    expect(audit.overlap?.excludedFiles).toBe(0)
+    expect(audit.overlap?.excludeMissed).toBe(true)
+    // 一个都没排掉，两个口径必然相等——报告据此就能判断该不该信这个数
+    expect(audit.overlap?.rate).toBe(audit.overlap?.rateWithProducts)
+  })
 })

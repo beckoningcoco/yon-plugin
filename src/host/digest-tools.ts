@@ -123,6 +123,12 @@ function renderPlan(plan: DigestPlan): string {
       lines.push(`  ${chapter.title}`)
       lines.push(`      ${page}   offset ${chapter.line}, limit ${chapter.endLine - chapter.line + 1}`
         + `   ${chapter.characters} 字符   ${chapter.children.length} 节`)
+      // 把二级小节的名字列出来。此前只报个数，而误识别恰好就发生在这里：正文里被
+      // 硬折行截断的编号项「1.2 如果是更新，有子表回写（防止子表数据删除，无法
+      // 获取到」曾被当成二级小节，把该文档的二级分母由 0 抬到 1，令一份各项都合格
+      // 的消化被判 level2 不合格。当时是靠另写一个脚本打印 headingsOf 才看见的——
+      // 名字摆在报告里就不必了。
+      for (const child of chapter.children) lines.push(`        · ${child}`)
     }
     lines.push('')
     lines.push('把 offset / limit 直接交给 read 工具即可分段读——**不要按页号自己算范围**，')
@@ -169,6 +175,14 @@ function renderAudit(audit: DigestAudit, config: DigestConfig, gateOnly = false)
         lines.push(`  ·  连本次产物自己一起算是 ${audit.overlap.hitWithProducts} / ${audit.overlap.total}`
           + ` = ${pct(audit.overlap.rateWithProducts)}——高出的 ${selfExtra} 个是这次刚写进去的，`
           + '不是与已有内容的重复。判定用上面那个排掉产物后的值。')
+      }
+      // 给了排除路径却一个都没命中：这一次的 rate 其实是「含产物」的口径。
+      // 报告必须把这件事说出来——错数字比报错危险，因为它会被当成结论。
+      if (audit.overlap.excludeMissed) {
+        lines.push('  ⚠ 给了产物路径，但扫描范围内一个都没匹配到——它们可能不在这个库里')
+        lines.push('     （例如是复制出来的副本，或 vault 指到了别处）。这一项因此把产物')
+        lines.push('     自己算了进去，上面的重叠偏高，不能拿它判断值不值得做。')
+        lines.push('     product 可以直接给库内真实路径，一组产物分居两个目录时给数组。')
       }
       if (audit.verdicts.overlap === false) {
         lines.push('  ⚠ 重叠过高：这份素材大部分内容已在库里，先确认增量价值再消化')

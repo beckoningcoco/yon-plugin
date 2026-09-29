@@ -139,6 +139,17 @@ export interface OverlapCheck {
    */
   readonly hitWithProducts: number
   readonly rateWithProducts: number
+  /** 实际从扫描里排掉了几个产物文件。 */
+  readonly excludedFiles: number
+  /**
+   * 调用方给了排除路径，扫描范围内却**一个都没匹配上**。
+   *
+   * 这一项是专为「让静默失效现形」而存在的。产物被复制到库外、路径写错、vault
+   * 指错、大小写对不上——任何一种都会让排除悄悄落空，于是这一项量的又是「产物与
+   * 自己」。实测把 47.8% 虚报成 88.9%，**全程没有任何报错**，而 88.9% 足以触发
+   * 「重叠过高、不值得做」的判定。错数字比报错危险，因为它会被当成结论。
+   */
+  readonly excludeMissed: boolean
 }
 
 /** 可寻址明细。 */
@@ -605,6 +616,7 @@ async function checkOverlap(
   const knownAll = new Set<string>()
   const knownOutside = new Set<string>()
   let scanned = 0
+  let excludedFiles = 0
   for (const scope of config.vaultScopes) {
     const dir = path.join(vaultRoot, scope)
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
@@ -614,6 +626,7 @@ async function checkOverlap(
       const text = await readFile(full, 'utf8').catch(() => '')
       scanned += 1
       const isProduct = exclude?.has(fileKey(full)) ?? false
+      if (isProduct) excludedFiles += 1
       for (const match of text.matchAll(/[A-Za-z_][A-Za-z0-9_]{2,}/g)) {
         const term = match[0].toLowerCase()
         knownAll.add(term)
@@ -635,6 +648,9 @@ async function checkOverlap(
     rate: rateOf(hit),
     hitWithProducts,
     rateWithProducts: rateOf(hitWithProducts),
+    excludedFiles,
+    // 给了路径却一个都没排掉：排除没生效，上面的 rate 其实还是「含产物」的口径
+    excludeMissed: (exclude?.size ?? 0) > 0 && excludedFiles === 0,
   }
 }
 
