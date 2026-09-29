@@ -49,25 +49,21 @@ export interface Heading {
     readonly line: number;
 }
 /**
- * 抽出全部有编号的标题及其行号。
+ * 一行文字要成为某一级标题，必须通过的全部检查。
  *
- * **这是章节识别的唯一实现**，`digest-plan` 与 `digest-audit` 共用。
+ * **只写一遍**，`第X章` 与数字编号两个分支共用。此前这些条件散在四段代码里各写
+ * 一套，代价在实测里兑现了三次：一次是 `digest_audit` 与 `digest_plan` 各写一套
+ * 章节识别，audit 把参数表里的一行当成一级章节，一份合格产物被判覆盖率不合格；
+ * 一次是二级没有长度与标点过滤，正文里被硬折行截断的编号项成了二级小节；一次是
+ * 结尾的顿号没禁，升级说明里的条目成了二级小节。每次都是改了 A 处忘了 B 处，
+ * 而**忘记不会报错**，只是某一级悄悄多认或少认标题。
  *
- * 曾经这里踩过一个坑：两个模块各写了一套识别逻辑，plan 侧有五条过滤规则
- * （有「第X章」时数字一级编号作废、一级编号须严格递增、一级标题长度上限、
- * 一级标题禁含句读标点、跳过页标记与页眉），audit 侧一条都没有。结果同一份
- * 文档，plan 报 6 章而 audit 报 10 章——audit 把参数表里的
- * 「0 表示操作成功，和result 等同」当成了一个一级章节，于是**合格产物被判
- * 覆盖率不合格（假阴性）**。两套逻辑必然漂移，所以合并到这里。
- *
- * 一级编号要求**严格递增**，这条是踩出来的：实测一份 1846 页的文档报出 58 个
- * 一级章节，而它只有 10 章——正文里的 `1 xxx` 这类表格行、列表项被当成了标题。
- * 真章节的编号是 1,2,3…连续递增的，误判的则是零散的。
- *
- * @param lines - 源文档按行切开的数组。
+ * @param title - 去掉编号之后的标题正文。
+ * @param level - 1 为一级章节，2 及以上为小节。
  * @param config - 配置。
- * @returns 标题列表，按行号升序。
+ * @returns 拒绝原因（便于调试与测试）；通过时为 undefined。
  */
+export declare function rejectTitle(title: string, level: number, config: DigestConfig): string | undefined;
 export declare function headingsOf(lines: readonly string[], config: DigestConfig): readonly Heading[];
 /**
  * 摸清一份源文档的骨架。
