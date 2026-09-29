@@ -266,16 +266,28 @@ function renderSweep(sweep: DigestSweep): string {
     lines.push('')
     lines.push(`没有 vault 内文件来源的 ${noSource.length} 份。**这一桶必须再拆一层**：`)
     const types = Object.entries(sweep.nonFileSourceTypes).sort((a, b) => b[1] - a[1])
-    lines.push('  按 source_type：')
-    for (const [name, count] of types.slice(0, 8)) lines.push(`    ${String(count).padStart(6)}  ${name}`)
+    lines.push('  按 source_type（附抽样页名——照着翻一眼 frontmatter，就能判断这一桶是')
+    lines.push('  真的缺依据，还是来源本来就不是文件）：')
+    for (const [name, count] of types.slice(0, 8)) {
+      const samples = (sweep.nonFileSourceSamples[name] ?? []).map(s => productNameOf([s])).join('、')
+      lines.push(`    ${String(count).padStart(6)}  ${name}`)
+      if (samples !== '') lines.push(`            e.g. ${samples}`)
+    }
     const declared = Object.entries(sweep.declaredSources).sort((a, b) => b[1] - a[1])
     if (declared.length > 0) {
       lines.push('  其中用 `source:` 指向库外文件的——**这些才是「页面在、依据没了」**：')
       for (const [name, count] of declared.slice(0, 8)) lines.push(`    ${String(count).padStart(6)}  ${name}`)
+      for (const sample of sweep.declaredSourceSamples.slice(0, 3)) {
+        lines.push(`            e.g. ${sample.product}`)
+        lines.push(`                 source: ${sample.declared}`)
+      }
     }
     lines.push('  ·  来源是外部在线源（如 OpenAPI 文档站抓取页 `community-api-docs`）的产物，')
     lines.push('     本来就没有本地文件可对照，不算缺陷。第一版把两件事混成一桶，报出「94% 无来源」，')
     lines.push('     抽样看 frontmatter 才发现绝大多数是前者。')
+    lines.push('  ·  **另一件要分清的事**：源 PDF 不进库（体积），但**抽取后的文本必须留在')
+    lines.push('     `raw/articles/`**——它是这份消化唯一的可复核依据。没有抽取文本的产物，')
+    lines.push('     等于从此不可验。')
   }
 
   const missing = sweep.entries.filter(entry => entry.status === 'source-missing')

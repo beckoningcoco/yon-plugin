@@ -35,8 +35,22 @@ export interface DigestSweep {
     readonly counts: Readonly<Record<SweepStatus, number>>;
     /** `no-source-field` 那一桶按 `source_type` 的分布；`(未标)` 表示没有该字段。 */
     readonly nonFileSourceTypes: Readonly<Record<string, number>>;
+    /**
+     * 每个 `source_type` 的抽样页名（各取前 2 个）。
+     *
+     * 这一项是**为了让人能推翻报告**而存在的。实测两次错误结论——「94% 无来源」和
+     * 「合格 0 组」——都是靠人工翻开 frontmatter 才发现的，而不是靠报告自己露馅。
+     * 报告必须把判断所依据的样本摆出来，否则一个有说服力的错结论和一个对结论
+     * 长得一模一样。
+     */
+    readonly nonFileSourceSamples: Readonly<Record<string, readonly string[]>>;
     /** `no-source-field` 那一桶里，用 `source:` 指向库外的有多少，以及它们的取值分布。 */
     readonly declaredSources: Readonly<Record<string, number>>;
+    /** `source:` 指向库外文件的抽样页名与它们声明的来源。 */
+    readonly declaredSourceSamples: readonly {
+        readonly product: string;
+        readonly declared: string;
+    }[];
     /** 能验收的**源文档份数**（不是产物页数）里，合格的组数。 */
     readonly passing: number;
     /** 能验收的源文档份数里，不合格的组数。 */
