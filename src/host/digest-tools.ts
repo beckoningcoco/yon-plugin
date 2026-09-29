@@ -28,7 +28,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { auditDigest, type DigestAudit } from './digest-audit.ts'
 import { planDigest, type DigestPlan } from './digest-plan.ts'
-import { sweepDigests, type DigestSweep } from './digest-sweep.ts'
+import { sourceKey, sweepDigests, type DigestSweep, type SweepVerdict } from './digest-sweep.ts'
 import { createDigestLog, type DigestLog, type DigestLogEntry } from './digest-log.ts'
 import { loadDigestConfig, type DigestConfig } from './digest-config.ts'
 import type { YonWikiService } from './wiki-service.ts'
@@ -81,7 +81,10 @@ function entryOfAudit(audit: DigestAudit, ms: number, gateOnly: boolean): Omit<D
     product: productNameOf(audit.product),
     pages: audit.pages,
     failed: gateOnly ? [] : audit.failed,
-    metrics: {
+    // 门禁模式给的产物是源文档自身，于是覆盖类指标全都是「自己跟自己比」得出的
+    // 1.0——它们不是测量结果，是分母被取消后的算术残渣。实测里门禁那条账记下了
+    // 九个 1.0，任何翻日志的人都会把它读成一次满分验收。
+    metrics: gateOnly ? {} : {
       terms: c.terms.rate,
       identifiers: c.identifiers.rate,
       level1: c.level1.rate,
@@ -189,16 +192,20 @@ function renderAudit(audit: DigestAudit, config: DigestConfig, gateOnly = false)
   lines.push('【2】知识点覆盖 —— 源文档的知识进了多少')
   const cov = audit.coverage
   lines.push(`  中文术语   ${String(cov.terms.hit).padStart(5)} / ${String(cov.terms.total).padEnd(5)} ${pct(cov.terms.rate)}${mark(audit.verdicts.terms)}  （阈值 ${t.coverage * 100}%）`)
-  lines.push(`  英文标识符 ${String(cov.identifiers.hit).padStart(5)} / ${String(cov.identifiers.total).padEnd(5)} ${pct(cov.identifiers.rate)}`)
+  lines.push(`  英文标识符 ${String(cov.identifiers.hit).padStart(5)} / ${String(cov.identifiers.total).padEnd(5)} ${pct(cov.identifiers.rate)}  · 不作判据`)
   lines.push(`  一级章节   ${String(cov.level1.hit).padStart(5)} / ${String(cov.level1.total).padEnd(5)} ${pct(cov.level1.rate)}${mark(audit.verdicts.coverage)}  （阈值 ${t.coverage * 100}%）`)
   lines.push(`  二级章节   ${String(cov.level2.hit).padStart(5)} / ${String(cov.level2.total).padEnd(5)} ${pct(cov.level2.rate)}${mark(audit.verdicts.level2)}  （阈值 ${t.level2 * 100}%）`)
-  lines.push(`  约束句     ${String(cov.constraints.hit).padStart(5)} / ${String(cov.constraints.total).padEnd(5)} ${pct(cov.constraints.rate)}  （阈值 ${t.coverage * 100}%）`)
+  lines.push(`  约束句     ${String(cov.constraints.hit).padStart(5)} / ${String(cov.constraints.total).padEnd(5)} ${pct(cov.constraints.rate)}  · 不作判据`)
   if (cov.missingSections.length > 0) {
     lines.push(`  未见的一级章节：${cov.missingSections.slice(0, 8).join('、')}`)
   }
   if (cov.missingTerms.length > 0) {
     lines.push(`  未覆盖的术语（前 10）：${cov.missingTerms.slice(0, 10).join('、')}`)
   }
+  // 这两项标着阈值却不给符号，读者会读成「判了，这次通过」。它们确实不判：
+  // 中文抽取的噪声会直接变成这里的分子分母（「本文档描述」「据管理主要」这类
+  // 分词碎块），拿一个噪声主导的比例当门槛，判出来的不是消化的质量。
+  lines.push('  ·  英文标识符与约束句两项只报数、不进判定——它们的分子分母本身带抽取噪声。')
 
   lines.push('')
   lines.push('【3】保真率 —— 产物里有没有源文档没有的标识符')
@@ -261,6 +268,9 @@ function renderSweep(sweep: DigestSweep): string {
   lines.push(`  扫描 ${sweep.scanned} 份产物`)
   lines.push('')
   lines.push(`  能验收        ${String(c.audited).padStart(5)} 份   合格 ${sweep.passing} / 不合格 ${sweep.failing}`)
+  if (sweep.neverAudited > 0) {
+    lines.push(`  从未验收      ${String(sweep.neverAudited).padStart(5)} 组   有页面，但流水账里没有任何判定记录`)
+  }
   if (c['source-missing'] > 0) {
     lines.push(`  来源缺失      ${String(c['source-missing']).padStart(5)} 份   frontmatter 的 sources 指向的文件不在库里`)
   }
@@ -280,11 +290,12 @@ function renderSweep(sweep: DigestSweep): string {
       const a = entry.audit
       if (a === undefined) continue
       const pages = entry.products.length === 1 ? '' : ` [${entry.products.length}页]`
+      const tag = entry.verdict === undefined ? ' ⟨从未验收⟩' : ''
       lines.push(
         `  术语${pct(a.coverage.terms.rate)} 标识符${pct(a.coverage.identifiers.rate)}`
         + ` 二级${String(a.coverage.level2.hit).padStart(3)}/${String(a.coverage.level2.total).padEnd(3)}`
         + ` 约束${String(a.coverage.constraints.hit).padStart(3)}/${String(a.coverage.constraints.total).padEnd(3)}`
-        + ` 保真${pct(a.fidelity.rate)}  ${productNameOf(entry.products)}${pages}`,
+        + ` 保真${pct(a.fidelity.rate)}  ${productNameOf(entry.products)}${pages}${tag}`,
       )
     }
   }
@@ -604,10 +615,27 @@ export function registerYonDigestTools(
       }
 
       const loaded = await loadDigestConfig()
+
+      // 验收记录不在库里，在流水账里。把「最近一次判定」按源文件归一化后做成查找表
+      // 注入——**没有这一项，报告会把「从没验过」和「验过且合格」显示成同一件事**。
+      // 产物落进库里不需要任何验收记录，所以「没记录」的规模才是真正该被看见的。
+      const verdicts = new Map<string, SweepVerdict>()
+      for (const entry of await log.read()) {
+        if (entry.outcome !== 'pass' && entry.outcome !== 'fail') continue
+        const key = sourceKey(entry.source)
+        const seen = verdicts.get(key)
+        // 同一个源可能被验过多轮（返工后再验）；取时间戳最大的那次。
+        // 时间戳是 ISO 串，字典序即时间序。
+        if (seen === undefined || entry.at > seen.at) {
+          verdicts.set(key, { outcome: entry.outcome, at: entry.at })
+        }
+      }
+
       const started = Date.now()
       const sweep = await sweepDigests({
         root,
         config: loaded.config,
+        verdicts,
         ...(typeof input.under === 'string' && input.under.trim() !== '' ? { under: input.under.trim() } : {}),
         ...(typeof input.maxGroupBytes === 'number' ? { maxGroupBytes: input.maxGroupBytes } : {}),
         ...(typeof input.limit === 'number' ? { limit: input.limit } : {}),
@@ -628,11 +656,13 @@ export function registerYonDigestTools(
         scanned: sweep.scanned,
         passing: sweep.passing,
         failing: sweep.failing,
+        neverAudited: sweep.neverAudited,
       })
       return {
         audited: sweep.counts.audited,
         passing: sweep.passing,
         failing: sweep.failing,
+        neverAudited: sweep.neverAudited,
         report: renderSweep(sweep),
       }
     },

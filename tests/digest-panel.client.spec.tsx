@@ -150,6 +150,29 @@ describe('检查器面板', () => {
     expect(row.textContent).toContain('a.md')
   })
 
+  it('体检记录把「未验收」单独报出来——它既不是合格也不是不合格', async () => {
+    show(payload([entry({
+      tool: 'digest_sweep', outcome: 'sweep', label: '/vault / wiki',
+      scanned: 13100, passing: 1, failing: 11, neverAudited: 7,
+    })]))
+    const row = await screen.findByRole('button', { expanded: false })
+    expect(row.textContent).toContain('合格 1')
+    expect(row.textContent).toContain('不合格 11')
+    // 没验过的组自己一档。并进合格等于替一份没人看过的消化背书；并进不合格
+    // 是冤枉——它连不合格都算不上，是没结论。
+    expect(row.textContent).toContain('未验收 7')
+  })
+
+  it('未验收为 0 时不显示这一项，而不是显示「未验收 0」', async () => {
+    show(payload([entry({
+      tool: 'digest_sweep', outcome: 'sweep', label: '/vault / wiki',
+      scanned: 100, passing: 2, failing: 3, neverAudited: 0,
+    })]))
+    const row = await screen.findByRole('button', { expanded: false })
+    expect(row.textContent).toContain('合格 2')
+    expect(row.textContent).not.toContain('未验收')
+  })
+
   it('「只看不合格」筛掉合格行，但计数条仍是全量', async () => {
     show(payload([
       entry({ outcome: 'fail', label: '坏的' }),

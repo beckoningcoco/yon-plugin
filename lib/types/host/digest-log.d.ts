@@ -41,6 +41,13 @@ export interface DigestLogEntry {
     readonly passing?: number;
     /** 批量体检专用：多少组不合格。 */
     readonly failing?: number;
+    /**
+     * 批量体检专用：能验收的组里，流水账**没有任何判定记录**的组数。
+     *
+     * 与 `failing` 并列而不是合并：没验过的既不是合格也不是不合格，混进任何一边
+     * 都是替一份没人看过的消化下结论。
+     */
+    readonly neverAudited?: number;
     /** 摸底专用：识别到几章。 */
     readonly chapters?: number;
 }

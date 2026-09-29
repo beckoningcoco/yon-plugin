@@ -77,7 +77,7 @@ describe('消化检查流水账', () => {
     await log.record({
       tool: 'digest_sweep', outcome: 'sweep', label: 'v', source: '/vault',
       product: '', pages: 0, failed: [], metrics: {}, sourceBytes: 0, productBytes: 0, ms: 900,
-      scanned: 13100, passing: 1, failing: 11,
+      scanned: 13100, passing: 1, failing: 11, neverAudited: 7,
     })
 
     const summary = await log.summary()
@@ -88,6 +88,23 @@ describe('消化检查流水账', () => {
     // 新的在前：最后记的那条体检排第一
     expect(summary.recent[0]?.outcome).toBe('sweep')
     expect(summary.recent[0]?.scanned).toBe(13100)
+    // 「从未验收」自己一档：并进合格等于替没人验过的消化背书，并进不合格是冤枉
+    expect(summary.recent[0]?.neverAudited).toBe(7)
+  })
+
+  it('旧行里没有的字段读成 undefined，而不是 0——「没记录」不能冒充「验过」', async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'digest-log-'))
+    const file = path.join(dir, 'log.jsonl')
+    // 手写一条旧格式的行：根本没有 neverAudited 这个字段
+    await writeFile(file, `${JSON.stringify({
+      at: '2026-09-01T00:00:00.000Z', tool: 'digest_sweep', outcome: 'sweep', label: 'v',
+      source: '/vault', product: '', pages: 0, failed: [], metrics: {},
+      sourceBytes: 0, productBytes: 0, ms: 1, scanned: 10, passing: 1, failing: 1,
+    })}\n`, 'utf8')
+
+    const entries = await createDigestLog(file).read()
+    expect(entries[0]?.neverAudited).toBeUndefined()
+    expect(entries[0]?.passing).toBe(1)
   })
 
   it('坏行被跳过，剩下的照读——不因为一行写坏就废掉整份报告', async () => {

@@ -411,6 +411,8 @@ export interface DigestLogEntryView {
     readonly scanned?: number;
     readonly passing?: number;
     readonly failing?: number;
+    /** 批量体检专用：能验收的组里，流水账里没有任何判定记录的组数。 */
+    readonly neverAudited?: number;
     /** 摸底专用。 */
     readonly chapters?: number;
 }

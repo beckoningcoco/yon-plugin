@@ -119,7 +119,12 @@ export const OUTCOME_LABELS: Readonly<Record<string, string>> = {
  */
 export function entryLine(entry: DigestLogEntryView): string {
   if (entry.outcome === 'sweep') {
-    return `${entry.scanned ?? 0} 份 → 合格 ${entry.passing ?? 0} / 不合格 ${entry.failing ?? 0}`
+    const line = `${entry.scanned ?? 0} 份 → 合格 ${entry.passing ?? 0} / 不合格 ${entry.failing ?? 0}`
+    // 「未验收」单独报。它是第三种结局：既不是合格也不是不合格，而是压根没人看过
+    // ——并进任何一边都是替一份没人验过的消化下结论。为 0 时不显示，因为那时
+    // 「全都验过」和「这条记录没有这个数」本来就该长得一样。
+    const never = entry.neverAudited ?? 0
+    return never > 0 ? `${line} / 未验收 ${never}` : line
   }
   if (entry.outcome === 'plan') {
     // 「6 章」孤零零地摆在宽列中间，读者不知道是什么的 6 章；带上动词才自明。

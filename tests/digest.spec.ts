@@ -21,7 +21,7 @@ import { headingsOf, planDigest } from '../src/host/digest-plan.ts'
 import {
   bodyOnly, chineseTerms, constraints, identifierCounts, identifiers, sections,
 } from '../src/host/digest-audit.ts'
-import { sourcePathOf, sweepDigests } from '../src/host/digest-sweep.ts'
+import { sourceKey, sourcePathOf, sweepDigests } from '../src/host/digest-sweep.ts'
 
 const config = DEFAULT_DIGEST_CONFIG
 
@@ -286,5 +286,41 @@ describe('批量体检', () => {
     // 先前的实现是逐页跳过，于是组被削掉一页后照验，给出的是错误结论。
     expect(sweep.passing).toBe(0)
     expect(sweep.failing).toBe(0)
+  })
+
+  it('sourceKey 抹平斜杠方向与大小写', () => {
+    // 日志里是运行当时拼出来的绝对路径，这边是 path.join 拼的，斜杠方向与大小写
+    // 都不保证一致。对不上不会报错，只会静默地把全部组报成「从未验收」。
+    expect(sourceKey('C:/Users/x/raw/A.md')).toBe(sourceKey('c:\\users\\x\\raw\\a.md'))
+  })
+
+  it('把「验过没有」注入体检：没验过的那组单独一档', async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'digest-sweep-'))
+    const root = dir
+    const { mkdir } = await import('node:fs/promises')
+    await mkdir(path.join(root, 'raw', 'articles'), { recursive: true })
+    await mkdir(path.join(root, 'wiki'), { recursive: true })
+
+    const body = '消息通道是消息触达用户的物理渠道，注意扩展通道与原通道不能同时存在。'
+    for (const name of ['a', 'b']) {
+      await writeFile(path.join(root, 'raw', 'articles', `${name}.md`), `第一章 基本概念\n${body}\n`, 'utf8')
+      await writeFile(path.join(root, 'wiki', `${name}.md`),
+        `---\ntags: [x]\nsources: [raw/articles/${name}.md]\n---\n\n# ${name}\n\n${body}\n`, 'utf8')
+    }
+
+    // 只有 a 有判定记录，b 从没验过
+    const verdicts = new Map([[sourceKey(path.join(root, 'raw', 'articles', 'a.md')),
+      { outcome: 'pass' as const, at: '2026-09-30T01:00:00.000Z' }]])
+
+    const sweep = await sweepDigests({ root, config, verdicts })
+    expect(sweep.counts.audited).toBe(2)
+    expect(sweep.neverAudited).toBe(1)
+    expect(sweep.entries.find(e => e.source === 'raw/articles/a.md')?.verdict?.outcome).toBe('pass')
+    // 缺省既不是合格也不是不合格，是「没人验过」——读成任何一种都是替它背书
+    expect(sweep.entries.find(e => e.source === 'raw/articles/b.md')?.verdict).toBeUndefined()
+
+    // 不给流水账时全部算从未验收：「没有记录」不能默认读成「验过了」
+    const bare = await sweepDigests({ root, config })
+    expect(bare.neverAudited).toBe(bare.counts.audited)
   })
 })

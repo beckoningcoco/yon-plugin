@@ -12,6 +12,37 @@ export type SweepStatus =
  | 'skipped-large'
 /** 产物本身读不到。 */
  | 'unreadable';
+/**
+ * 流水账里对某一组产物的最近一次判定。
+ *
+ * 它回答的是「这一组**验过没有**」——这件事 `digest_sweep` 自己算不出来，因为
+ * 验收记录不在库里，而在 `~/.dsh/` 的流水账里。
+ *
+ * 为什么要单列这一档：实测里一份文档的两道检查（摸底、门禁）都记了账，而**真正
+ * 判定合格的那一次验收发生在仪表之外**——当时运行中的插件版本还没有「第X章」
+ * 无空格的修复，走工具会把它认成 58 章、误判不合格，所以验收是在测试里直接调
+ * `auditDigest` 跑的。结果是面板显示「2 次检查、合格 0、不合格 0」，读起来像
+ * 「这份材料做完了检查、都没给判定」，而真相是判定跑了、只是没留下痕迹。
+ *
+ * **缺省不是「不合格」，也不是「合格」，是「没人验过」。** 把这三件事混成两件，
+ * 报告就会替一份没验过的消化背书。
+ */
+export interface SweepVerdict {
+    readonly outcome: 'pass' | 'fail';
+    /** 判定时刻，ISO 字符串。 */
+    readonly at: string;
+}
+/**
+ * 源文件路径在对账时用的键。
+ *
+ * 两个来源的写法不保证一致：日志里是运行当时手敲或拼出来的绝对路径，这边是
+ * `path.join(root, rel)` 拼出来的。斜杠方向与大小写都可能不同，所以两边都先
+ * 归一化再比——否则对账会静默地一条都配不上，然后把全部组报成「从未验收」。
+ *
+ * @param file - 源文件的绝对路径。
+ * @returns 归一化后的键。
+ */
+export declare function sourceKey(file: string): string;
 /** 体检结果里的一行。 */
 export interface SweepEntry {
     /** 这次验收涵盖的产物，相对 root 的路径。合并验收时会有多页。 */
@@ -24,6 +55,8 @@ export interface SweepEntry {
     /** frontmatter 里 `source:`（单数）声明的来源，指向库外时记在这里。 */
     readonly declaredSource?: string;
     readonly audit?: DigestAudit;
+    /** 流水账里对同一个源的最近一次判定；**从未验收时缺省**。 */
+    readonly verdict?: SweepVerdict;
 }
 /** 一次批量体检的结果。 */
 export interface DigestSweep {
@@ -55,6 +88,13 @@ export interface DigestSweep {
     readonly passing: number;
     /** 能验收的源文档份数里，不合格的组数。 */
     readonly failing: number;
+    /**
+     * 能验收的组里，流水账里**没有任何判定记录**的组数。
+     *
+     * 「消化进库了，但没人验过」的规模。它必须单独一档：并进「合格」等于替没验过
+     * 的消化背书，并进「不合格」则是冤枉——它连不合格都算不上，是没结论。
+     */
+    readonly neverAudited: number;
     /** 能验收的组，按术语覆盖率升序——最差的排最前。 */
     readonly entries: readonly SweepEntry[];
 }
@@ -98,4 +138,12 @@ export declare function sweepDigests(input: {
     readonly maxGroupBytes?: number;
     /** 返回的明细条数上限；汇总永远是全量的。 */
     readonly limit?: number;
+    /**
+     * 源文件路径 → 最近一次判定，由调用方从流水账读出后注入。
+     *
+     * 用注入而不是让这里自己去读日志：`digest-sweep` 只认文件系统，把 `~/.dsh/`
+     * 下的状态引进来，既让它没法单独测，也让「扫一遍库」这件事悄悄依赖另一份
+     * 可能存在也可能不存在的文件。
+     */
+    readonly verdicts?: ReadonlyMap<string, SweepVerdict>;
 }): Promise<DigestSweep>;
