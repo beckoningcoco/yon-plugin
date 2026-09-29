@@ -55,6 +55,8 @@ export type SweepStatus =
   | 'no-source-field'
   /** `sources` 指向的文件不存在 —— 来源丢了。 */
   | 'source-missing'
+  /** 这一组的体量超过上限，整组没验 —— **它没有结论，不是不合格**。 */
+  | 'skipped-large'
   /** 产物本身读不到。 */
   | 'unreadable'
 
@@ -65,6 +67,10 @@ export interface SweepEntry {
   readonly status: SweepStatus
   /** 相对 root 的源文件路径，解析到时才有。 */
   readonly source?: string
+  /** frontmatter 的 `source_type`，用来区分「来源不是文件」的产物。 */
+  readonly sourceType?: string
+  /** frontmatter 里 `source:`（单数）声明的来源，指向库外时记在这里。 */
+  readonly declaredSource?: string
   readonly audit?: DigestAudit
 }
 
@@ -74,10 +80,12 @@ export interface DigestSweep {
   readonly under: string
   /** 扫到的 .md 总数。 */
   readonly scanned: number
-  /** 因体量超限被跳过的产物页数。 */
-  readonly skippedLarge: number
-  /** 因体量超限被跳过的页所涉及的产物页数。 */
+  /** 各结局的组数/份数。 */
   readonly counts: Readonly<Record<SweepStatus, number>>
+  /** `no-source-field` 那一桶按 `source_type` 的分布；`(未标)` 表示没有该字段。 */
+  readonly nonFileSourceTypes: Readonly<Record<string, number>>
+  /** `no-source-field` 那一桶里，用 `source:` 指向库外的有多少，以及它们的取值分布。 */
+  readonly declaredSources: Readonly<Record<string, number>>
   /** 能验收的**源文档份数**（不是产物页数）里，合格的组数。 */
   readonly passing: number
   /** 能验收的源文档份数里，不合格的组数。 */
@@ -128,6 +136,22 @@ export function sourcePathOf(text: string): string | undefined {
   return undefined
 }
 
+/**
+ * 取 frontmatter 里某个标量字段的值。
+ *
+ * @param text - 产物全文。
+ * @param key - 字段名。
+ * @returns 去掉引号的值；没有该字段时为 undefined。
+ */
+export function frontmatterValueOf(text: string, key: string): string | undefined {
+  const block = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)
+  if (block === null) return undefined
+  const line = new RegExp(`^${key}:[ \t]*(.*)$`, 'm').exec(block[1] ?? '')
+  if (line === null) return undefined
+  const value = (line[1] ?? '').trim().replace(/^["']|["']$/g, '').trim()
+  return value === '' ? undefined : value
+}
+
 /** 递归列出目录下的全部 .md。 */
 async function markdownUnder(dir: string): Promise<readonly string[]> {
   const found: string[] = []
@@ -155,8 +179,15 @@ export async function sweepDigests(input: {
   readonly root: string
   readonly under?: string
   readonly config: DigestConfig
-  /** 超过这个字节数的产物页跳过——大页面基本是正经消化的，不必逐个跑。 */
-  readonly maxProductBytes?: number
+  /**
+   * **按组**判定：一组的产物合计超过这么多字节，整组跳过、记为 `skipped-large`。
+   *
+   * 按组而不是按页，这条是被实测逼出来的：先前的实现逐页跳过大页面，于是
+   * `MDD接口与工具类.md`（57.5 KB）被剔掉，它所在的那组只剩 4 页，覆盖率掉下去
+   * ——扫描于是报「合格 0 组」，而那一组恰恰是整个库里唯一合格的一组。
+   * **让组残缺比不验它更糟：残缺的组会给出一个错误的结论。**
+   */
+  readonly maxGroupBytes?: number
   /** 返回的明细条数上限；汇总永远是全量的。 */
   readonly limit?: number
 }): Promise<DigestSweep> {
@@ -164,14 +195,13 @@ export async function sweepDigests(input: {
   const files = await markdownUnder(path.join(input.root, under))
 
   const counts: Record<SweepStatus, number> = {
-    audited: 0, 'no-source-field': 0, 'source-missing': 0, unreadable: 0,
+    audited: 0, 'no-source-field': 0, 'source-missing': 0, 'skipped-large': 0, unreadable: 0,
   }
   const loose: SweepEntry[] = []
-  /** 源文件绝对路径 → 引用它的产物页绝对路径。 */
-  const groups = new Map<string, string[]>()
+  /** 源文件绝对路径 → 引用它的产物页（绝对路径 + 字节数）。 */
+  const groups = new Map<string, { file: string, bytes: number }[]>()
   const sourceCache = new Map<string, boolean>()
   let scanned = 0
-  let skippedLarge = 0
 
   for (const file of files) {
     const rel = relOf(input.root, file)
@@ -186,15 +216,22 @@ export async function sweepDigests(input: {
       continue
     }
 
-    if (input.maxProductBytes !== undefined && Buffer.byteLength(text, 'utf8') > input.maxProductBytes) {
-      skippedLarge += 1
-      continue
-    }
-
     const sourceRel = sourcePathOf(text)
     if (sourceRel === undefined) {
       counts['no-source-field'] += 1
-      loose.push({ products: [rel], status: 'no-source-field' })
+      // 「没有 vault 内来源」不是一种情况而是两种，必须分开记：来源是**外部在线
+      // 源**（如 OpenAPI 文档站抓取页，`source_type: community-api-docs`）的产物
+      // 本来就没有本地文件可对照，那不是缺陷；而用 `source:` 指向一个**库外 PDF
+      // 名**的，才是「页面在、依据没了」。第一版把两者混成一桶，报出「94% 无来源」，
+      // 差点得出一个错误结论——抽样看 frontmatter 才发现绝大多数是前者。
+      const sourceType = frontmatterValueOf(text, 'source_type')
+      const declared = frontmatterValueOf(text, 'source')
+      loose.push({
+        products: [rel],
+        status: 'no-source-field',
+        ...(sourceType === undefined ? {} : { sourceType }),
+        ...(declared === undefined ? {} : { declaredSource: declared }),
+      })
       continue
     }
 
@@ -210,20 +247,28 @@ export async function sweepDigests(input: {
       continue
     }
 
+    const size = Buffer.byteLength(text, 'utf8')
     const list = groups.get(sourceAbs)
-    if (list === undefined) groups.set(sourceAbs, [file])
-    else list.push(file)
+    if (list === undefined) groups.set(sourceAbs, [{ file, bytes: size }])
+    else list.push({ file, bytes: size })
   }
 
   let passing = 0
   let failing = 0
   const audited: SweepEntry[] = []
-  for (const [sourceAbs, productFiles] of groups) {
+  for (const [sourceAbs, members] of groups) {
     const sourceRel = relOf(input.root, sourceAbs)
-    const productRels = productFiles.map(f => relOf(input.root, f))
+    const productRels = members.map(m => relOf(input.root, m.file))
+    const totalBytes = members.reduce((sum, m) => sum + m.bytes, 0)
+    // 整组超限则整组不验。见 maxGroupBytes 的说明：让组残缺会给出错误结论。
+    if (input.maxGroupBytes !== undefined && totalBytes > input.maxGroupBytes) {
+      counts['skipped-large'] += 1
+      loose.push({ products: productRels, status: 'skipped-large', source: sourceRel })
+      continue
+    }
     const audit = await auditDigest({
       source: sourceAbs,
-      product: productFiles,
+      product: members.map(m => m.file),
       config: input.config,
       label: `${sourceRel}  ←  ${productRels.length} 页`,
     })
@@ -236,13 +281,27 @@ export async function sweepDigests(input: {
   // 最差的排最前：体检的目的就是先看该修哪个
   audited.sort((a, b) => (a.audit?.coverage.terms.rate ?? 1) - (b.audit?.coverage.terms.rate ?? 1))
 
+  // 「无 vault 内来源」要再拆一层——外部在线源不是缺陷，指向库外文件才是
+  const nonFileSourceTypes: Record<string, number> = {}
+  const declaredSources: Record<string, number> = {}
+  for (const entry of loose) {
+    if (entry.status !== 'no-source-field') continue
+    const key = entry.sourceType ?? '(未标 source_type)'
+    nonFileSourceTypes[key] = (nonFileSourceTypes[key] ?? 0) + 1
+    if (entry.declaredSource !== undefined) {
+      const name = entry.declaredSource.replace(/\s*\(\s*\d+\s*页\s*\)\s*$/, '')
+      declaredSources[name] = (declaredSources[name] ?? 0) + 1
+    }
+  }
+
   const ordered = [...audited, ...loose]
   return {
     root: input.root,
     under,
     scanned,
-    skippedLarge,
     counts,
+    nonFileSourceTypes,
+    declaredSources,
     passing,
     failing,
     entries: input.limit === undefined ? ordered : ordered.slice(0, input.limit),

@@ -242,16 +242,24 @@ describe('批量体检', () => {
     expect(sweep.passing).toBe(0)
   })
 
-  it('maxProductBytes 跳过体量超限的页面，不把它们算进任何桶', async () => {
+  it('maxGroupBytes 按组跳过：整组记为未验，不给结论', async () => {
     dir = await mkdtemp(path.join(tmpdir(), 'digest-sweep-'))
     const root = dir
     const { mkdir } = await import('node:fs/promises')
+    await mkdir(path.join(root, 'raw', 'articles'), { recursive: true })
     await mkdir(path.join(root, 'wiki'), { recursive: true })
-    await writeFile(path.join(root, 'wiki', 'big.md'), 'x'.repeat(500), 'utf8')
-    const sweep = await sweepDigests({ root, config, maxProductBytes: 100 })
-    expect(sweep.scanned).toBe(1)
-    expect(sweep.skippedLarge).toBe(1)
+    await writeFile(path.join(root, 'raw', 'articles', 'src.md'), '第一章 基本概念\n', 'utf8')
+    const fm = '---\ntags: [x]\nsources: [raw/articles/src.md]\n---\n\n'
+    // 同一源的两页，合计超过上限
+    await writeFile(path.join(root, 'wiki', 'a.md'), fm + '# A\n' + 'x'.repeat(80), 'utf8')
+    await writeFile(path.join(root, 'wiki', 'b.md'), fm + '# B\n' + 'y'.repeat(80), 'utf8')
+
+    const sweep = await sweepDigests({ root, config, maxGroupBytes: 100 })
+    expect(sweep.counts['skipped-large']).toBe(1)
     expect(sweep.counts.audited).toBe(0)
-    expect(sweep.counts['no-source-field']).toBe(0)
+    // 关键：超限的组不能进 passing/failing —— 它没有结论。
+    // 先前的实现是逐页跳过，于是组被削掉一页后照验，给出的是错误结论。
+    expect(sweep.passing).toBe(0)
+    expect(sweep.failing).toBe(0)
   })
 })
