@@ -90,7 +90,7 @@ export interface AddressableCheck {
 export interface DigestAudit {
     readonly label: string;
     readonly source: string;
-    readonly product: string;
+    readonly product: string | readonly string[];
     readonly pages: number;
     readonly structure: readonly StructureCheck[];
     readonly coverage: CoverageCheck;
@@ -222,7 +222,7 @@ export declare function bodyOnly(text: string, config: DigestConfig): string;
  */
 export declare function auditDigest(input: {
     readonly source: string;
-    readonly product: string;
+    readonly product: string | readonly string[];
     readonly config: DigestConfig;
     readonly vault?: string;
     readonly label?: string;

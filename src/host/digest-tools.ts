@@ -28,12 +28,13 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { auditDigest, type DigestAudit } from './digest-audit.ts'
 import { planDigest, type DigestPlan } from './digest-plan.ts'
+import { sweepDigests, type DigestSweep } from './digest-sweep.ts'
 import { loadDigestConfig, type DigestConfig } from './digest-config.ts'
 import type { YonWikiService } from './wiki-service.ts'
 import type { YonTextBlock, YonToolCallView, YonToolDefinition } from './tools.ts'
 
 /** 这个模块拥有的工具。 */
-export const DIGEST_TOOL_NAMES = ['digest_plan', 'digest_audit'] as const
+export const DIGEST_TOOL_NAMES = ['digest_plan', 'digest_audit', 'digest_sweep'] as const
 
 /** 一个文本块。 */
 function text(content: string): YonTextBlock[] {
@@ -53,6 +54,14 @@ function pct(value: number | null | undefined): string {
 /** 合格标记，null 表示该项不适用。 */
 function mark(ok: boolean | null): string {
   return ok === null ? '  ·' : ok ? ' ✅' : ' ❌'
+}
+
+/** 产物显示名：一组文件时给出页数与前几个名字。 */
+function productNameOf(product: string | readonly string[]): string {
+  if (typeof product === 'string') return product
+  if (product.length === 0) return '(空产物)'
+  const head = product.slice(0, 3).join('、')
+  return product.length <= 3 ? head : `${head} … 共 ${product.length} 页`
 }
 
 /** 把一次摸底渲染成人能读的骨架图。 */
@@ -126,7 +135,7 @@ function renderAudit(audit: DigestAudit, config: DigestConfig, gateOnly = false)
     lines.push('判定：（门禁模式，只跑第 6 项，不作合格判定）')
     return lines.join('\n')
   }
-  lines.push(`  产物    ${audit.product}   ${audit.pages} 个文件 / ${(audit.volume.productBytes / 1024).toFixed(1)} KB`)
+  lines.push(`  产物    ${productNameOf(audit.product)}   ${audit.pages} 个文件 / ${(audit.volume.productBytes / 1024).toFixed(1)} KB`)
   if (audit.configNote !== '') lines.push(`  配置    ${audit.configNote}`)
 
   lines.push('')
@@ -206,6 +215,65 @@ function renderAudit(audit: DigestAudit, config: DigestConfig, gateOnly = false)
   lines.push('')
   lines.push('─'.repeat(52))
   lines.push(audit.passed ? '判定：合格' : `判定：不合格 —— ${audit.failed.join(', ')}`)
+  return lines.join('\n')
+}
+
+/** 把一次批量体检渲染成人能读的报告。 */
+function renderSweep(sweep: DigestSweep): string {
+  const lines: string[] = []
+  const c = sweep.counts
+  lines.push(`知识库体检：${sweep.under}/`)
+  lines.push(`  扫描 ${sweep.scanned} 份产物`)
+  lines.push('')
+  lines.push(`  能验收        ${String(c.audited).padStart(5)} 份   合格 ${sweep.passing} / 不合格 ${sweep.failing}`)
+  if (c['source-missing'] > 0) {
+    lines.push(`  来源缺失      ${String(c['source-missing']).padStart(5)} 份   frontmatter 的 sources 指向的文件不在库里`)
+  }
+  if (c['no-source-field'] > 0) {
+    lines.push(`  无 vault 内来源 ${String(c['no-source-field']).padStart(3)} 份   sources 指向库外或为空——这本身就没法验收`)
+  }
+  if (c.unreadable > 0) lines.push(`  读不到        ${String(c.unreadable).padStart(5)} 份`)
+  if (sweep.skippedLarge > 0) lines.push(`  体量超限跳过  ${String(sweep.skippedLarge).padStart(5)} 份`)
+
+  const audited = sweep.entries.filter(entry => entry.status === 'audited' && entry.audit !== undefined)
+  if (audited.length > 0) {
+    lines.push('')
+    lines.push('能验收的按术语覆盖率升序——**最差的排最前**（同一源的多页产物已合并验收）：')
+    for (const entry of audited) {
+      const a = entry.audit
+      if (a === undefined) continue
+      const pages = entry.products.length === 1 ? '' : ` [${entry.products.length}页]`
+      lines.push(
+        `  术语${pct(a.coverage.terms.rate)} 标识符${pct(a.coverage.identifiers.rate)}`
+        + ` 二级${String(a.coverage.level2.hit).padStart(3)}/${String(a.coverage.level2.total).padEnd(3)}`
+        + ` 约束${String(a.coverage.constraints.hit).padStart(3)}/${String(a.coverage.constraints.total).padEnd(3)}`
+        + ` 保真${pct(a.fidelity.rate)}  ${productNameOf(entry.products)}${pages}`,
+      )
+    }
+  }
+
+  if (audited.length > 0) {
+    lines.push('')
+    lines.push('  ·  同一份源可能有多代产物混在一组里——实测一个组里既有 9/28 那代的一页，')
+    lines.push('     又有另一批 9 页，它们指向同一个源却属于两次独立消化。合并验收会把两代')
+    lines.push('     的差异一起算，所以看一组时要对照页名判断是不是同一代；不齐的那代拖累整组。')
+  }
+
+  const noSource = sweep.entries.filter(entry => entry.status === 'no-source-field')
+  if (noSource.length > 0) {
+    lines.push('')
+    lines.push(`没有可验收来源的 ${noSource.length} 份（列前 12）——sources 指向库外的 PDF 名，无从复核：`)
+    for (const entry of noSource.slice(0, 12)) lines.push(`  ${productNameOf(entry.products)}`)
+  }
+
+  const missing = sweep.entries.filter(entry => entry.status === 'source-missing')
+  if (missing.length > 0) {
+    lines.push('')
+    lines.push(`来源文件缺失的 ${missing.length} 份（列前 12）——页面在、来源没了，等于不可复核：`)
+    for (const entry of missing.slice(0, 12)) {
+      lines.push(`  ${productNameOf(entry.products)}  →  ${entry.source ?? ''}`)
+    }
+  }
   return lines.join('\n')
 }
 
@@ -378,6 +446,99 @@ export function registerYonDigestTools(ctx: Context, wiki: YonWikiService): () =
       const input = (args ?? {}) as Record<string, unknown>
       const product = typeof input.product === 'string' && input.product !== '' ? input.product : '(只跑门禁)'
       return card(`消化验收：${product}`, 'read')
+    },
+  } satisfies YonToolDefinition))
+
+  disposers.push(ctx.tools.register({
+    name: 'digest_sweep',
+    description: 'Audit a whole directory of knowledge pages at once, pairing each page with the source '
+      + 'file its own frontmatter declares.\n'
+      + 'Use it to answer "how well has this knowledge base actually been digested". digest_audit judges '
+      + 'one page; this judges a batch and sorts the worst first. Besides the per-page coverage and '
+      + 'fidelity numbers it reports three buckets that cannot be audited at all: pages whose sources '
+      + 'point at a file missing from the vault, pages whose sources point outside the vault (a bare PDF '
+      + 'name, so nothing can be checked), and pages that record no source.\n'
+      + 'Measured on a real vault this surfaced two parallel sets of summaries over the same source '
+      + 'documents, one PDF digested three separate times without any generation knowing about the '
+      + 'others, and a 746-byte page marked "extracted" that described a messaging-platform manual as a '
+      + 'message-queue guide — six invented concepts, none of them in the source. None of it was visible '
+      + 'from a file listing.\n'
+      + 'It does not verify correctness, same as digest_audit — it measures coverage and fidelity only.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['vault'],
+      properties: {
+        vault: {
+          type: 'string',
+          description: 'Vault id (e.g. "bip") or absolute vault path.',
+        },
+        under: {
+          type: 'string',
+          description: 'Subtree to sweep, relative to the vault root. Defaults to "wiki".',
+        },
+        maxProductBytes: {
+          type: 'number',
+          description: 'Skip pages larger than this many bytes — large pages are usually real digestions. Omit to audit everything.',
+        },
+        limit: {
+          type: 'number',
+          description: 'Cap on detail rows returned; the summary counts are always complete.',
+        },
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        required: ['audited', 'passing', 'failing', 'report'],
+        properties: {
+          audited: { type: 'number' },
+          passing: { type: 'number' },
+          failing: { type: 'number' },
+          report: { type: 'string' },
+        },
+      },
+      render: (_args: unknown, value: unknown) => text((value as { report: string }).report),
+    },
+    async execute(args: unknown): Promise<unknown> {
+      if (args === null || typeof args !== 'object' || Array.isArray(args)) {
+        throw new Error('digest_sweep 需要一个对象参数')
+      }
+      const input = args as Record<string, unknown>
+      const vaultArg = typeof input.vault === 'string' ? input.vault.trim() : ''
+      if (vaultArg === '') throw new Error('digest_sweep 需要 vault（知识库 id 或绝对路径）')
+
+      let root: string
+      if (/^[A-Za-z]:[\\/]/.test(vaultArg) || vaultArg.startsWith('/')) {
+        root = vaultArg
+      } else {
+        const vaults = await wiki.list()
+        const found = vaults.find(entry => entry.id === vaultArg)
+        if (found === undefined) {
+          throw new Error(`没有 id 为「${vaultArg}」的知识库。已登记：${vaults.map(v => v.id).join(', ')}`)
+        }
+        root = found.path
+      }
+
+      const loaded = await loadDigestConfig()
+      const sweep = await sweepDigests({
+        root,
+        config: loaded.config,
+        ...(typeof input.under === 'string' && input.under.trim() !== '' ? { under: input.under.trim() } : {}),
+        ...(typeof input.maxProductBytes === 'number' ? { maxProductBytes: input.maxProductBytes } : {}),
+        ...(typeof input.limit === 'number' ? { limit: input.limit } : {}),
+      })
+      return {
+        audited: sweep.counts.audited,
+        passing: sweep.passing,
+        failing: sweep.failing,
+        report: renderSweep(sweep),
+      }
+    },
+    presentCall(args: unknown) {
+      const input = (args ?? {}) as Record<string, unknown>
+      const under = typeof input.under === 'string' && input.under.trim() !== '' ? input.under.trim() : 'wiki'
+      return card(`知识库体检：${under}/`, 'read')
     },
   } satisfies YonToolDefinition))
 

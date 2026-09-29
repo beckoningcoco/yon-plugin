@@ -21,6 +21,7 @@ import { headingsOf, planDigest } from '../src/host/digest-plan.ts'
 import {
   bodyOnly, chineseTerms, constraints, identifierCounts, identifiers, sections,
 } from '../src/host/digest-audit.ts'
+import { sourcePathOf, sweepDigests } from '../src/host/digest-sweep.ts'
 
 const config = DEFAULT_DIGEST_CONFIG
 
@@ -183,5 +184,74 @@ describe('摸底分段', () => {
     const plan = await planDigest(file, config)
     expect(plan.pageMarks).toBe(2)
     expect(plan.lines).toBe(4)
+  })
+})
+
+describe('批量体检', () => {
+  let dir: string | undefined
+
+  afterEach(async () => {
+    if (dir !== undefined) await rm(dir, { recursive: true, force: true })
+    dir = undefined
+  })
+
+  it('sourcePathOf 只认指向 vault 内的写法', () => {
+    // 数组式
+    expect(sourcePathOf('---\nsources: [raw/articles/a.md]\n---\n正文')).toBe('raw/articles/a.md')
+    // 块列表式
+    expect(sourcePathOf('---\nsources:\n  - raw/articles/b.md\n---\n正文')).toBe('raw/articles/b.md')
+    // 库里真实存在的一种写法：source 指向库外的 PDF 名——验收不了，必须算「无来源」
+    expect(sourcePathOf('---\nsource: "iuap-消息开发红皮书 (129页)"\n---\n正文')).toBeUndefined()
+    expect(sourcePathOf('---\nsources: []\n---\n正文')).toBeUndefined()
+    expect(sourcePathOf('没有 frontmatter')).toBeUndefined()
+  })
+
+  it('把产物分成「能验收 / 来源缺失 / 无 vault 内来源」三桶', async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'digest-sweep-'))
+    const root = dir
+    const { mkdir } = await import('node:fs/promises')
+    await mkdir(path.join(root, 'raw', 'articles'), { recursive: true })
+    await mkdir(path.join(root, 'wiki'), { recursive: true })
+
+    // 源：一份够大的文本，让 audit 的各检查有东西可比
+    await writeFile(path.join(root, 'raw', 'articles', 'src.md'), [
+      '第一章 基本概念',
+      '1.1 背景',
+      '消息通道是消息触达用户的物理渠道，目前支持邮件、短信、微信。',
+      '第二章 技术架构',
+      '2.1 总体架构设计',
+      '消息平台依托 mdd 框架提供接入能力，注意扩展通道与原通道不能同时存在。',
+    ].join('\n'), 'utf8')
+
+    const fm = '---\ntags: [x]\ncreated: 2026-09-30\nupdated: 2026-09-30\nsources: [%S%]\nplatform_version: "BIP V5"\nlast_verified: 2026-09-30\nstatus: unverified\nsource_type: doc\n---\n\n'
+
+    await writeFile(path.join(root, 'wiki', 'ok.md'),
+      fm.replace('%S%', 'raw/articles/src.md') + '# 有源\n\n消息通道\n', 'utf8')
+    await writeFile(path.join(root, 'wiki', 'gone.md'),
+      fm.replace('%S%', 'raw/articles/不存在.md') + '# 源丢了\n', 'utf8')
+    await writeFile(path.join(root, 'wiki', 'outside.md'),
+      '---\ntags: [x]\nsource: "某红皮书 (129页)"\n---\n\n# 指向库外\n', 'utf8')
+
+    const sweep = await sweepDigests({ root, config })
+    expect(sweep.scanned).toBe(3)
+    expect(sweep.counts.audited).toBe(1)
+    expect(sweep.counts['source-missing']).toBe(1)
+    expect(sweep.counts['no-source-field']).toBe(1)
+    // 能验收的那份严格不合格——它只覆盖了源文档的一角，这正是扫描要暴露的
+    expect(sweep.failing).toBe(1)
+    expect(sweep.passing).toBe(0)
+  })
+
+  it('maxProductBytes 跳过体量超限的页面，不把它们算进任何桶', async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'digest-sweep-'))
+    const root = dir
+    const { mkdir } = await import('node:fs/promises')
+    await mkdir(path.join(root, 'wiki'), { recursive: true })
+    await writeFile(path.join(root, 'wiki', 'big.md'), 'x'.repeat(500), 'utf8')
+    const sweep = await sweepDigests({ root, config, maxProductBytes: 100 })
+    expect(sweep.scanned).toBe(1)
+    expect(sweep.skippedLarge).toBe(1)
+    expect(sweep.counts.audited).toBe(0)
+    expect(sweep.counts['no-source-field']).toBe(0)
   })
 })
