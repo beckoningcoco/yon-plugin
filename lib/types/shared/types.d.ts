@@ -379,6 +379,66 @@ export interface WikiCitersPayload {
     readonly pages: readonly string[];
 }
 /**
+ * 一次检查的结局。
+ *
+ * 与宿主 `DigestOutcome` 手工保持一致——两半之间不共享代码，只共享这个契约，
+ * 所以谁改了取值都要同时改两边。多出这一个联合类型而不是直接写 `string`，
+ * 是为了让面板的 switch 穷尽检查能生效：漏掉一种结局时编译不过。
+ */
+export type DigestOutcomeView = 'pass' | 'fail' | 'gate' | 'plan' | 'sweep';
+/**
+ * 流水账里的一行：一次检查的分数。
+ *
+ * 只带路径、分数与判定，不带正文——日志要能安心躺在 `~/.dsh/yon-panel/` 下，
+ * 不做知识库的第二份副本。
+ */
+export interface DigestLogEntryView {
+    readonly at: string;
+    readonly tool: string;
+    readonly outcome: DigestOutcomeView;
+    readonly label: string;
+    readonly source: string;
+    readonly product: string;
+    readonly pages: number;
+    /** 未通过的项目名，按报告顺序。 */
+    readonly failed: readonly string[];
+    /** 各项实测值，null 表示该项不适用。 */
+    readonly metrics: Readonly<Record<string, number | null>>;
+    readonly sourceBytes: number;
+    readonly productBytes: number;
+    readonly ms: number;
+    /** 批量体检专用。 */
+    readonly scanned?: number;
+    readonly passing?: number;
+    readonly failing?: number;
+    /** 摸底专用。 */
+    readonly chapters?: number;
+}
+/** 折起来之后的流水账。 */
+export interface DigestLogSummaryView {
+    readonly total: number;
+    readonly since?: string;
+    readonly byOutcome: Readonly<Record<string, number>>;
+    readonly byTool: readonly {
+        readonly tool: string;
+        readonly count: number;
+    }[];
+    /** 每条计量项在最近若干次验收上的均值；看趋势，不看单次。 */
+    readonly averages: Readonly<Record<string, number | null>>;
+    readonly recent: readonly DigestLogEntryView[];
+}
+/** Body of `GET /yon/api/digest/summary`. */
+export interface DigestSummaryPayload {
+    readonly summary: DigestLogSummaryView;
+    /** 日志文件的位置，方便直接打开看。 */
+    readonly path: string;
+}
+/** Body of `GET /yon/api/digest/log`. */
+export interface DigestLogPayload {
+    readonly entries: readonly DigestLogEntryView[];
+    readonly path: string;
+}
+/**
  * Build the identity both halves address one connection by.
  * @param configKey - the key the connection sits under in the configuration.
  * @param env - the environment branch under it.

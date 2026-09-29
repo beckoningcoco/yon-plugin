@@ -16,6 +16,7 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis';
 import { type YonPanelKey } from './locales.ts';
 export type { YonPanelItemOwnerProps, YonPanelRootFace, YonPanelSnapshot } from './slots.ts';
 export type { DataSourceItemFace, ProjectItemFace, SkillItemFace, WikiItemFace } from './slots.ts';
+export type { DigestItemFace } from './slots.ts';
 export type { YonPanelKey } from './locales.ts';
 declare module '@deepseek-ai/dsh-client-ui-slots' {
     interface LocaleNamespaceMap {

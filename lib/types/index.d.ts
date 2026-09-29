@@ -39,6 +39,12 @@ export { KNOWLEDGE_TOOL_NAMES, KnowledgeError } from './host/knowledge-tools.ts'
 export { CLASS_TOOL_NAMES, ClassIndexError } from './host/class-tools.ts';
 export { WIKI_WRITE_TOOL_NAMES, WikiWriteError } from './host/wiki-write.ts';
 export { DIGEST_TOOL_NAMES } from './host/digest-tools.ts';
+export { createDigestLog, digestLogPath, DIGEST_METRIC_KEYS, DIGEST_METRIC_LABELS } from './host/digest-log.ts';
+export type { DigestLog, DigestLogEntry, DigestLogSummary, DigestOutcome } from './host/digest-log.ts';
+export { sweepDigests, sourcePathOf, frontmatterValueOf } from './host/digest-sweep.ts';
+export type { DigestSweep, SweepEntry, SweepStatus } from './host/digest-sweep.ts';
+export { planDigest, headingsOf } from './host/digest-plan.ts';
+export type { DigestPlan, PlanChapter, Heading } from './host/digest-plan.ts';
 export { DEFAULT_DIGEST_CONFIG, digestConfigPath, loadDigestConfig, saveDigestConfig, } from './host/digest-config.ts';
 export { auditDigest } from './host/digest-audit.ts';
 export type { DigestAudit, CountRate, Verdicts } from './host/digest-audit.ts';

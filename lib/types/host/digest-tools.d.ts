@@ -26,6 +26,7 @@
  * 它会判合格。正确性必须对照真实环境。
  */
 import type { Context } from '@deepseek-ai/cordis';
+import { type DigestLog } from './digest-log.ts';
 import type { YonWikiService } from './wiki-service.ts';
 /** 这个模块拥有的工具。 */
 export declare const DIGEST_TOOL_NAMES: readonly ["digest_plan", "digest_audit", "digest_sweep"];
@@ -35,4 +36,4 @@ export declare const DIGEST_TOOL_NAMES: readonly ["digest_plan", "digest_audit",
  * @param wiki - 知识库服务，用来把 vault id 解析成路径。
  * @returns 撤回全部注册的处置函数。
  */
-export declare function registerYonDigestTools(ctx: Context, wiki: YonWikiService): () => void;
+export declare function registerYonDigestTools(ctx: Context, wiki: YonWikiService, log?: DigestLog): () => void;

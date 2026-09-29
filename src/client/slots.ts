@@ -4,6 +4,7 @@
 // entry occupies, rendered at the sidebar foot directly above the settings row.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { DataSourceApi } from './datasource/api.ts'
+import type { DigestApi } from './digest/api.ts'
 import type { ProjectApi } from './project/api.ts'
 import type { SkillApi } from './skill/api.ts'
 import type { WikiApi } from './wiki/api.ts'
@@ -70,6 +71,21 @@ export type DataSourceItemFace = DataSourceApi & {
 export type WikiItemFace = WikiApi & {
   /**
    * Announce a layer standing above the panel (the knowledge base surface).
+   * @returns the release for that layer.
+   */
+  pushOverlay(): () => void
+}
+
+/**
+ * Data face the panel's digestion-ledger entry receives: the ledger API plus the
+ * same panel-level gesture.
+ *
+ * It borrows nothing, like the wiki entry: the ledger is a file this plugin owns
+ * and appends to itself, and it knows nothing of projects or vaults.
+ */
+export type DigestItemFace = DigestApi & {
+  /**
+   * Announce a layer standing above the panel (the ledger surface).
    * @returns the release for that layer.
    */
   pushOverlay(): () => void

@@ -45,6 +45,7 @@ import { ProjectError, type YonProjectsService } from './service.ts'
 import { SkillError, type YonSkillsService } from './skill-registry.ts'
 import { DataSourceError, type YonDataSourcesService } from './datasource-service.ts'
 import { WikiError, type YonWikiService } from './wiki-service.ts'
+import { digestLogPath, type DigestLog } from './digest-log.ts'
 
 /** Largest request body accepted, in bytes. */
 const MAX_BODY_BYTES = 1_000_000
@@ -430,12 +431,67 @@ async function handleSkills(
  * @param wiki - the knowledge base service to expose.
  * @returns the disposer removing the route.
  */
+/**
+ * Serve the `/yon/api/digest` branch.
+ *
+ * The digestion checker's own ledger, read-only. It answers what the checker has
+ * been asked and how those answers went — which is exactly what a report shown
+ * once inside a session cannot tell you afterwards.
+ *
+ * Nothing here writes: the ledger is appended by the tools themselves, and a
+ * browser tab has no business adding a verdict it did not compute.
+ *
+ * @param res - the response.
+ * @param method - the HTTP method.
+ * @param segments - path segments after the prefix.
+ * @param url - the parsed request URL, for the query parameters.
+ * @param log - the ledger.
+ */
+async function handleDigest(
+  res: ServerResponse,
+  method: string,
+  segments: readonly string[],
+  url: URL,
+  log: DigestLog,
+): Promise<void> {
+  if (method !== 'GET') {
+    sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+    return
+  }
+  const num = (name: string, max: number): number | undefined => {
+    const raw = url.searchParams.get(name)
+    if (raw === null || raw === '') return undefined
+    const value = Number(raw)
+    if (!Number.isFinite(value) || value <= 0) return undefined
+    return Math.min(Math.floor(value), max)
+  }
+  const tail = segments[1]
+
+  // /yon/api/digest/summary
+  if (tail === 'summary') {
+    const recent = num('recent', 200) ?? 50
+    const window = num('window', 1000) ?? 100
+    sendJson(res, 200, { summary: await log.summary(recent, window), path: digestLogPath() })
+    return
+  }
+
+  // /yon/api/digest/log  （也是这一段默认的取法）
+  if (tail === 'log' || tail === undefined) {
+    const limit = num('limit', 2000) ?? 200
+    sendJson(res, 200, { entries: await log.read(limit), path: digestLogPath() })
+    return
+  }
+
+  sendFailure(res, 404, 'not-found', `no route for ${method} /yon/api/digest/...`)
+}
+
 export function registerYonApi(
   ctx: Context,
   service: YonProjectsService,
   skills: YonSkillsService,
   sources: YonDataSourcesService,
   wiki: YonWikiService,
+  digestLog: DigestLog,
 ): () => void {
   const carrier = ctx.get('webServer') as RouteRegistrar | undefined
   if (carrier === undefined) {
@@ -464,6 +520,10 @@ export function registerYonApi(
         }
         if (segments[0] === 'wiki') {
           await handleWiki(req, res, method, segments, url, wiki)
+          return
+        }
+        if (segments[0] === 'digest') {
+          await handleDigest(res, method, segments, url, digestLog)
           return
         }
         if (segments[0] !== 'projects') {

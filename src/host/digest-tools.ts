@@ -29,6 +29,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { auditDigest, type DigestAudit } from './digest-audit.ts'
 import { planDigest, type DigestPlan } from './digest-plan.ts'
 import { sweepDigests, type DigestSweep } from './digest-sweep.ts'
+import { createDigestLog, type DigestLog, type DigestLogEntry } from './digest-log.ts'
 import { loadDigestConfig, type DigestConfig } from './digest-config.ts'
 import type { YonWikiService } from './wiki-service.ts'
 import type { YonTextBlock, YonToolCallView, YonToolDefinition } from './tools.ts'
@@ -62,6 +63,40 @@ function productNameOf(product: string | readonly string[]): string {
   if (product.length === 0) return '(空产物)'
   const head = product.slice(0, 3).join('、')
   return product.length <= 3 ? head : `${head} … 共 ${product.length} 页`
+}
+
+/**
+ * 从一次验收里抽出要落账的那几项。
+ *
+ * 只记分数与判定，不记正文——日志要能安心留在 `~/.dsh/` 下，不能变成知识库的
+ * 第二份副本。
+ */
+function entryOfAudit(audit: DigestAudit, ms: number, gateOnly: boolean): Omit<DigestLogEntry, 'at'> {
+  const c = audit.coverage
+  return {
+    tool: 'digest_audit',
+    outcome: gateOnly ? 'gate' : audit.passed ? 'pass' : 'fail',
+    label: audit.label,
+    source: audit.source,
+    product: productNameOf(audit.product),
+    pages: audit.pages,
+    failed: gateOnly ? [] : audit.failed,
+    metrics: {
+      terms: c.terms.rate,
+      identifiers: c.identifiers.rate,
+      level1: c.level1.rate,
+      level2: c.level2.rate,
+      constraints: c.constraints.rate,
+      // 样本不足时保真率没有意义，记 null 而不是记那个虚高的数
+      fidelity: audit.fidelity.total === 0 ? null : audit.fidelity.rate,
+      provenance: audit.provenance.rate,
+      overlap: audit.overlap?.rate ?? null,
+      addressable: audit.addressable.rate,
+    },
+    sourceBytes: audit.volume.sourceBytes,
+    productBytes: audit.volume.productBytes,
+    ms,
+  }
 }
 
 /** 把一次摸底渲染成人能读的骨架图。 */
@@ -307,7 +342,11 @@ function renderSweep(sweep: DigestSweep): string {
  * @param wiki - 知识库服务，用来把 vault id 解析成路径。
  * @returns 撤回全部注册的处置函数。
  */
-export function registerYonDigestTools(ctx: Context, wiki: YonWikiService): () => void {
+export function registerYonDigestTools(
+  ctx: Context,
+  wiki: YonWikiService,
+  log: DigestLog = createDigestLog(),
+): () => void {
   const disposers: Array<() => void> = []
 
   disposers.push(ctx.tools.register({
@@ -352,7 +391,24 @@ export function registerYonDigestTools(ctx: Context, wiki: YonWikiService): () =
       const source = typeof input.source === 'string' ? input.source.trim() : ''
       if (source === '') throw new Error('digest_plan 需要 source（源文档的绝对路径）')
       const loaded = await loadDigestConfig()
+      const started = Date.now()
       const plan = await planDigest(source, loaded.config)
+      // 摸底也落账：一份素材"看过但没做"和"从没看过"在事后长得一样，
+      // 而前者说明已经有人判断过它了。
+      void log.record({
+        tool: 'digest_plan',
+        outcome: 'plan',
+        label: source.split(/[\\/]/).pop() ?? source,
+        source,
+        product: '',
+        pages: 0,
+        failed: [],
+        metrics: {},
+        sourceBytes: plan.bytes,
+        productBytes: 0,
+        ms: Date.now() - started,
+        chapters: plan.chapters.length,
+      })
       return { chapters: plan.chapters.length, report: renderPlan(plan) }
     },
     presentCall(args: unknown) {
@@ -449,6 +505,7 @@ export function registerYonDigestTools(ctx: Context, wiki: YonWikiService): () =
         ? `${loaded.path}${loaded.problem === undefined ? '' : `（${loaded.problem}）`}`
         : `${loaded.path} 不存在，用内置默认值`
 
+      const started = Date.now()
       // 只跑门禁时产物给的是源文档自身——这样体积、覆盖等项自然不是重点，
       // 报告里第 6 项仍然完整。
       const audit = await auditDigest({
@@ -463,6 +520,8 @@ export function registerYonDigestTools(ctx: Context, wiki: YonWikiService): () =
       const report = product === undefined
         ? renderAudit(audit, loaded.config, true)
         : renderAudit(audit, loaded.config)
+
+      void log.record(entryOfAudit(audit, Date.now() - started, product === undefined))
 
       return { passed: audit.passed, failed: audit.failed, report }
     },
@@ -545,12 +604,30 @@ export function registerYonDigestTools(ctx: Context, wiki: YonWikiService): () =
       }
 
       const loaded = await loadDigestConfig()
+      const started = Date.now()
       const sweep = await sweepDigests({
         root,
         config: loaded.config,
         ...(typeof input.under === 'string' && input.under.trim() !== '' ? { under: input.under.trim() } : {}),
         ...(typeof input.maxGroupBytes === 'number' ? { maxGroupBytes: input.maxGroupBytes } : {}),
         ...(typeof input.limit === 'number' ? { limit: input.limit } : {}),
+      })
+      const elapsed = Date.now() - started
+      void log.record({
+        tool: 'digest_sweep',
+        outcome: 'sweep',
+        label: `${root} / ${sweep.under}`,
+        source: root,
+        product: '',
+        pages: 0,
+        failed: [],
+        metrics: {},
+        sourceBytes: 0,
+        productBytes: 0,
+        ms: elapsed,
+        scanned: sweep.scanned,
+        passing: sweep.passing,
+        failing: sweep.failing,
       })
       return {
         audited: sweep.counts.audited,

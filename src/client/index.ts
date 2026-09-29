@@ -22,10 +22,12 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { createYonPanelStore } from './panel-store.ts'
 import { createDataSourceApi } from './datasource/api.ts'
+import { createDigestApi } from './digest/api.ts'
 import { createProjectApi } from './project/api.ts'
 import { createSkillApi } from './skill/api.ts'
 import { createWikiApi } from './wiki/api.ts'
 import { DataSourceItem } from './DataSourceItem.tsx'
+import { DigestItem } from './DigestItem.tsx'
 import { ProjectItem } from './ProjectItem.tsx'
 import { SkillItem } from './SkillItem.tsx'
 import { WikiItem } from './WikiItem.tsx'
@@ -34,6 +36,7 @@ import { en, zh, type YonPanelKey } from './locales.ts'
 
 export type { YonPanelItemOwnerProps, YonPanelRootFace, YonPanelSnapshot } from './slots.ts'
 export type { DataSourceItemFace, ProjectItemFace, SkillItemFace, WikiItemFace } from './slots.ts'
+export type { DigestItemFace } from './slots.ts'
 export type { YonPanelKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -64,6 +67,7 @@ export function apply(ctx: ClientContext): void {
   const skillApi = createSkillApi()
   const dataSourceApi = createDataSourceApi()
   const wikiApi = createWikiApi()
+  const digestApi = createDigestApi()
 
   // A fresh list id adds this action beside the shipped footer actions, above
   // the settings row; the children table declares (and thereby authorizes) the
@@ -136,4 +140,16 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: () => ({ ...wikiApi, pushOverlay: () => panel.pushOverlay() }),
   }, WikiItem))
+
+  // The digestion ledger, fifth — and the only cell that reports on the model's
+  // own work rather than on the operator's material. A verdict that lives only
+  // inside the session that produced it cannot be acted on later; this is where
+  // it goes to be seen.
+  ctx.slots.inject('yon.panel.item', () => ctx.slots.register({
+    name: 'yon.panel.item',
+    id: 'digest',
+    order: 50,
+    locale: NS,
+    inject: () => ({ ...digestApi, pushOverlay: () => panel.pushOverlay() }),
+  }, DigestItem))
 }

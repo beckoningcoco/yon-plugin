@@ -37,6 +37,7 @@ import { KNOWLEDGE_TOOL_NAMES, registerYonKnowledgeTools } from './host/knowledg
 import { CLASS_TOOL_NAMES, registerYonClassTools } from './host/class-tools.ts'
 import { registerYonWikiWriteTools, WIKI_WRITE_TOOL_NAMES } from './host/wiki-write.ts'
 import { DIGEST_TOOL_NAMES, registerYonDigestTools } from './host/digest-tools.ts'
+import { createDigestLog, digestLogPath } from './host/digest-log.ts'
 
 export { DOMAIN_NAME, YON_DOMAIN } from './host/domain.ts'
 export { SKILL_DOMAIN_NAME, YON_SKILL_DOMAIN } from './host/skill-domain.ts'
@@ -57,6 +58,12 @@ export { KNOWLEDGE_TOOL_NAMES, KnowledgeError } from './host/knowledge-tools.ts'
 export { CLASS_TOOL_NAMES, ClassIndexError } from './host/class-tools.ts'
 export { WIKI_WRITE_TOOL_NAMES, WikiWriteError } from './host/wiki-write.ts'
 export { DIGEST_TOOL_NAMES } from './host/digest-tools.ts'
+export { createDigestLog, digestLogPath, DIGEST_METRIC_KEYS, DIGEST_METRIC_LABELS } from './host/digest-log.ts'
+export type { DigestLog, DigestLogEntry, DigestLogSummary, DigestOutcome } from './host/digest-log.ts'
+export { sweepDigests, sourcePathOf, frontmatterValueOf } from './host/digest-sweep.ts'
+export type { DigestSweep, SweepEntry, SweepStatus } from './host/digest-sweep.ts'
+export { planDigest, headingsOf } from './host/digest-plan.ts'
+export type { DigestPlan, PlanChapter, Heading } from './host/digest-plan.ts'
 export {
   DEFAULT_DIGEST_CONFIG, digestConfigPath, loadDigestConfig, saveDigestConfig,
 } from './host/digest-config.ts'
@@ -187,7 +194,12 @@ export async function apply(ctx: Context): Promise<void> {
   // produced is actually there. It needs the wiki service only to resolve a
   // vault id into a path for the overlap gate, which is why it is registered
   // here rather than alongside the knowledge tools.
-  ctx.effect(() => registerYonDigestTools(ctx, wiki), 'yon-panel: digest audit tool')
+  //
+  // The ledger it writes is what makes its verdicts observable after the fact:
+  // a report shown once in a session leaves nothing behind, so "was this ever
+  // checked, and how did it go" had no answer. The panel reads it back.
+  const digestLog = createDigestLog()
+  ctx.effect(() => registerYonDigestTools(ctx, wiki, digestLog), 'yon-panel: digest audit tool')
 
   // A skill registered through the registry exists exactly as long as this
   // plugin does, which is what makes these skills shippable without ever
@@ -205,7 +217,7 @@ export async function apply(ctx: Context): Promise<void> {
   // the route simply never appears there.
   ctx.inject(['webServer'], (web) => {
     web.effect(
-      () => registerYonApi(web, service, skills.service, dataSources.service, wiki),
+      () => registerYonApi(web, service, skills.service, dataSources.service, wiki, digestLog),
       'yon-panel: project api',
     )
   })
