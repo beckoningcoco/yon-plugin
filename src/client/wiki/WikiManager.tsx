@@ -17,8 +17,8 @@
  * a file edit, because a machine path is not something to invite somebody to type
  * into a browser field.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Button, Modal, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
   WikiCardView, WikiGapView, WikiHealthReport, WikiLevel, WikiLogEntry,
@@ -38,6 +38,9 @@ const HIT_LIMIT = 40
 
 /** How long typing settles before a search is sent. */
 const SEARCH_DEBOUNCE_MS = 300
+
+/** How long a copy confirmation stays on screen. */
+const COPY_LINGER_MS = 1600
 
 /** The three tabs, and which question each answers. */
 type Tab = 'overview' | 'gaps' | 'activity'
@@ -89,7 +92,38 @@ function BookMark() {
   )
 }
 
-/** A byte count in the unit a person reads it in. */
+/**
+ * The copy affordance, matching the field table's in the project surface.
+ * @returns the decorative svg.
+ */
+function CopyMark() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect x="5.75" y="5.75" width="7.5" height="7.5" rx="1.25" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M10.25 3.75H3.9c-.6 0-1.15.5-1.15 1.15v6.35" stroke="currentColor" strokeWidth="1.3"
+        strokeLinecap="round" />
+    </svg>
+  )
+}
+
+/**
+ * The confirmation that replaces it once the text is on the clipboard.
+ * @returns the decorative svg.
+ */
+function CheckMark() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M3.5 8.5l3 3 6-6.5" stroke="currentColor" strokeWidth="1.5"
+        strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/**
+ * A byte count in the unit a person reads it in.
+ * @param value - the size in bytes.
+ * @returns the formatted size.
+ */
 function bytes(value: number): string {
   if (value < 1024) return `${value} B`
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
@@ -178,6 +212,15 @@ export function WikiManager({
   const [openGap, setOpenGap] = useState<string | undefined>(undefined)
   const [gapCiters, setGapCiters] = useState<readonly string[]>([])
   const [gapBusy, setGapBusy] = useState(false)
+  /** How long the last rebuild took, so a slow one has a number attached to it. */
+  const [rebuildMs, setRebuildMs] = useState<number | undefined>(undefined)
+  /** Whether copying the path worked, and the timer that clears the confirmation. */
+  const [copied, setCopied] = useState<'copied' | 'failed' | undefined>(undefined)
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
+  useEffect(() => () => {
+    if (copyTimer.current !== undefined) clearTimeout(copyTimer.current)
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -239,14 +282,31 @@ export function WikiManager({
   const rebuild = async (vault?: string): Promise<void> => {
     setBusy(vault ?? '*')
     setFailure(undefined)
+    const started = Date.now()
     try {
       const answer = await rebuildVault(vault)
       setVaults(answer.vaults)
+      // Measured here rather than reported by the host: the two differ by one
+      // local round trip, and the number exists to answer "why is this slow".
+      setRebuildMs(Date.now() - started)
     } catch (cause: unknown) {
       setFailure(cause instanceof Error ? cause.message : String(cause))
     } finally {
       setBusy(undefined)
     }
+  }
+
+  /** Put the vault path on the clipboard, since it is a machine fact people paste. */
+  const copyPath = (): void => {
+    const settle = (outcome: 'copied' | 'failed'): void => {
+      setCopied(outcome)
+      if (copyTimer.current !== undefined) clearTimeout(copyTimer.current)
+      copyTimer.current = setTimeout(() => { setCopied(undefined) }, COPY_LINGER_MS)
+    }
+    void writeClipboard(current?.path ?? '').then(
+      accepted => { settle(accepted ? 'copied' : 'failed') },
+      () => { settle('failed') },
+    )
   }
 
   const openCard = async (page: string): Promise<void> => {
@@ -296,7 +356,24 @@ export function WikiManager({
     <>
       <dl className={cn(base.props)}>
         <dt className={cn(base.propLabel)}>{t('wiki.path')}</dt>
-        <dd className={cn(base.propValue)}><span className={cn(css.mono)}>{current?.path}</span></dd>
+        <dd className={cn(base.propValue)}>
+          <span className={cn(css.pathRow)}>
+            <span className={cn(css.mono)}>{current?.path}</span>
+            <button
+              type="button"
+              className={cn(css.copyBtn,
+                copied === 'copied' ? css.copyOk : undefined,
+                copied === 'failed' ? css.copyBad : undefined)}
+              aria-label={copied === 'copied'
+                ? t('wiki.copied')
+                : copied === 'failed' ? t('wiki.copyFailed') : t('wiki.copyPath')}
+              title={t('wiki.copyPath')}
+              onClick={copyPath}
+            >
+              {copied === 'copied' ? <CheckMark /> : <CopyMark />}
+            </button>
+          </span>
+        </dd>
 
         <dt className={cn(base.propLabel)}>{t('wiki.pages')}</dt>
         <dd className={cn(base.propValue)}>{current?.ready === true ? current.pages : '—'}</dd>
@@ -308,6 +385,13 @@ export function WikiManager({
         <dd className={cn(base.propValue)}>
           {report.indexBytes === undefined ? '—' : bytes(report.indexBytes)}
         </dd>
+
+        {rebuildMs !== undefined && (
+          <>
+            <dt className={cn(base.propLabel)}>{t('wiki.lastRebuild')}</dt>
+            <dd className={cn(base.propValue)}>{`${rebuildMs} ms`}</dd>
+          </>
+        )}
       </dl>
 
       <h4 className={cn(css.subTitle)}>{t('wiki.levels')}</h4>

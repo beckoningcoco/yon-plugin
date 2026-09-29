@@ -39,6 +39,36 @@
   opacity: 0.55;
 }
 
+/* ---- the path, which people copy ---- */
+
+.pathRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.copyBtn {
+  flex: none;
+  padding: 2px;
+  border: none;
+  background: none;
+  line-height: 0;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+.copyBtn:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.copyOk {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.copyBad {
+  color: var(--dsw-alias-state-error-primary);
+}
+
 /* ---- tabs ---- */
 
 .tabs {

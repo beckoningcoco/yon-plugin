@@ -177,6 +177,10 @@ export declare const zh: {
     'wiki.tab.gaps': string;
     'wiki.tab.activity': string;
     'wiki.indexBytes': string;
+    'wiki.lastRebuild': string;
+    'wiki.copyPath': string;
+    'wiki.copied': string;
+    'wiki.copyFailed': string;
     'wiki.levels': string;
     'wiki.level.query-ready': string;
     'wiki.level.locatable': string;
@@ -398,6 +402,10 @@ export declare const en: {
     'wiki.tab.gaps': string;
     'wiki.tab.activity': string;
     'wiki.indexBytes': string;
+    'wiki.lastRebuild': string;
+    'wiki.copyPath': string;
+    'wiki.copied': string;
+    'wiki.copyFailed': string;
     'wiki.levels': string;
     'wiki.level.query-ready': string;
     'wiki.level.locatable': string;
