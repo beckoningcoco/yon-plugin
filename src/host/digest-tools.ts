@@ -27,12 +27,13 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import { auditDigest, type DigestAudit } from './digest-audit.ts'
+import { planDigest, type DigestPlan } from './digest-plan.ts'
 import { loadDigestConfig, type DigestConfig } from './digest-config.ts'
 import type { YonWikiService } from './wiki-service.ts'
 import type { YonTextBlock, YonToolCallView, YonToolDefinition } from './tools.ts'
 
 /** 这个模块拥有的工具。 */
-export const DIGEST_TOOL_NAMES = ['digest_audit'] as const
+export const DIGEST_TOOL_NAMES = ['digest_plan', 'digest_audit'] as const
 
 /** 一个文本块。 */
 function text(content: string): YonTextBlock[] {
@@ -52,6 +53,41 @@ function pct(value: number | null | undefined): string {
 /** 合格标记，null 表示该项不适用。 */
 function mark(ok: boolean | null): string {
   return ok === null ? '  ·' : ok ? ' ✅' : ' ❌'
+}
+
+/** 把一次摸底渲染成人能读的骨架图。 */
+function renderPlan(plan: DigestPlan): string {
+  const lines: string[] = []
+  const name = plan.source.split(/[\\/]/).pop() ?? plan.source
+  lines.push(`消化摸底：${name}`)
+  lines.push(`  ${plan.pageMarks} 页 · ${plan.characters} 字符 · ${plan.lines} 行 · ${(plan.bytes / 1024).toFixed(0)} KB`)
+  if (plan.pageMarks > 0) {
+    lines.push(`  每页字符：中位 ${plan.pageChars.median}，最小 ${plan.pageChars.min}，最大 ${plan.pageChars.max}`)
+  }
+
+  if (plan.chapters.length === 0) {
+    lines.push('')
+    lines.push('没有识别到一级章节。')
+  } else {
+    lines.push('')
+    lines.push(`章节骨架（${plan.chapters.length} 章，${plan.sectionCount} 个二级小节）：`)
+    for (const chapter of plan.chapters) {
+      const page = chapter.page === undefined ? '  —' : `p${String(chapter.page).padStart(3)}`
+      lines.push(`  ${chapter.title}`)
+      lines.push(`      ${page}   offset ${chapter.line}, limit ${chapter.endLine - chapter.line + 1}`
+        + `   ${chapter.characters} 字符   ${chapter.children.length} 节`)
+    }
+    lines.push('')
+    lines.push('把 offset / limit 直接交给 read 工具即可分段读——**不要按页号自己算范围**，')
+    lines.push('章节常常跨页，按页切会把章节的尾巴切给下一章。')
+  }
+
+  if (plan.notes.length > 0) {
+    lines.push('')
+    lines.push('注意：')
+    for (const note of plan.notes) lines.push(`  · ${note}`)
+  }
+  return lines.join('\n')
 }
 
 /** 把一次验收渲染成人能读的报告。 */
@@ -151,6 +187,58 @@ function renderAudit(audit: DigestAudit, config: DigestConfig): string {
  */
 export function registerYonDigestTools(ctx: Context, wiki: YonWikiService): () => void {
   const disposers: Array<() => void> = []
+
+  disposers.push(ctx.tools.register({
+    name: 'digest_plan',
+    description: 'Survey a source document before digesting it: returns its chapter skeleton, how many '
+      + 'pages and characters it holds, and the offset/limit range of every chapter — ready to hand to '
+      + 'the read tool.\n'
+      + 'Call this FIRST when digesting anything long. The ranges it returns are cut on heading '
+      + 'boundaries, not page boundaries, and that distinction matters: measured on a 133-page red book, '
+      + 'cutting by page number sliced off the tail of section 2.3 and it vanished from the knowledge '
+      + 'base until a final cross-check caught it. Chapters routinely spill across pages.\n'
+      + 'It also warns about the traps that cost real time: figures that survive extraction as captions '
+      + 'only (never invent what a figure showed), documents with no page markers (provenance will read '
+      + 'as 0% and needs a different anchor), and chapter formats the configured patterns do not match.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['source'],
+      properties: {
+        source: {
+          type: 'string',
+          description: 'Absolute path to the source material — the extracted text of the PDF or document to digest.',
+        },
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        required: ['chapters', 'report'],
+        properties: {
+          chapters: { type: 'number' },
+          report: { type: 'string' },
+        },
+      },
+      render: (_args: unknown, value: unknown) => text((value as { report: string }).report),
+    },
+    async execute(args: unknown): Promise<unknown> {
+      if (args === null || typeof args !== 'object' || Array.isArray(args)) {
+        throw new Error('digest_plan 需要一个对象参数')
+      }
+      const input = args as Record<string, unknown>
+      const source = typeof input.source === 'string' ? input.source.trim() : ''
+      if (source === '') throw new Error('digest_plan 需要 source（源文档的绝对路径）')
+      const loaded = await loadDigestConfig()
+      const plan = await planDigest(source, loaded.config)
+      return { chapters: plan.chapters.length, report: renderPlan(plan) }
+    },
+    presentCall(args: unknown) {
+      const input = (args ?? {}) as Record<string, unknown>
+      const name = typeof input.source === 'string' ? (input.source.split(/[\\/]/).pop() ?? '') : ''
+      return card(`消化摸底：${name}`, 'read')
+    },
+  } satisfies YonToolDefinition))
 
   disposers.push(ctx.tools.register({
     name: 'digest_audit',

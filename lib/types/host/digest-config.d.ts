@@ -29,6 +29,21 @@ export interface DigestSectionConfig {
     readonly numberedPattern: string;
     /** 标题最长多少个字符——再长就不是标题了 */
     readonly maxTitleLength: number;
+    /**
+     * 一级章节标题的长度上限。
+     *
+     * 比 `maxTitleLength` 严得多，因为正文里的**编号步骤列表**长得太像章节：
+     * 实测一份文档里有 `1 和最开始一样配置结构，这些还是一样，规定用下面的第一
+     * 种方式配` 这样的行，编号 1–8 连续递增，把「编号必须递增」这条也骗过去了。
+     * 真章名都很短且是名词短语（`概念与架构`、`MDF 服务`），这些则是完整句子。
+     */
+    readonly maxChapterTitleLength: number;
+    /**
+     * 一级章节标题里不该出现的字符。
+     *
+     * 句中标点一出现，那行就是句子而不是标题。配合长度上限一起用。
+     */
+    readonly chapterTitleForbidden: string;
     /** 最多认到第几级编号（2 表示 `1.1`，3 表示 `1.1.1`） */
     readonly maxDepth: number;
 }

@@ -28,7 +28,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import type { YonWikiService } from './wiki-service.ts';
 /** 这个模块拥有的工具。 */
-export declare const DIGEST_TOOL_NAMES: readonly ["digest_audit"];
+export declare const DIGEST_TOOL_NAMES: readonly ["digest_plan", "digest_audit"];
 /**
  * 注册消化验收工具。
  * @param ctx - 宿主上下文，带工具注册表。
