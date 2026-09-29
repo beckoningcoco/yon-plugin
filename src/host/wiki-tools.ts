@@ -19,11 +19,11 @@
  * reuses rather than redeclaring.
  */
 import type { Context } from '@deepseek-ai/cordis'
-import { WikiError, type WikiHit, type YonWikiService } from './wiki-service.ts'
+import { WikiError, type WikiHit, type WikiLogEntry, type YonWikiService } from './wiki-service.ts'
 import type { YonTextBlock, YonToolCallView, YonToolDefinition } from './tools.ts'
 
 /** Every tool this module owns. */
-export const WIKI_TOOL_NAMES = ['wiki_lookup', 'wiki_read'] as const
+export const WIKI_TOOL_NAMES = ['wiki_lookup', 'wiki_read', 'wiki_recent'] as const
 
 /** One content block carrying text; the registry's only shape this package uses. */
 function text(content: string): YonTextBlock[] {
@@ -67,6 +67,49 @@ function defineTool<V>(spec: {
   }
 }
 
+/** One heading and the body beneath it, up to the next heading of the same or higher level. */
+interface Section {
+  /** Heading text, without the `##` markers. */
+  readonly heading: string
+  /** Heading depth: 2 for `##`, 3 for `###`. */
+  readonly level: number
+  /** The heading line and everything under it. */
+  readonly body: string
+}
+
+/**
+ * Split a page into its sections.
+ *
+ * A page in this vault reaches 70 KB and the tool's own ceiling truncates at 60, so
+ * the model could be handed a page it was unable to read to the end — with no way
+ * to say which part it actually wanted. Sections give it that: list them, then ask
+ * for one. Raising the ceiling instead would push the whole page into the context
+ * and make every later turn pay for it.
+ *
+ * @param text - the page's full markdown.
+ * @returns one entry per `##` or `###` heading, in document order.
+ */
+function splitSections(text: string): readonly Section[] {
+  const lines = text.split(/\r?\n/)
+  const marks: { heading: string; level: number; at: number }[] = []
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (line === undefined) continue
+    const m = /^(#{2,3})\s+(.+?)\s*$/.exec(line)
+    if (m === null) continue
+    marks.push({ heading: (m[2] ?? '').trim(), level: (m[1] ?? '##').length, at: i })
+  }
+  return marks.map((mark, index) => {
+    const next = marks.slice(index + 1).find(other => other.level <= mark.level)
+    const end = next?.at ?? lines.length
+    return {
+      heading: mark.heading,
+      level: mark.level,
+      body: lines.slice(mark.at, end).join('\n').trimEnd(),
+    }
+  })
+}
+
 /** The JSON Schema of a lookup's answer. */
 const LOOKUP_VALUE = {
   type: 'object',
@@ -91,7 +134,19 @@ const READ_VALUE = {
     version: { type: 'string' },
     status: { type: 'string' },
     verified: { type: 'string' },
+    section: { type: 'string' },
+    outline: { type: 'boolean' },
     text: { type: 'string' },
+  },
+} as const
+
+/** The JSON Schema of a history read's answer. */
+const RECENT_VALUE = {
+  type: 'object',
+  required: ['count', 'entries'],
+  properties: {
+    count: { type: 'number' },
+    entries: { type: 'array', items: { type: 'object' } },
   },
 } as const
 
@@ -198,11 +253,15 @@ export function registerYonWikiTools(ctx: Context, wiki: YonWikiService): () => 
 
   disposers.push(ctx.tools.register(defineTool({
     name: 'wiki_read',
-    description: 'Read one page from the operator\'s Yon knowledge base in full. Pass the page name '
+    description: 'Read one page from the operator\'s Yon knowledge base. Pass the page name '
       + 'wiki_lookup returned. The page carries the entity\'s physical table, its domain, and the field '
       + 'list mapping field codes to database columns — the facts needed to write correct SQL. The '
       + 'answer also states the page\'s verification status: treat an unverified or outdated page as a '
-      + 'lead to confirm against the database (datasource_query), not as fact.',
+      + 'lead to confirm against the database (datasource_query), not as fact.\n'
+      + 'A page can run to 70 KB, so two arguments narrow the read instead of dumping it: '
+      + 'outline: true returns just the heading list with a line count per section, and '
+      + 'section: "章节名" returns that one section. On a large page, read the outline first and then '
+      + 'ask for the sections you need — the whole page would crowd out everything that follows.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -216,6 +275,14 @@ export function registerYonWikiTools(ctx: Context, wiki: YonWikiService): () => 
           type: 'string',
           description: 'Optional vault id; needed only when several vaults hold a page of that name.',
         },
+        outline: {
+          type: 'boolean',
+          description: 'Return only the list of sections, with a line count each, instead of the page.',
+        },
+        section: {
+          type: 'string',
+          description: 'Return only this section. Matched on the exact heading first, then on a heading containing it.',
+        },
       },
     },
     outputSchema: READ_VALUE,
@@ -224,6 +291,55 @@ export function registerYonWikiTools(ctx: Context, wiki: YonWikiService): () => 
         String(args.page ?? ''),
         typeof args.vault === 'string' && args.vault !== '' ? args.vault : undefined,
       )
+      const sections = splitSections(result.text)
+      const wanted = typeof args.section === 'string' && args.section !== '' ? args.section.trim() : undefined
+
+      if (wanted !== undefined) {
+        const found = sections.find(section => section.heading === wanted)
+          ?? sections.find(section => section.heading.includes(wanted))
+        if (found === undefined) {
+          throw new WikiError(
+            'not-found',
+            `「${result.page}」里没有「${wanted}」这一节。现有章节：\n`
+              + sections.map(section => `  ${section.heading}`).join('\n')
+              + '\n\n先用 outline: true 看一遍章节列表，再传确切的章节名。',
+          )
+        }
+        return { ...result, text: found.body, section: found.heading } as unknown as {
+          vaultLabel: string
+          page: string
+          uri: string | null
+          version?: string
+          status?: string
+          verified?: string
+          section: string
+          text: string
+        }
+      }
+
+      if (args.outline === true) {
+        const listing = sections.length === 0
+          ? '（这一页没有二级或三级标题）'
+          : sections
+            .map(section => `${'  '.repeat(Math.max(0, section.level - 2))}${section.heading}`
+              + `   （${section.body.split(/\r?\n/).length} 行）`)
+            .join('\n')
+        return {
+          ...result,
+          outline: true,
+          text: `整页 ${result.text.length} 字符。章节：\n\n${listing}\n\n用 section: "<章节名>" 只读其中一节。`,
+        } as unknown as {
+          vaultLabel: string
+          page: string
+          uri: string | null
+          version?: string
+          status?: string
+          verified?: string
+          outline: boolean
+          text: string
+        }
+      }
+
       return result as unknown as {
         vaultLabel: string
         page: string
@@ -254,6 +370,53 @@ export function registerYonWikiTools(ctx: Context, wiki: YonWikiService): () => 
     },
     presentCall(args) {
       return card(`读知识库页面：${String(args.page ?? '')}`, 'read')
+    },
+  })))
+
+  disposers.push(ctx.tools.register(defineTool({
+    name: 'wiki_recent',
+    description: 'Read the tail of the knowledge base\'s own history: what has been written into it '
+      + 'lately, newest first. Every write appends a line to the vault\'s log.md, so this answers '
+      + '"what has this base been told recently" without walking pages one at a time. Use it before '
+      + 'assuming a page is missing, and to tell the operator what changed since they last looked.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        vault: { type: 'string', description: 'Vault id; every registered vault when omitted.' },
+        limit: { type: 'number', description: 'How many entries, newest first; defaults to 20, capped at 200.' },
+      },
+    },
+    outputSchema: RECENT_VALUE,
+    async execute(args) {
+      const entries = await wiki.recent(
+        typeof args.vault === 'string' && args.vault !== '' ? args.vault : undefined,
+        typeof args.limit === 'number' ? args.limit : undefined,
+      )
+      return { count: entries.length, entries } as unknown as {
+        count: number
+        entries: readonly WikiLogEntry[]
+      }
+    },
+    render(value) {
+      const result = value as { count: number; entries: readonly WikiLogEntry[] }
+      if (result.count === 0) {
+        return [
+          '这个知识库还没有写入记录。',
+          '',
+          '两种可能：`log.md` 不存在（vault 是新建的），或者这个库从未被 wiki_write 写过。',
+        ].join('\n')
+      }
+      const lines = [`最近 ${result.count} 条写入（新到旧）：`, '']
+      for (const entry of result.entries) {
+        lines.push(`  ${entry.date}  ${entry.text}`)
+        if (entry.vaultLabel !== '') lines.push(`      ${entry.vaultLabel}`)
+      }
+      lines.push('', '要看某一条对应的页面，用 wiki_read 传页面名。')
+      return lines.join('\n')
+    },
+    presentCall() {
+      return card('读知识库写入历史', 'read')
     },
   })))
 

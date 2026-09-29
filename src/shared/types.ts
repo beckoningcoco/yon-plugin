@@ -269,6 +269,21 @@ export interface WikiListPayload {
   readonly vaults: readonly WikiVaultView[]
 }
 
+/** One dated line of a vault's `log.md`, as both halves read it. */
+export interface WikiLogEntry {
+  /** The ISO date the line leads with, or an empty string when it has none. */
+  readonly date: string
+  /** The rest of the line — what happened, in the writer's own words. */
+  readonly text: string
+  readonly vault: string
+  readonly vaultLabel: string
+}
+
+/** Body of `GET /yon/api/wiki/recent`. */
+export interface WikiLogPayload {
+  readonly entries: readonly WikiLogEntry[]
+}
+
 /**
  * Build the identity both halves address one connection by.
  * @param configKey - the key the connection sits under in the configuration.

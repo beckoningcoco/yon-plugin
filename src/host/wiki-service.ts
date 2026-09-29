@@ -28,7 +28,7 @@ import {
   type WikiIndex, type WikiPage, type WikiVault,
 } from './wiki-index.ts'
 import type { WikiStore } from './wiki-store.ts'
-import type { WikiVaultView } from '../shared/types.ts'
+import type { WikiLogEntry, WikiVaultView } from '../shared/types.ts'
 
 /** What a knowledge base call can fail with. */
 export class WikiError extends Error {
@@ -88,6 +88,9 @@ export interface WikiPageContent {
 /** One vault as the tools see it; the panel's copy is the shared view. */
 export type { WikiVaultView }
 
+/** One log line; the panel's copy is the shared view. */
+export type { WikiLogEntry }
+
 /** The knowledge base, as the tools and the HTTP face use it. */
 export interface YonWikiService {
   /** The registered vaults, with their index state. */
@@ -104,6 +107,16 @@ export interface YonWikiService {
    * @param vaultId - which vault to read from; required when several could match.
    */
   read(page: string, vaultId?: string): Promise<WikiPageContent>
+  /**
+   * The vault's own history: the tail of its `log.md`.
+   *
+   * Every write appends a line there, so this answers "what has this knowledge base
+   * been told lately" from a file that is already being maintained — without a new
+   * store, and without the model having to guess its way in page by page.
+   * @param vaultId - which vault; all of them when omitted.
+   * @param limit - how many entries, newest first; 20 when omitted.
+   */
+  recent(vaultId?: string, limit?: number): Promise<readonly WikiLogEntry[]>
   /** Drop the cached indexes and rebuild them from disk. */
   rebuild(vaultId?: string): Promise<readonly WikiVaultView[]>
   /**
@@ -308,6 +321,30 @@ export function createYonWikiService(store: WikiStore): YonWikiService {
         indexes.set(vault.path, index)
       }
       return this.list()
+    },
+
+    async recent(vaultId, limit) {
+      const selected = await select(vaultId)
+      const wanted = limit === undefined ? 20 : Math.min(Math.max(Math.floor(limit), 1), 200)
+      const entries: WikiLogEntry[] = []
+      for (const vault of selected) {
+        const log = await readFile(path.join(vault.path, 'log.md'), 'utf8').catch(() => undefined)
+        if (log === undefined) continue
+        for (const line of log.split(/\r?\n/)) {
+          const m = /^-\s+(\d{4}-\d{2}-\d{2})\s+(.+)$/.exec(line.trim())
+          if (m === null) continue
+          entries.push({
+            date: m[1] ?? '',
+            text: (m[2] ?? '').trim(),
+            vault: vault.id,
+            vaultLabel: vault.label,
+          })
+        }
+      }
+      // `log.md` is append-only, so the newest lines are at the end. Reversing gives
+      // newest-first without parsing timestamps the format does not carry — a line
+      // knows its day, not its minute.
+      return entries.reverse().slice(0, wanted)
     },
 
     async invalidate(vaultId) {

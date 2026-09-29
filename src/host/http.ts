@@ -258,6 +258,7 @@ async function handleWiki(
   res: ServerResponse,
   method: string,
   segments: readonly string[],
+  url: URL,
   wiki: YonWikiService,
 ): Promise<void> {
   const tail = segments[1]
@@ -269,6 +270,21 @@ async function handleWiki(
       return
     }
     sendJson(res, 200, { vaults: await wiki.list() })
+    return
+  }
+
+  // /yon/api/wiki/recent
+  if (tail === 'recent') {
+    if (method !== 'GET') {
+      sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+      return
+    }
+    const vaultId = url.searchParams.get('vault')
+    const rawLimit = Number.parseInt(url.searchParams.get('limit') ?? '', 10)
+    const limit = Number.isFinite(rawLimit) ? rawLimit : undefined
+    sendJson(res, 200, {
+      entries: await wiki.recent(vaultId === null || vaultId === '' ? undefined : vaultId, limit),
+    })
     return
   }
 
@@ -377,7 +393,7 @@ export function registerYonApi(
           return
         }
         if (segments[0] === 'wiki') {
-          await handleWiki(req, res, method, segments, wiki)
+          await handleWiki(req, res, method, segments, url, wiki)
           return
         }
         if (segments[0] !== 'projects') {

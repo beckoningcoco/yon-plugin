@@ -16,11 +16,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import type { WikiVaultView } from '../../shared/types.ts'
+import type { WikiLogEntry, WikiVaultView } from '../../shared/types.ts'
 import { cn } from '../cn.ts'
 import type { WikiApi } from './api.ts'
 import base from '../panel.module.css'
 import css from './panel.module.css'
+
+/** How much of a vault's log the detail pane shows. */
+const HISTORY_LIMIT = 8
 
 /** Props the entry hands this surface. */
 export interface WikiManagerProps extends WikiApi, PropsLocale<'yonPanel'> {
@@ -56,13 +59,15 @@ function BookMark() {
  * @param props - the wiki API, the copy, and the close gesture.
  * @returns the dialog.
  */
-export function WikiManager({ listVaults, rebuildVault, onClose, t }: WikiManagerProps) {
+export function WikiManager({ listVaults, rebuildVault, recentWrites, onClose, t }: WikiManagerProps) {
   const [vaults, setVaults] = useState<readonly WikiVaultView[]>([])
   const [selected, setSelected] = useState<string | undefined>(undefined)
   /** The vault being rebuilt, or `'*'` while every vault is. */
   const [busy, setBusy] = useState<string | undefined>(undefined)
   const [failure, setFailure] = useState<string | undefined>(undefined)
   const [loading, setLoading] = useState(true)
+  /** The vault's own history, newest first. */
+  const [recent, setRecent] = useState<readonly WikiLogEntry[]>([])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -79,6 +84,24 @@ export function WikiManager({ listVaults, rebuildVault, onClose, t }: WikiManage
 
   useEffect(() => { void load() }, [load])
 
+  const current = vaults.find(vault => vault.id === selected) ?? vaults[0]
+  const currentId = current?.id
+
+  // The history follows the selection rather than being loaded once: a vault's log
+  // is the whole point of showing it, and showing another vault's would be worse
+  // than showing nothing.
+  useEffect(() => {
+    if (currentId === undefined) {
+      setRecent([])
+      return
+    }
+    let live = true
+    void recentWrites(currentId, HISTORY_LIMIT)
+      .then(entries => { if (live) setRecent(entries) })
+      .catch(() => { if (live) setRecent([]) })
+    return () => { live = false }
+  }, [recentWrites, currentId, busy])
+
   const rebuild = async (vault?: string): Promise<void> => {
     setBusy(vault ?? '*')
     setFailure(undefined)
@@ -92,7 +115,6 @@ export function WikiManager({ listVaults, rebuildVault, onClose, t }: WikiManage
     }
   }
 
-  const current = vaults.find(vault => vault.id === selected) ?? vaults[0]
   const tabbable = selected ?? vaults[0]?.id
   const when = (vault: WikiVaultView): string => vault.indexedAt === undefined
     ? t('wiki.neverIndexed')
@@ -189,6 +211,20 @@ export function WikiManager({ listVaults, rebuildVault, onClose, t }: WikiManage
                   {current.ready ? t('wiki.ready') : t('wiki.notReady')}
                 </dd>
               </dl>
+
+              <h4 className={cn(css.subTitle)}>{t('wiki.recent')}</h4>
+              {recent.length === 0
+                ? <p className={cn(base.note)}>{t('wiki.recentEmpty')}</p>
+                : (
+                  <ul className={cn(css.logList)}>
+                    {recent.map((entry, index) => (
+                      <li key={`${entry.date}-${String(index)}`} className={cn(css.logRow)}>
+                        <span className={cn(css.logDate)}>{entry.date}</span>
+                        <span className={cn(css.logText)}>{entry.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
 
               <p className={cn(base.hint)}>{t('wiki.rebuildHint')}</p>
 

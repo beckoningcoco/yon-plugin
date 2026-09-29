@@ -168,6 +168,8 @@ export declare const zh: {
     'wiki.rebuilding': string;
     'wiki.rebuildAll': string;
     'wiki.refresh': string;
+    'wiki.recent': string;
+    'wiki.recentEmpty': string;
     'wiki.rebuildHint': string;
     'wiki.actionFailed': string;
     'wiki.retry': string;
@@ -337,6 +339,8 @@ export declare const en: {
     'wiki.rebuilding': string;
     'wiki.rebuildAll': string;
     'wiki.refresh': string;
+    'wiki.recent': string;
+    'wiki.recentEmpty': string;
     'wiki.rebuildHint': string;
     'wiki.actionFailed': string;
     'wiki.retry': string;

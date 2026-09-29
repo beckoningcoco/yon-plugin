@@ -21,7 +21,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { type YonWikiService } from './wiki-service.ts';
 /** Every tool this module owns. */
-export declare const WIKI_TOOL_NAMES: readonly ["wiki_lookup", "wiki_read"];
+export declare const WIKI_TOOL_NAMES: readonly ["wiki_lookup", "wiki_read", "wiki_recent"];
 /**
  * Register the knowledge base tools.
  * @param ctx - host context carrying the tool registry.

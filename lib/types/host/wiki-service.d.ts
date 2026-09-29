@@ -1,6 +1,6 @@
 import { type WikiVault } from './wiki-index.ts';
 import type { WikiStore } from './wiki-store.ts';
-import type { WikiVaultView } from '../shared/types.ts';
+import type { WikiLogEntry, WikiVaultView } from '../shared/types.ts';
 /** What a knowledge base call can fail with. */
 export declare class WikiError extends Error {
     readonly code: 'not-found' | 'invalid-input' | 'not-configured';
@@ -48,6 +48,8 @@ export interface WikiPageContent {
 }
 /** One vault as the tools see it; the panel's copy is the shared view. */
 export type { WikiVaultView };
+/** One log line; the panel's copy is the shared view. */
+export type { WikiLogEntry };
 /** The knowledge base, as the tools and the HTTP face use it. */
 export interface YonWikiService {
     /** The registered vaults, with their index state. */
@@ -64,6 +66,16 @@ export interface YonWikiService {
      * @param vaultId - which vault to read from; required when several could match.
      */
     read(page: string, vaultId?: string): Promise<WikiPageContent>;
+    /**
+     * The vault's own history: the tail of its `log.md`.
+     *
+     * Every write appends a line there, so this answers "what has this knowledge base
+     * been told lately" from a file that is already being maintained — without a new
+     * store, and without the model having to guess its way in page by page.
+     * @param vaultId - which vault; all of them when omitted.
+     * @param limit - how many entries, newest first; 20 when omitted.
+     */
+    recent(vaultId?: string, limit?: number): Promise<readonly WikiLogEntry[]>;
     /** Drop the cached indexes and rebuild them from disk. */
     rebuild(vaultId?: string): Promise<readonly WikiVaultView[]>;
     /**

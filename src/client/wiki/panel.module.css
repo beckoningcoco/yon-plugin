@@ -34,3 +34,44 @@
 .rowNotReady {
   opacity: 0.55;
 }
+
+/* The history block. A plain list rather than the shared `.projects` rows: those
+   are selectable options with an icon and a hover state, and a log line is neither
+   — it is a fact that already happened. */
+.subTitle {
+  margin: 18px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.logList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 168px;
+  overflow-y: auto;
+}
+
+.logRow {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.logDate {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.logText {
+  color: var(--dsw-alias-label-primary);
+  overflow-wrap: anywhere;
+}
