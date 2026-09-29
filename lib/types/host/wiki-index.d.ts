@@ -1,3 +1,33 @@
+/**
+ * How one page points at another entity.
+ *
+ * These are not invented categories: they are the eight section kinds this
+ * vault's pages actually use to name another entity, in both of its writing
+ * styles. Keeping the kind matters because the same target means different
+ * things — a `composition` is a child table you can join to, an `implements` is
+ * an interface whose fields this entity already carries.
+ */
+export type WikiRefKind = 
+/** `关联属性` / `Reference Fields` / `All Fields`: a foreign key to another entity. */
+'reference'
+/** `关联引用` / `Suppliers`: the reference type a field is typed by. */
+ | 'refType'
+/** `继承接口`: an interface this entity implements. */
+ | 'implements'
+/** `子表` / `Child Tables`: a child entity this one composes. */
+ | 'composition'
+/** `依赖接口`: an interface this entity depends on. */
+ | 'depends'
+/** The `superUri` the page's own Basic Info names. */
+ | 'extends'
+/** The `parent_entity` the page's frontmatter names. */
+ | 'parent';
+/** One entity a page points at. */
+export interface WikiRef {
+    /** The target's entity URI, as the page writes it. */
+    readonly uri: string;
+    readonly kind: WikiRefKind;
+}
 /** One entity page, reduced to the facts a lookup answers with. */
 export interface WikiPage {
     /** Entity URI from the title line, or null when the page has none. */
@@ -14,10 +44,31 @@ export interface WikiPage {
     readonly version?: string;
     readonly status?: string;
     readonly verified?: string;
+    /**
+     * Entities this page points at, deduplicated by target and kind.
+     *
+     * A page states its relationships in tables — `关联属性` lists a 目标实体 per
+     * field, `子表` lists child URIs, `继承接口` lists interfaces — but never as an
+     * Obsidian `[[link]]`. Measured on the BIP vault: 93.5% of pages point at
+     * something, and 23,052 of those 52,580 edges name an entity no page covers.
+     * That gap is only visible if the edges are read, which is why they are here.
+     *
+     * Absent when the page names nothing.
+     */
+    readonly refs?: readonly WikiRef[];
+    /**
+     * How many fields the page says it lists, when it says so.
+     *
+     * Read from the heading (`直接属性（30个）`, `All Fields (30)`) or from the
+     * lead line of the grouped style (`> 共 26 个直连字段`), so that a caller can
+     * tell "this page can answer a column-name question" from "this page only
+     * knows which table to look in" without reading 70 KB of markdown.
+     */
+    readonly fieldCount?: number;
 }
 /** A built index: every entity page a vault holds, as of one moment. */
 export interface WikiIndex {
-    readonly version: 1;
+    readonly version: 2;
     readonly vault: string;
     readonly builtAt: string;
     readonly entities: readonly WikiPage[];

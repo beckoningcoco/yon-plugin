@@ -1,10 +1,12 @@
 /**
- * The knowledge base, exposed to the agent as two tools.
+ * The knowledge base, exposed to the agent as four tools.
  *
  * `wiki_lookup` answers "which page is this?", and takes any name the model
  * actually has: the entity URI from a line of code, a physical table name from an
  * error message, an English class name from a stack trace, or a Chinese display
  * name from a requirement. `wiki_read` then returns the page it named.
+ * `wiki_recent` says what the base has been told lately, and `wiki_gaps` says
+ * what it cannot answer.
  *
  * Why tools at all, rather than a skill telling the model to grep a directory:
  * the vault lives at an absolute path that differs per machine, and a skill body
@@ -12,18 +14,46 @@
  * means the answer arrives already parsed — the model gets a table name and a
  * verification date, not five thousand markdown files to search.
  *
- * Neither tool writes anything. The vault is read-only from this package's point
- * of view; what gets written into it is a later, separately gated concern.
+ * Only `wiki_write` writes, and it is gated. The four tools here never do.
  *
  * The tool registry's contract is declared in `tools.ts`, which this module
  * reuses rather than redeclaring.
  */
 import type { Context } from '@deepseek-ai/cordis'
-import { WikiError, type WikiHit, type WikiLogEntry, type YonWikiService } from './wiki-service.ts'
+import {
+  WikiError,
+  type WikiAssessment, type WikiGapReport, type WikiHit, type WikiLogEntry,
+  type WikiRelationView, type YonWikiService,
+} from './wiki-service.ts'
+import type { WikiRefKind } from './wiki-index.ts'
+import type { WikiLevel } from './wiki-graph.ts'
 import type { YonTextBlock, YonToolCallView, YonToolDefinition } from './tools.ts'
 
 /** Every tool this module owns. */
-export const WIKI_TOOL_NAMES = ['wiki_lookup', 'wiki_read', 'wiki_recent'] as const
+export const WIKI_TOOL_NAMES = ['wiki_lookup', 'wiki_read', 'wiki_recent', 'wiki_gaps'] as const
+
+/**
+ * What each level means, in the words the model needs to act on.
+ *
+ * Stated as a capability rather than a grade: "可写查询" says what to do next,
+ * where "良好" or a number out of ten would say only how someone feels about it.
+ */
+const LEVEL_TEXT: Record<WikiLevel, string> = {
+  'query-ready': '可写查询',
+  locatable: '可定位',
+  concept: '仅概念',
+}
+
+/** What each kind of relation means, spelled out. */
+const KIND_TEXT: Record<WikiRefKind, string> = {
+  reference: '关联属性（外键指向）',
+  refType: '关联引用（引用类型）',
+  implements: '继承接口',
+  composition: '子表',
+  depends: '依赖接口',
+  extends: '父实体（superUri）',
+  parent: '父实体（parent_entity）',
+}
 
 /** One content block carrying text; the registry's only shape this package uses. */
 function text(content: string): YonTextBlock[] {
@@ -122,6 +152,21 @@ const LOOKUP_VALUE = {
   },
 } as const
 
+/** What `wiki_read` returns, whichever of its three modes answered. */
+interface ReadValue {
+  readonly vaultLabel: string
+  readonly page: string
+  readonly uri: string | null
+  readonly version?: string
+  readonly status?: string
+  readonly verified?: string
+  readonly assessment?: WikiAssessment
+  readonly relations?: WikiRelationView
+  readonly section?: string
+  readonly outline?: boolean
+  readonly text: string
+}
+
 /** The JSON Schema of a read's answer. */
 const READ_VALUE = {
   type: 'object',
@@ -150,6 +195,15 @@ const RECENT_VALUE = {
   },
 } as const
 
+/** The JSON Schema of a gap report's answer. */
+const GAPS_VALUE = {
+  type: 'object',
+  required: ['reports'],
+  properties: {
+    reports: { type: 'array', items: { type: 'object' } },
+  },
+} as const
+
 /** How one hit matched, in the model's language. */
 const MATCH_TEXT: Record<WikiHit['matchedBy'], string> = {
   uri: 'URI 精确',
@@ -159,16 +213,81 @@ const MATCH_TEXT: Record<WikiHit['matchedBy'], string> = {
   contains: '包含',
 }
 
+/**
+ * One line saying what a page can answer.
+ *
+ * The point is to be readable *before* the page is, so that a caller who needs a
+ * column name does not spend 70 KB of context discovering the page never had one.
+ *
+ * @param assessment - the page's verdict, when it carries one.
+ * @returns the line, or undefined when there is nothing to say.
+ */
+function describeAssessment(assessment: WikiAssessment | undefined): string | undefined {
+  if (assessment === undefined) return undefined
+  const detail: string[] = []
+  if (assessment.table !== undefined) detail.push(`物理表 \`${assessment.table}\``)
+  if (assessment.fieldCount !== undefined) detail.push(`${assessment.fieldCount} 个字段`)
+  const head = `能力：${LEVEL_TEXT[assessment.level]}${detail.length === 0 ? '' : ` — ${detail.join('，')}`}`
+  return assessment.lacks.length === 0 ? head : `${head}\n  注意：${assessment.lacks.join('；')}`
+}
+
+/** One line counting a page's relations, both directions. */
+function describeRelationHead(relations: WikiRelationView | undefined): string | undefined {
+  if (relations === undefined) return undefined
+  const out = relations.outgoing.reduce((total, group) => total + group.total, 0)
+  const incoming = relations.incoming.reduce((total, group) => total + group.total, 0)
+  if (out === 0 && incoming === 0) return '关系：与任何实体都不相连，只能靠搜索找到'
+  return `关系：引用 ${out} 个实体，被 ${incoming} 个页面引用`
+}
+
+/**
+ * The relation detail, as the roads out of a page.
+ *
+ * Printed after the body rather than before it, because the body is what was
+ * asked for and this is what to do next. Both directions are shown: the outgoing
+ * edges save a second search, and the incoming ones answer a question a lookup
+ * cannot — what else is built on this entity.
+ *
+ * @param relations - the page's relations.
+ * @returns the lines, empty when the page has none.
+ */
+function describeRelations(relations: WikiRelationView | undefined): string[] {
+  if (relations === undefined) return []
+  const lines: string[] = []
+  const block = (title: string, groups: WikiRelationView['outgoing']): void => {
+    if (groups.length === 0) return
+    lines.push(title)
+    for (const group of groups) {
+      const more = group.total > group.sample.length ? ' …' : ''
+      lines.push(`  ${KIND_TEXT[group.kind]}（${group.total}）：${group.sample.join('、')}${more}`)
+    }
+  }
+  block('这一页指向：', relations.outgoing)
+  block('指向这一页：', relations.incoming)
+  if (relations.unresolved.total > 0) {
+    const more = relations.unresolved.total > relations.unresolved.sample.length ? ' 等' : ''
+    lines.push(`其中 ${relations.unresolved.total} 个目标在知识库里还没有页面：`
+      + `${relations.unresolved.sample.join('、')}${more}`)
+  }
+  if (lines.length > 0) {
+    lines.push('', '（上面是实体 URI 或页面名，都可以直接交给 wiki_lookup 或 wiki_read。）')
+  }
+  return lines
+}
+
 /** One hit, as a few lines the model can act on. */
 function describeHit(hit: WikiHit, index: number): string[] {
   const lines = [`  ${index}. ${hit.name}${hit.uri === null ? '' : `  ${hit.uri}`}`]
   lines.push(`     页面：${hit.page}`)
 
-  const facts: string[] = []
+  const capability = hit.fieldCount === undefined
+    ? LEVEL_TEXT[hit.level]
+    : `${LEVEL_TEXT[hit.level]}（${hit.fieldCount} 字段）`
+  const facts: string[] = [capability]
   if (hit.table !== undefined) facts.push(`物理表 \`${hit.table}\``)
   if (hit.domain !== undefined) facts.push(`domain \`${hit.domain}\``)
   if (hit.app !== undefined) facts.push(`应用 \`${hit.app}\``)
-  if (facts.length > 0) lines.push(`     ${facts.join('   ·   ')}`)
+  lines.push(`     ${facts.join('   ·   ')}`)
 
   const state: string[] = [hit.vaultLabel]
   if (hit.version !== undefined) state.push(hit.version)
@@ -201,8 +320,10 @@ export function registerYonWikiTools(ctx: Context, wiki: YonWikiService): () => 
       + 'BEFORE writing SQL or code that names a table or column — never invent either from memory. '
       + 'Each hit reports how it matched (exact URI, exact table, exact name, or merely containing), '
       + 'plus the page\'s platform version and verification status, so you can tell a verified answer '
-      + 'from an unverified one. Follow up with wiki_read to read the full page, including its field '
-      + 'list.',
+      + 'from an unverified one. It also grades what the page can actually answer — 可写查询 when it '
+      + 'carries both a table and its field list, 可定位 when it names the table but no columns, 仅概念 '
+      + 'when it names no table at all — which is how you pick between 49 hits without opening them. '
+      + 'Follow up with wiki_read to read the full page, including its field list.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -261,7 +382,11 @@ export function registerYonWikiTools(ctx: Context, wiki: YonWikiService): () => 
       + 'A page can run to 70 KB, so two arguments narrow the read instead of dumping it: '
       + 'outline: true returns just the heading list with a line count per section, and '
       + 'section: "章节名" returns that one section. On a large page, read the outline first and then '
-      + 'ask for the sections you need — the whole page would crowd out everything that follows.',
+      + 'ask for the sections you need — the whole page would crowd out everything that follows.\n'
+      + 'The answer opens with what the page is good for and closes with the entities it relates to, '
+      + 'in both directions: what this page points at (child tables, foreign keys, interfaces) and '
+      + 'what points at it. Follow those instead of searching again — the pages are densely connected, '
+      + 'and the connections are the part a name search cannot show you.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -305,16 +430,7 @@ export function registerYonWikiTools(ctx: Context, wiki: YonWikiService): () => 
               + '\n\n先用 outline: true 看一遍章节列表，再传确切的章节名。',
           )
         }
-        return { ...result, text: found.body, section: found.heading } as unknown as {
-          vaultLabel: string
-          page: string
-          uri: string | null
-          version?: string
-          status?: string
-          verified?: string
-          section: string
-          text: string
-        }
+        return { ...result, text: found.body, section: found.heading } as unknown as ReadValue
       }
 
       if (args.outline === true) {
@@ -328,45 +444,37 @@ export function registerYonWikiTools(ctx: Context, wiki: YonWikiService): () => 
           ...result,
           outline: true,
           text: `整页 ${result.text.length} 字符。章节：\n\n${listing}\n\n用 section: "<章节名>" 只读其中一节。`,
-        } as unknown as {
-          vaultLabel: string
-          page: string
-          uri: string | null
-          version?: string
-          status?: string
-          verified?: string
-          outline: boolean
-          text: string
-        }
+        } as unknown as ReadValue
       }
 
-      return result as unknown as {
-        vaultLabel: string
-        page: string
-        uri: string | null
-        version?: string
-        status?: string
-        verified?: string
-        text: string
-      }
+      return result as unknown as ReadValue
     },
     render(value) {
-      const page = value as {
-        vaultLabel: string
-        page: string
-        uri: string | null
-        version?: string
-        status?: string
-        verified?: string
-        text: string
-      }
-      const head: string[] = [`${page.page}${page.uri === null ? '' : ` / ${page.uri}`}（${page.vaultLabel}）`]
+      const page = value as ReadValue
+      const lines: string[] = [
+        `${page.page}${page.uri === null ? '' : ` / ${page.uri}`}（${page.vaultLabel}）`,
+      ]
       const state: string[] = []
       if (page.version !== undefined) state.push(page.version)
       state.push(page.status === undefined ? '未标注验证状态' : page.status)
       if (page.verified !== undefined) state.push(`最后验证 ${page.verified}`)
-      head.push(state.join('   ·   '))
-      return [...head, '', page.text].join('\n')
+      lines.push(state.join('   ·   '))
+
+      // The badge and the relation count come before the body on purpose: they are
+      // what tells a caller whether this page is the one it needs, and they cost
+      // two lines where reading the body to find out costs 70 KB.
+      const badge = describeAssessment(page.assessment)
+      if (badge !== undefined) lines.push(badge)
+      const relationHead = describeRelationHead(page.relations)
+      if (relationHead !== undefined) lines.push(relationHead)
+
+      lines.push('', page.text)
+
+      const relations = describeRelations(page.relations)
+      if (relations.length > 0) {
+        lines.push('', '─── 相关实体 ───────────────────────', ...relations)
+      }
+      return lines.join('\n')
     },
     presentCall(args) {
       return card(`读知识库页面：${String(args.page ?? '')}`, 'read')
@@ -417,6 +525,81 @@ export function registerYonWikiTools(ctx: Context, wiki: YonWikiService): () => 
     },
     presentCall() {
       return card('读知识库写入历史', 'read')
+    },
+  })))
+
+  disposers.push(ctx.tools.register(defineTool({
+    name: 'wiki_gaps',
+    description: 'Report the holes in the operator\'s Yon knowledge base: entities its pages keep '
+      + 'citing that no page covers, most-cited first, plus how well the pages are connected to each '
+      + 'other.\n'
+      + 'This is the knowledge base\'s own to-do list, and it needs no history to be useful — the '
+      + 'evidence is already in the pages, which name tens of thousands of references. Use it to tell '
+      + 'the operator what is worth documenting next, and to recognise when a lookup failed because '
+      + 'the entity was never documented rather than because the term was wrong. Note that the '
+      + 'largest holes are usually platform interfaces (IYTenant, LogicDelete, IAuditInfo), which may '
+      + 'be met by a page or by a decision that they need none.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        vault: { type: 'string', description: 'Vault id; every registered vault when omitted.' },
+        limit: { type: 'number', description: 'How many gaps per vault, most-cited first; defaults to 15, capped at 500.' },
+      },
+    },
+    outputSchema: GAPS_VALUE,
+    async execute(args) {
+      const reports = await wiki.gaps(
+        typeof args.vault === 'string' && args.vault !== '' ? args.vault : undefined,
+        typeof args.limit === 'number' ? args.limit : undefined,
+      )
+      return { reports } as unknown as { reports: readonly WikiGapReport[] }
+    },
+    render(value) {
+      const result = value as { reports: readonly WikiGapReport[] }
+      if (result.reports.length === 0) return '没有可分析的知识库。'
+      const lines: string[] = []
+      for (const report of result.reports) {
+        const stats = report.summary
+        const share = (n: number): string => `${(n / Math.max(1, stats.pages) * 100).toFixed(1)}%`
+        lines.push(`${report.vaultLabel}：${stats.pages} 页`)
+        lines.push(`  有出链 ${stats.withOutgoing}（${share(stats.withOutgoing)}）`
+          + ` · 有入链 ${stats.withIncoming}（${share(stats.withIncoming)}）`
+          + ` · 与任何实体都不相连 ${stats.isolated}（${share(stats.isolated)}）`)
+        lines.push(`  引用边 ${stats.resolvedEdges + stats.danglingEdges} 条：`
+          + `落到页面 ${stats.resolvedEdges}，指向没有页面的实体 ${stats.danglingEdges}`)
+        lines.push(`  被引用但知识库里没有页面的实体：${stats.missingEntities} 个`)
+        if (report.gaps.length > 0) {
+          lines.push('', `  引用最多、却最缺页面的 ${report.gaps.length} 个：`)
+          report.gaps.forEach((gap, index) => {
+            lines.push(`    ${index + 1}. ${gap.uri}   被引用 ${gap.cited} 次`)
+            if (gap.citedBy.length > 0) lines.push(`         引用它的页面：${gap.citedBy.join('、')}`)
+          })
+        }
+        lines.push('')
+        // The other half of the evidence, and the more direct half: this is what
+        // somebody actually asked for, rather than what the pages imply they need.
+        if (report.asked === 0) {
+          lines.push('  查询日志：还没有记录。日志从装好这一版之后开始积累，查得越多越准。')
+        } else {
+          lines.push(`  查询日志：${report.asked} 次调用`)
+          if (report.misses.length > 0) {
+            lines.push(`  查了却没有结果的 ${report.misses.length} 个词：`)
+            for (const miss of report.misses) {
+              const when = miss.last === '' ? '' : `，最近 ${miss.last.slice(0, 10)}`
+              lines.push(`    ${miss.term}   查了 ${miss.count} 次${when}`)
+            }
+          } else {
+            lines.push('  还没有查不到的词。')
+          }
+        }
+        lines.push('')
+      }
+      lines.push('补这些洞比补任何别的页面都值：它们是已有的页面反复需要、却找不到的东西。')
+      return lines.join('\n')
+    },
+    presentCall() {
+      return card('看知识库缺口', 'read')
     },
   })))
 

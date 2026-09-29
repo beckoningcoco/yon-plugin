@@ -1,5 +1,7 @@
-import { type WikiVault } from './wiki-index.ts';
+import { type WikiRefKind, type WikiVault } from './wiki-index.ts';
+import { type WikiAssessment, type WikiGap, type WikiGraphSummary, type WikiLevel } from './wiki-graph.ts';
 import type { WikiStore } from './wiki-store.ts';
+import { type WikiUsageLog, type WikiUsageMiss } from './wiki-usage.ts';
 import type { WikiLogEntry, WikiVaultView } from '../shared/types.ts';
 /** What a knowledge base call can fail with. */
 export declare class WikiError extends Error {
@@ -23,7 +25,48 @@ export interface WikiHit {
     readonly version?: string;
     readonly status?: string;
     readonly verified?: string;
+    /**
+     * What the page can answer, so a hit list sorts itself by usefulness.
+     *
+     * Carried on every hit rather than only on a full read: a lookup for 销售订单
+     * returns 49 pages, and the one that lists columns is worth opening first.
+     */
+    readonly level: WikiLevel;
+    /** Fields the page claims to list, when it claims a number. */
+    readonly fieldCount?: number;
     readonly matchedBy: WikiMatch;
+}
+/** One kind of relation, with a sample of its targets and how many there are. */
+export interface WikiRelationGroup {
+    readonly kind: WikiRefKind;
+    /** How many targets of this kind there are in total. */
+    readonly total: number;
+    /**
+     * The first few targets, sorted.
+     *
+     * A sample rather than all of them on purpose: `YhtTenant` is referenced by
+     * 2380 pages, and a caller that wants the full list wants a graph tool, not a
+     * page read.
+     */
+    readonly sample: readonly string[];
+}
+/** A page's relations, both directions, capped to something readable. */
+export interface WikiRelationView {
+    /** Entities this page points at. */
+    readonly outgoing: readonly WikiRelationGroup[];
+    /** Pages pointing at this one. */
+    readonly incoming: readonly WikiRelationGroup[];
+    /**
+     * Of the outgoing references, the ones no page in the vault covers.
+     *
+     * A count plus a sample, because the number is the interesting part and the
+     * names only need to be illustrative: a page citing 300 undocumented entities
+     * should say so rather than print 300 lines.
+     */
+    readonly unresolved: {
+        readonly total: number;
+        readonly sample: readonly string[];
+    };
 }
 /** The answer to one lookup. */
 export interface WikiLookupResult {
@@ -44,7 +87,42 @@ export interface WikiPageContent {
     readonly version?: string;
     readonly status?: string;
     readonly verified?: string;
+    /** What this page can answer, and what it lacks to answer more. */
+    readonly assessment: WikiAssessment;
+    /**
+     * Where this page leads, and what leads here.
+     *
+     * Returned with the page rather than behind a separate tool because the moment
+     * a caller wants it is the moment it has finished reading: the next question is
+     * almost always "what else is built on this".
+     */
+    readonly relations: WikiRelationView;
     readonly text: string;
+}
+/** One hole in the vault: an entity its pages cite and none of them covers. */
+export type { WikiGap };
+/** What a page can answer, and what it lacks to answer more. */
+export type { WikiAssessment };
+/** What a gap report says about one vault. */
+export interface WikiGapReport {
+    readonly vault: string;
+    readonly vaultLabel: string;
+    readonly summary: WikiGraphSummary;
+    /** The largest holes, most-cited first. */
+    readonly gaps: readonly WikiGap[];
+    /**
+     * Terms that were asked for and came back empty.
+     *
+     * The other half of the picture, and not a restatement of `gaps`: those are
+     * entities the pages cite and no page covers, while these are what a caller
+     * wanted and the vault never had. A term can appear here with nothing citing it
+     * at all — the case where documentation is missing rather than incomplete.
+     *
+     * Folded across every vault, because one question can span them.
+     */
+    readonly misses: readonly WikiUsageMiss[];
+    /** How many questions the log holds, so an empty miss list reads correctly. */
+    readonly asked: number;
 }
 /** One vault as the tools see it; the panel's copy is the shared view. */
 export type { WikiVaultView };
@@ -76,6 +154,16 @@ export interface YonWikiService {
      * @param limit - how many entries, newest first; 20 when omitted.
      */
     recent(vaultId?: string, limit?: number): Promise<readonly WikiLogEntry[]>;
+    /**
+     * The vault's own holes: entities its pages cite and none of them covers.
+     *
+     * Unlike a usage log, this needs nothing to accumulate — the evidence is
+     * already in the pages, which name 23,052 references to entities the vault does
+     * not hold. Those citations are the demand; the absence of a page is the supply.
+     * @param vaultId - which vault; all of them when omitted.
+     * @param limit - how many gaps per vault, most-cited first; 15 when omitted.
+     */
+    gaps(vaultId?: string, limit?: number): Promise<readonly WikiGapReport[]>;
     /** Drop the cached indexes and rebuild them from disk. */
     rebuild(vaultId?: string): Promise<readonly WikiVaultView[]>;
     /**
@@ -93,8 +181,9 @@ export interface YonWikiService {
 /**
  * Build the knowledge base service over one store.
  * @param store - where the vault list lives.
+ * @param usage - where queries are logged; the default log when omitted.
  * @returns the service.
  */
-export declare function createYonWikiService(store: WikiStore): YonWikiService;
+export declare function createYonWikiService(store: WikiStore, usage?: WikiUsageLog): YonWikiService;
 /** The index path a vault would cache to, for the panel and for diagnostics. */
 export declare function wikiIndexLocation(vault: WikiVault): string;
