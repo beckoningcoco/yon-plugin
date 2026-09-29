@@ -5,12 +5,17 @@
  * The apply world builds one of these and hands the methods to the entry through
  * an inject face, so a component never fetches and never learns a URL.
  *
- * There are only two calls because a vault is not editable from here: its path
- * is a machine fact the operator sets once, and this surface reports rather than
- * configures. Adding a vault is a file edit the panel does not pretend to own.
+ * A vault is still not editable from here: its path is a machine fact the
+ * operator sets once, and this surface reports rather than configures. What it
+ * reports grew, though — a vault's health, a search across its pages, one page as
+ * a card and the pages citing a missing entity are all answers about what is
+ * already on disk, not changes to it.
  */
 import { request } from '../request.ts'
-import type { WikiListPayload, WikiLogEntry, WikiLogPayload } from '../../shared/types.ts'
+import type {
+  WikiCardPayload, WikiCitersPayload, WikiHealthPayload, WikiListPayload,
+  WikiLogEntry, WikiLogPayload, WikiSearchPayload,
+} from '../../shared/types.ts'
 
 // The shared failure keeps this module's name for it, as its siblings do.
 export { ApiError as WikiApiError } from '../request.ts'
@@ -41,6 +46,39 @@ export interface WikiApi {
    * @returns the entries.
    */
   recentWrites(vault?: string, limit?: number): Promise<readonly WikiLogEntry[]>
+
+  /**
+   * A vault's health: level breakdown, reference tallies, holes and activity.
+   * @param vault - a vault id; all of them when omitted.
+   * @param gaps - how many holes to include; the host defaults to 20.
+   * @returns one report per vault.
+   */
+  health(vault?: string, gaps?: number): Promise<WikiHealthPayload>
+
+  /**
+   * Search the vault's pages by any name the operator has.
+   * @param term - URI, table name, page name, display name, or a fragment.
+   * @param vault - a vault id; all of them when omitted.
+   * @param limit - how many hits; the host defaults to 40.
+   * @returns the hits, strongest match first.
+   */
+  search(term: string, vault?: string, limit?: number): Promise<WikiSearchPayload>
+
+  /**
+   * One page as a card, answered without reading the page body.
+   * @param page - the page name a search returned.
+   * @param vault - a vault id; needed only when several hold that name.
+   * @returns the card.
+   */
+  pageCard(page: string, vault?: string): Promise<WikiCardPayload>
+
+  /**
+   * The pages citing one entity URI, for expanding a hole.
+   * @param uri - the entity URI as a page writes it.
+   * @param vault - a vault id; all of them when omitted.
+   * @returns the citing page names.
+   */
+  citers(uri: string, vault?: string): Promise<WikiCitersPayload>
 }
 
 /**
@@ -48,6 +86,17 @@ export interface WikiApi {
  * @returns the operations the UI calls.
  */
 export function createWikiApi(): WikiApi {
+  /** A query string from the parameters that are present. */
+  const query = (params: Record<string, string | number | undefined>): string => {
+    const search = new URLSearchParams()
+    for (const [key, value] of Object.entries(params)) {
+      if (value === undefined || value === '') continue
+      search.set(key, String(value))
+    }
+    const text = search.toString()
+    return text === '' ? '' : `?${text}`
+  }
+
   return {
     listVaults() {
       return request<WikiListPayload>('/wiki')
@@ -61,12 +110,24 @@ export function createWikiApi(): WikiApi {
     },
 
     async recentWrites(vault, limit) {
-      const params = new URLSearchParams()
-      if (vault !== undefined) params.set('vault', vault)
-      if (limit !== undefined) params.set('limit', String(limit))
-      const query = params.toString()
-      const answer = await request<WikiLogPayload>(`/wiki/recent${query === '' ? '' : `?${query}`}`)
+      const answer = await request<WikiLogPayload>(`/wiki/recent${query({ vault, limit })}`)
       return answer.entries
+    },
+
+    health(vault, gaps) {
+      return request<WikiHealthPayload>(`/wiki/health${query({ vault, gaps })}`)
+    },
+
+    search(term, vault, limit) {
+      return request<WikiSearchPayload>(`/wiki/search${query({ term, vault, limit })}`)
+    },
+
+    pageCard(page, vault) {
+      return request<WikiCardPayload>(`/wiki/card${query({ page, vault })}`)
+    },
+
+    citers(uri, vault) {
+      return request<WikiCitersPayload>(`/wiki/citers${query({ uri, vault })}`)
     },
   }
 }

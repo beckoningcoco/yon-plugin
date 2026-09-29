@@ -1,12 +1,16 @@
-/* Knowledge-base pieces the shared dialog chrome does not cover: the detail title,
-   the vault path, and the dimming of a vault whose directory has moved. Everything
-   structural — the pane split, the list, the property grid, the action row, the
-   empty state — comes from the shared stylesheet, so this surface, the project
-   surface, the datasource surface and the skill surface stay one family.
+/* Knowledge-base pieces the shared dialog chrome does not cover: the detail
+   title, the vault path, the dimming of a vault whose directory has moved, and
+   the four blocks the tabs are made of — the level bars, the figure list, the gap
+   rows and a page card. Everything structural — the pane split, the list, the
+   property grid, the action row, the empty state, the text input — comes from the
+   shared stylesheet, so this surface, the project surface, the datasource surface
+   and the skill surface stay one family.
 
    Every colour here is a theme alias. The previous revision of this file drew its
    own backdrop, dialog, card and buttons; that is what made the surface look like
-   a visitor rather than one of the four. */
+   a visitor rather than one of the four. Badges are outlined rather than filled
+   for the same reason: a filled chip needs a contrasting text colour, and this
+   file may not hard-code one. */
 
 .title {
   display: flex;
@@ -35,9 +39,437 @@
   opacity: 0.55;
 }
 
-/* The history block. A plain list rather than the shared `.projects` rows: those
-   are selectable options with an icon and a hover state, and a log line is neither
-   — it is a fact that already happened. */
+/* ---- tabs ---- */
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  margin: 2px 0 14px;
+  border-bottom: 1px solid var(--dsw-alias-border-l);
+}
+
+.tab {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font-size: 13px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.tabActive {
+  color: var(--dsw-alias-label-primary);
+  border-bottom-color: var(--dsw-alias-state-business-primary);
+  font-weight: 600;
+}
+
+.tabCount {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* ---- search ---- */
+
+.searchRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.searchInput {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---- figures ---- */
+
+.stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stat {
+  display: grid;
+  grid-template-columns: 132px 72px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+}
+
+.statLabel {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.statValue {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-primary);
+}
+
+.statNote {
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* ---- level bars ---- */
+
+.levelList {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.levelRow {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) 56px 48px;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.levelName {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.levelBar {
+  height: 7px;
+  border-radius: 4px;
+  background: var(--dsw-alias-scrollbar-bg-l);
+  overflow: hidden;
+}
+
+/* Green for the level that can answer a query, the accent for one that can only
+   point at a table, dimmed for one that names no table at all. */
+.levelFill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--dsw-alias-state-success-primary);
+}
+
+.fillMid {
+  background: var(--dsw-alias-state-business-primary);
+}
+
+.fillLow {
+  background: var(--dsw-alias-label-dimmed);
+}
+
+.levelCount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-primary);
+}
+
+.levelShare {
+  text-align: right;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* ---- gaps ---- */
+
+.gapList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.gapItem {
+  border-bottom: 1px solid var(--dsw-alias-border-l);
+}
+
+.gapRow {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 5px 0;
+  font-size: 12px;
+}
+
+.gapRank {
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.gapUri {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+  color: var(--dsw-alias-label-primary);
+}
+
+.gapCited {
+  white-space: nowrap;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.gapToggle {
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 11px;
+  color: var(--dsw-alias-state-business-primary);
+  cursor: pointer;
+}
+
+.gapToggle:hover {
+  text-decoration: underline;
+}
+
+.citers {
+  padding: 0 0 8px 28px;
+}
+
+.citerList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  max-height: 124px;
+  overflow-y: auto;
+  font-size: 11px;
+}
+
+.citerLink {
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.citerLink:hover {
+  color: var(--dsw-alias-state-business-primary);
+  text-decoration: underline;
+}
+
+/* ---- search results ---- */
+
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.resultHead {
+  margin: 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.resultList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.resultRow {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.resultRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.resultRow:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.resultName {
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.resultFacts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* ---- page card ---- */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l);
+  border-radius: 8px;
+}
+
+.cardHead {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cardTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.cardClose {
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+.cardClose:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.cardFacts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.cardFact {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.cardSub {
+  margin: 4px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.badge {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1px solid var(--dsw-alias-state-success-primary);
+  border-radius: 10px;
+  font-size: 11px;
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.badgeLow {
+  border-color: var(--dsw-alias-label-dimmed);
+  color: var(--dsw-alias-label-dimmed);
+}
+
+.lacks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* ---- relations ---- */
+
+.relRow {
+  display: grid;
+  grid-template-columns: 92px 40px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  font-size: 11px;
+}
+
+.relKind {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.relCount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-primary);
+}
+
+.relNames {
+  overflow-wrap: anywhere;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* ---- term lists, in the activity tab ---- */
+
+.termBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.termList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.termRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.termText {
+  overflow-wrap: anywhere;
+  color: var(--dsw-alias-label-primary);
+}
+
+.termCount {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* ---- history ---- */
+
+/* A plain list rather than the shared `.projects` rows: those are selectable
+   options with an icon and a hover state, and a log line is neither — it is a
+   fact that already happened. */
 .subTitle {
   margin: 18px 0 6px;
   font-size: 12px;

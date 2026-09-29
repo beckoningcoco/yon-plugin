@@ -21,7 +21,7 @@
  * and rebuilt only on request — see `wiki-index.ts` for why staleness is the
  * operator's decision rather than something detected behind their back.
  */
-import { readFile, rm } from 'node:fs/promises'
+import { readFile, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   buildWikiIndex, ensureWikiIndex, entityDirOf, wikiIndexPath, writeWikiIndex,
@@ -38,6 +38,10 @@ import {
   type WikiUsageLog, type WikiUsageMiss, type WikiUsageSummary,
 } from './wiki-usage.ts'
 import type { WikiLogEntry, WikiVaultView } from '../shared/types.ts'
+import type {
+  WikiCardView, WikiGraphView, WikiHealthReport, WikiLevelStat,
+  WikiRelationGroupView, WikiUsageView,
+} from '../shared/types.ts'
 
 /** What a knowledge base call can fail with. */
 export class WikiError extends Error {
@@ -214,6 +218,35 @@ export interface YonWikiService {
    * @param limit - how many gaps per vault, most-cited first; 15 when omitted.
    */
   gaps(vaultId?: string, limit?: number): Promise<readonly WikiGapReport[]>
+  /**
+   * One vault's health, for the panel's overview and gap tabs.
+   *
+   * Everything the panel draws about a vault's state, in one answer: the page
+   * count, the level breakdown, the reference tallies, the largest holes and the
+   * query activity. Assembled here rather than by three panel calls, so that two
+   * tabs cannot show figures from two different moments.
+   * @param vaultId - which vault; all of them when omitted.
+   * @param gapLimit - how many holes to include; 20 when omitted.
+   */
+  health(vaultId?: string, gapLimit?: number): Promise<readonly WikiHealthReport[]>
+  /**
+   * One page as a card: what it is good for and where it leads.
+   *
+   * Answered from the index and the graph alone — the page body is never read,
+   * because a card is what the panel shows *before* deciding to open anything.
+   * @param page - page name, with or without the `.md` suffix.
+   * @param vaultId - which vault; required when several could match.
+   */
+  card(page: string, vaultId?: string): Promise<WikiCardView>
+  /**
+   * The pages citing one entity URI.
+   *
+   * Expands a gap: knowing `bip-usercenter.bip_user_ref` is cited 818 times is a
+   * number, and knowing which 818 pages cite it is a to-do list.
+   * @param uri - the entity URI, as a page writes it.
+   * @param vaultId - which vault; all of them when omitted.
+   */
+  citers(uri: string, vaultId?: string): Promise<readonly string[]>
   /** Drop the cached indexes and rebuild them from disk. */
   rebuild(vaultId?: string): Promise<readonly WikiVaultView[]>
   /**
@@ -276,6 +309,9 @@ const MATCH_RANK: Record<WikiMatch, number> = {
  * hidden by the cap — only shortened.
  */
 const RELATION_SAMPLE = 8
+
+/** The levels in the order the panel lists them, strongest first. */
+const LEVEL_ORDER: readonly WikiLevel[] = ['query-ready', 'locatable', 'concept']
 
 /** Turn a page and a match into a hit. */
 function toHit(vault: WikiVault, page: WikiPage, matchedBy: WikiMatch, graph: WikiGraph): WikiHit {
@@ -550,6 +586,100 @@ export function createYonWikiService(
         })
       }
       return reports
+    },
+
+    async health(vaultId, gapLimit) {
+      const selected = await select(vaultId)
+      const wanted = gapLimit === undefined ? 20 : Math.min(Math.max(Math.floor(gapLimit), 1), 200)
+      // Folded once and shared by every vault's report: the log is not partitioned
+      // by vault — one question can span them all — so folding it per vault would
+      // repeat identical work and invite the copies to disagree.
+      const activity: WikiUsageView = await usage.summary(wanted)
+      const reports: WikiHealthReport[] = []
+      for (const vault of selected) {
+        const index = await indexFor(vault)
+        const graph = await graphFor(vault)
+        const tally = new Map<WikiLevel, number>()
+        for (const page of index.entities) {
+          const level = assessPage(page, graph).level
+          tally.set(level, (tally.get(level) ?? 0) + 1)
+        }
+        const levels: WikiLevelStat[] = LEVEL_ORDER.map(level => ({ level, pages: tally.get(level) ?? 0 }))
+        const tallies: WikiGraphView = summaryOf(index, graph)
+        // Reported because a rebuild of this vault takes seconds, and an operator
+        // waiting on it deserves to know what it is writing.
+        const bytes = await stat(wikiIndexPath(vault.path)).then(info => info.size).catch(() => undefined)
+        reports.push({
+          vault: vault.id,
+          vaultLabel: vault.label,
+          pages: index.entities.length,
+          indexedAt: index.builtAt,
+          ...(bytes === undefined ? {} : { indexBytes: bytes }),
+          graph: tallies,
+          levels,
+          gaps: gapsOf(graph, wanted),
+          usage: activity,
+        })
+      }
+      return reports
+    },
+
+    async card(page, vaultId) {
+      const wanted = asTerm(page, 'page').replace(/\.md$/, '')
+      const selected = await select(vaultId)
+
+      for (const vault of selected) {
+        const index = await indexFor(vault)
+        const found = index.entities.find(entry => entry.page === wanted)
+        if (found === undefined) continue
+        const graph = await graphFor(vault)
+        const verdict = assessPage(found, graph)
+        const relations = toRelationView(relationsOf(found.page, graph), RELATION_SAMPLE)
+        await usage.record({
+          tool: 'wiki_card',
+          term: wanted,
+          hits: 1,
+          ...(vaultId === undefined ? {} : { vault: vaultId }),
+          top: found.page,
+        })
+        return {
+          vault: vault.id,
+          vaultLabel: vault.label,
+          page: found.page,
+          uri: found.uri,
+          name: found.name,
+          ...(found.table === undefined ? {} : { table: found.table }),
+          ...(found.app === undefined ? {} : { app: found.app }),
+          ...(found.version === undefined ? {} : { version: found.version }),
+          ...(found.status === undefined ? {} : { status: found.status }),
+          level: verdict.level,
+          ...(verdict.fieldCount === undefined ? {} : { fieldCount: verdict.fieldCount }),
+          lacks: verdict.lacks,
+          refs: verdict.refs,
+          incoming: verdict.incoming,
+          outgoing: relations.outgoing,
+          incomingGroups: relations.incoming,
+          unresolved: relations.unresolved,
+        }
+      }
+
+      throw new WikiError(
+        'not-found',
+        `没有名为「${wanted}」的页面。先用搜索按表名或中文名找到确切的页面名。`,
+      )
+    },
+
+    async citers(uri, vaultId) {
+      const wanted = asTerm(uri, 'uri')
+      const selected = await select(vaultId)
+      const pages: string[] = []
+      for (const vault of selected) {
+        const index = await indexFor(vault)
+        for (const page of index.entities) {
+          if ((page.refs ?? []).some(ref => ref.uri === wanted)) pages.push(page.page)
+        }
+      }
+      return pages.sort((a, b) => a.localeCompare(b, 'zh'))
     },
 
     async invalidate(vaultId) {

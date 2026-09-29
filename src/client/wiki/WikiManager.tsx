@@ -1,29 +1,64 @@
 /**
- * The knowledge base surface: every registered vault on one side, the selected
- * one's state on the other, and a way to rebuild an index that has fallen behind.
+ * The knowledge base surface: every registered vault on one side, and on the
+ * other what that vault actually is — how much of it can answer a query, how its
+ * pages connect, what it keeps citing and cannot find, and what it has been asked.
  *
  * Same shape as the other three surfaces, on purpose: the shared stylesheet
  * carries the pane split, the list, the property grid and the action row, and the
- * dialog chrome comes from `Modal`. What this file adds is only what a vault has
- * that a connection does not — an index, a page count, and the fact that a vault is
- * a directory on this machine rather than a set of credentials.
+ * dialog chrome comes from `Modal`. Only what a vault has that a connection does
+ * not is added here.
  *
- * Read-only by design. The two things a knowledge base needs from a panel are
- * seeing what is registered and refreshing what was indexed; adding a vault stays
+ * The tabs exist because a vault is no longer a thing you only check the size of.
+ * With 5374 pages, 52 580 reference edges and 2840 uncovered entities, a single
+ * column of facts would be a wall — and the three questions an operator has
+ * (what is in here, what is missing, is anyone using it) deserve separate answers.
+ *
+ * Read-only by design. Nothing on this surface writes to a vault: adding one stays
  * a file edit, because a machine path is not something to invite somebody to type
  * into a browser field.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import type { WikiLogEntry, WikiVaultView } from '../../shared/types.ts'
+import type {
+  WikiCardView, WikiGapView, WikiHealthReport, WikiLevel, WikiLogEntry,
+  WikiRelationGroupView, WikiSearchPayload, WikiVaultView,
+} from '../../shared/types.ts'
 import { cn } from '../cn.ts'
+import type { YonPanelKey } from '../locales.ts'
 import type { WikiApi } from './api.ts'
 import base from '../panel.module.css'
 import css from './panel.module.css'
 
-/** How much of a vault's log the detail pane shows. */
+/** How much of a vault's log the activity tab shows. */
 const HISTORY_LIMIT = 8
+
+/** How many hits a search lists before it stops drawing them. */
+const HIT_LIMIT = 40
+
+/** How long typing settles before a search is sent. */
+const SEARCH_DEBOUNCE_MS = 300
+
+/** The three tabs, and which question each answers. */
+type Tab = 'overview' | 'gaps' | 'activity'
+
+/** Which translation key names each level. Spelled out because `t` takes literals. */
+const LEVEL_KEY: Record<WikiLevel, YonPanelKey> = {
+  'query-ready': 'wiki.level.query-ready',
+  locatable: 'wiki.level.locatable',
+  concept: 'wiki.level.concept',
+}
+
+/** Which translation key names each kind of relation. */
+const KIND_KEY: Record<string, YonPanelKey> = {
+  reference: 'wiki.kind.reference',
+  refType: 'wiki.kind.refType',
+  implements: 'wiki.kind.implements',
+  composition: 'wiki.kind.composition',
+  depends: 'wiki.kind.depends',
+  extends: 'wiki.kind.extends',
+  parent: 'wiki.kind.parent',
+}
 
 /** Props the entry hands this surface. */
 export interface WikiManagerProps extends WikiApi, PropsLocale<'yonPanel'> {
@@ -54,20 +89,95 @@ function BookMark() {
   )
 }
 
+/** A byte count in the unit a person reads it in. */
+function bytes(value: number): string {
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
+  return `${(value / 1048576).toFixed(1)} MB`
+}
+
+/** One labelled figure in the overview. */
+function Stat({ label, value, note }: { label: string, value: string, note?: string }) {
+  return (
+    <div className={cn(css.stat)}>
+      <span className={cn(css.statLabel)}>{label}</span>
+      <span className={cn(css.statValue)}>{value}</span>
+      {note !== undefined && <span className={cn(css.statNote)}>{note}</span>}
+    </div>
+  )
+}
+
+/**
+ * A share bar for one level.
+ *
+ * Drawn from the page counts rather than stored: the widths are the point, and a
+ * number alone makes the operator compute the proportion themselves.
+ */
+function LevelBar({ level, pages, total, t }: {
+  level: WikiLevel
+  pages: number
+  total: number
+  t: PropsLocale<'yonPanel'>['t']
+}) {
+  const share = total === 0 ? 0 : pages / total
+  return (
+    <div className={cn(css.levelRow)}>
+      <span className={cn(css.levelName)}>{t(LEVEL_KEY[level])}</span>
+      <span className={cn(css.levelBar)} aria-hidden="true">
+        <span className={cn(css.levelFill, level === 'locatable' ? css.fillMid : undefined,
+          level === 'concept' ? css.fillLow : undefined)}
+          style={{ width: `${Math.max(share * 100, pages === 0 ? 0 : 0.6)}%` }} />
+      </span>
+      <span className={cn(css.levelCount)}>{pages}</span>
+      <span className={cn(css.levelShare)}>{total === 0 ? '—' : `${(share * 100).toFixed(1)}%`}</span>
+    </div>
+  )
+}
+
+/** One group of relations: how many, and a few names. */
+function RelationRow({ group, t }: {
+  group: WikiRelationGroupView
+  t: PropsLocale<'yonPanel'>['t']
+}) {
+  const more = group.total > group.sample.length ? ' …' : ''
+  return (
+    <div className={cn(css.relRow)}>
+      <span className={cn(css.relKind)}>{t(KIND_KEY[group.kind] ?? 'wiki.kind.other')}</span>
+      <span className={cn(css.relCount)}>{group.total}</span>
+      <span className={cn(css.relNames)}>{group.sample.join('、')}{more}</span>
+    </div>
+  )
+}
+
 /**
  * Render the knowledge base dialog.
  * @param props - the wiki API, the copy, and the close gesture.
  * @returns the dialog.
  */
-export function WikiManager({ listVaults, rebuildVault, recentWrites, onClose, t }: WikiManagerProps) {
+export function WikiManager({
+  listVaults, rebuildVault, recentWrites, health, search, pageCard, citers, onClose, t,
+}: WikiManagerProps) {
   const [vaults, setVaults] = useState<readonly WikiVaultView[]>([])
   const [selected, setSelected] = useState<string | undefined>(undefined)
   /** The vault being rebuilt, or `'*'` while every vault is. */
   const [busy, setBusy] = useState<string | undefined>(undefined)
   const [failure, setFailure] = useState<string | undefined>(undefined)
   const [loading, setLoading] = useState(true)
-  /** The vault's own history, newest first. */
+  const [tab, setTab] = useState<Tab>('overview')
+  /** The vault's health, and the log tail the activity tab also holds. */
+  const [report, setReport] = useState<WikiHealthReport | undefined>(undefined)
   const [recent, setRecent] = useState<readonly WikiLogEntry[]>([])
+  /** What the operator typed, and what came back for it. */
+  const [term, setTerm] = useState('')
+  const [found, setFound] = useState<WikiSearchPayload | undefined>(undefined)
+  const [searching, setSearching] = useState(false)
+  /** The page card opened from a hit, and the card being loaded. */
+  const [card, setCard] = useState<WikiCardView | undefined>(undefined)
+  const [cardBusy, setCardBusy] = useState<string | undefined>(undefined)
+  /** The gap whose citers are open, and what came back for it. */
+  const [openGap, setOpenGap] = useState<string | undefined>(undefined)
+  const [gapCiters, setGapCiters] = useState<readonly string[]>([])
+  const [gapBusy, setGapBusy] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -86,21 +196,45 @@ export function WikiManager({ listVaults, rebuildVault, recentWrites, onClose, t
 
   const current = vaults.find(vault => vault.id === selected) ?? vaults[0]
   const currentId = current?.id
+  const ready = current?.ready === true
 
-  // The history follows the selection rather than being loaded once: a vault's log
-  // is the whole point of showing it, and showing another vault's would be worse
-  // than showing nothing.
+  // Health and history follow the selection, and reload after a rebuild: the log
+  // is the whole point of showing it, and showing a stale one after rebuilding
+  // would say the rebuild did nothing.
   useEffect(() => {
-    if (currentId === undefined) {
+    if (currentId === undefined || !ready) {
+      setReport(undefined)
       setRecent([])
       return
     }
     let live = true
+    void health(currentId).then(answer => { if (live) setReport(answer.reports[0]) })
+      .catch(() => { if (live) setReport(undefined) })
     void recentWrites(currentId, HISTORY_LIMIT)
       .then(entries => { if (live) setRecent(entries) })
       .catch(() => { if (live) setRecent([]) })
     return () => { live = false }
-  }, [recentWrites, currentId, busy])
+  }, [health, recentWrites, currentId, ready, busy])
+
+  // Typing settles before the search is sent, so a six-character term is one call
+  // rather than six. A cleared box clears the answer with it.
+  useEffect(() => {
+    const wanted = term.trim()
+    if (wanted === '') {
+      setFound(undefined)
+      setSearching(false)
+      return
+    }
+    let live = true
+    setSearching(true)
+    const timer = setTimeout(() => {
+      void search(wanted, currentId, HIT_LIMIT)
+        .then(answer => { if (live) setFound(answer) })
+        .catch(() => { if (live) setFound(undefined) })
+        .finally(() => { if (live) setSearching(false) })
+    }, SEARCH_DEBOUNCE_MS)
+    return () => { live = false; clearTimeout(timer) }
+  }, [search, term, currentId])
 
   const rebuild = async (vault?: string): Promise<void> => {
     setBusy(vault ?? '*')
@@ -115,10 +249,276 @@ export function WikiManager({ listVaults, rebuildVault, recentWrites, onClose, t
     }
   }
 
+  const openCard = async (page: string): Promise<void> => {
+    setCardBusy(page)
+    try {
+      const answer = await pageCard(page, currentId)
+      setCard(answer.card)
+    } catch (cause: unknown) {
+      setFailure(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setCardBusy(undefined)
+    }
+  }
+
+  const toggleGap = async (uri: string): Promise<void> => {
+    if (openGap === uri) {
+      setOpenGap(undefined)
+      setGapCiters([])
+      return
+    }
+    setOpenGap(uri)
+    setGapCiters([])
+    setGapBusy(true)
+    try {
+      const answer = await citers(uri, currentId)
+      setGapCiters(answer.pages)
+    } catch {
+      setGapCiters([])
+    } finally {
+      setGapBusy(false)
+    }
+  }
+
   const tabbable = selected ?? vaults[0]?.id
   const when = (vault: WikiVaultView): string => vault.indexedAt === undefined
     ? t('wiki.neverIndexed')
     : vault.indexedAt.slice(0, 19).replace('T', ' ')
+
+  const tabs = useMemo(() => ([
+    { id: 'overview' as const, label: t('wiki.tab.overview'), count: undefined },
+    { id: 'gaps' as const, label: t('wiki.tab.gaps'), count: report?.graph.missingEntities },
+    { id: 'activity' as const, label: t('wiki.tab.activity'), count: report?.usage.total },
+  ]), [t, report])
+
+  /** The overview: what the vault is, and what its pages can answer. */
+  const overview = report === undefined ? null : (
+    <>
+      <dl className={cn(base.props)}>
+        <dt className={cn(base.propLabel)}>{t('wiki.path')}</dt>
+        <dd className={cn(base.propValue)}><span className={cn(css.mono)}>{current?.path}</span></dd>
+
+        <dt className={cn(base.propLabel)}>{t('wiki.pages')}</dt>
+        <dd className={cn(base.propValue)}>{current?.ready === true ? current.pages : '—'}</dd>
+
+        <dt className={cn(base.propLabel)}>{t('wiki.indexedAt')}</dt>
+        <dd className={cn(base.propValue)}>{current?.ready === true ? when(current) : '—'}</dd>
+
+        <dt className={cn(base.propLabel)}>{t('wiki.indexBytes')}</dt>
+        <dd className={cn(base.propValue)}>
+          {report.indexBytes === undefined ? '—' : bytes(report.indexBytes)}
+        </dd>
+      </dl>
+
+      <h4 className={cn(css.subTitle)}>{t('wiki.levels')}</h4>
+      <div className={cn(css.levelList)}>
+        {report.levels.map(entry => (
+          <LevelBar key={entry.level} level={entry.level} pages={entry.pages}
+            total={report.pages} t={t} />
+        ))}
+      </div>
+      <p className={cn(base.note)}>{t('wiki.levelHint')}</p>
+
+      <h4 className={cn(css.subTitle)}>{t('wiki.connectivity')}</h4>
+      <div className={cn(css.stats)}>
+        <Stat label={t('wiki.withOutgoing')} value={`${report.graph.withOutgoing}`}
+          note={`/ ${report.pages}`} />
+        <Stat label={t('wiki.withIncoming')} value={`${report.graph.withIncoming}`}
+          note={`/ ${report.pages}`} />
+        <Stat label={t('wiki.isolated')} value={`${report.graph.isolated}`} />
+        <Stat label={t('wiki.edges')}
+          value={`${report.graph.resolvedEdges + report.graph.danglingEdges}`}
+          note={t('wiki.edgeDetail', {
+            resolved: report.graph.resolvedEdges,
+            dangling: report.graph.danglingEdges,
+          })} />
+        <Stat label={t('wiki.missing')} value={`${report.graph.missingEntities}`} />
+      </div>
+    </>
+  )
+
+  /** The gaps tab: what the pages keep citing and no page covers. */
+  const gaps = report === undefined ? null : (
+    <>
+      <h4 className={cn(css.subTitle)}>{t('wiki.gapsTitle')}</h4>
+      {report.gaps.length === 0
+        ? <p className={cn(base.note)}>{t('wiki.noGaps')}</p>
+        : (
+          <ul className={cn(css.gapList)}>
+            {report.gaps.map((gap: WikiGapView, index) => (
+              <li key={gap.uri} className={cn(css.gapItem)}>
+                <div className={cn(css.gapRow)}>
+                  <span className={cn(css.gapRank)}>{index + 1}</span>
+                  <span className={cn(css.gapUri)}>{gap.uri}</span>
+                  <span className={cn(css.gapCited)}>{t('wiki.citedTimes', { count: gap.cited })}</span>
+                  <button type="button" className={cn(css.gapToggle)}
+                    onClick={() => { void toggleGap(gap.uri) }}>
+                    {openGap === gap.uri ? t('wiki.hideCiters') : t('wiki.showCiters')}
+                  </button>
+                </div>
+                {openGap === gap.uri && (
+                  <div className={cn(css.citers)}>
+                    {gapBusy
+                      ? <span className={cn(base.note)}>{t('wiki.citersLoading')}</span>
+                      : gapCiters.length === 0
+                        ? <span className={cn(base.note)}>{t('wiki.searchNoHit')}</span>
+                        : (
+                          <ul className={cn(css.citerList)}>
+                            {gapCiters.slice(0, 40).map(page => (
+                              <li key={page}>
+                                <button type="button" className={cn(css.citerLink)}
+                                  onClick={() => { void openCard(page) }}>{page}</button>
+                              </li>
+                            ))}
+                            {gapCiters.length > 40 && (
+                              <li className={cn(base.note)}>
+                                {t('wiki.citersMore', { count: gapCiters.length - 40 })}
+                              </li>
+                            )}
+                          </ul>
+                        )}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      <p className={cn(base.note)}>{t('wiki.gapNote')}</p>
+    </>
+  )
+
+  /** The activity tab: what has been written, and what has been asked. */
+  const activity = report === undefined ? null : (
+    <>
+      <h4 className={cn(css.subTitle)}>{t('wiki.activityTotal', { count: report.usage.total })}</h4>
+      {report.usage.total === 0
+        ? <p className={cn(base.note)}>{t('wiki.noActivity')}</p>
+        : (
+          <div className={cn(css.stats)}>
+            <div className={cn(css.termBlock)}>
+              <span className={cn(css.statLabel)}>{t('wiki.missedTerms')}</span>
+              {report.usage.misses.length === 0
+                ? <span className={cn(base.note)}>{t('wiki.searchNoHit')}</span>
+                : (
+                  <ul className={cn(css.termList)}>
+                    {report.usage.misses.slice(0, 10).map(miss => (
+                      <li key={miss.term} className={cn(css.termRow)}>
+                        <span className={cn(css.termText)}>{miss.term}</span>
+                        <span className={cn(css.termCount)}>{t('wiki.times', { count: miss.count })}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+            </div>
+            <div className={cn(css.termBlock)}>
+              <span className={cn(css.statLabel)}>{t('wiki.topTerms')}</span>
+              <ul className={cn(css.termList)}>
+                {report.usage.popular.slice(0, 10).map(entry => (
+                  <li key={entry.term} className={cn(css.termRow)}>
+                    <span className={cn(css.termText)}>{entry.term}</span>
+                    <span className={cn(css.termCount)}>{t('wiki.times', { count: entry.count })}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+
+      <h4 className={cn(css.subTitle)}>{t('wiki.recent')}</h4>
+      {recent.length === 0
+        ? <p className={cn(base.note)}>{t('wiki.recentEmpty')}</p>
+        : (
+          <ul className={cn(css.logList)}>
+            {recent.map((entry, index) => (
+              <li key={`${entry.date}-${String(index)}`} className={cn(css.logRow)}>
+                <span className={cn(css.logDate)}>{entry.date}</span>
+                <span className={cn(css.logText)}>{entry.text}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+    </>
+  )
+
+  /** One page as a card: what it can answer, and where it leads. */
+  const cardView = card === undefined ? null : (
+    <div className={cn(css.card)}>
+      <div className={cn(css.cardHead)}>
+        <span className={cn(css.cardTitle)}>{card.name}</span>
+        <span className={cn(css.mono)}>{card.uri ?? card.page}</span>
+        <button type="button" className={cn(css.cardClose)}
+          onClick={() => { setCard(undefined) }}>{t('wiki.hideCiters')}</button>
+      </div>
+      <div className={cn(css.cardFacts)}>
+        <span className={cn(css.badge, card.level === 'concept' ? css.badgeLow : undefined)}>
+          {t(LEVEL_KEY[card.level])}
+        </span>
+        {card.fieldCount !== undefined && (
+          <span className={cn(css.cardFact)}>{t('wiki.cardFields', { count: card.fieldCount })}</span>
+        )}
+        <span className={cn(css.cardFact)}>
+          {card.table === undefined ? t('wiki.cardNoTable') : `${t('wiki.cardTable')} ${card.table}`}
+        </span>
+        {card.version !== undefined && <span className={cn(css.cardFact)}>{card.version}</span>}
+      </div>
+      {card.lacks.length > 0 && (
+        <ul className={cn(css.lacks)}>
+          {card.lacks.map(item => <li key={item}>{item}</li>)}
+        </ul>
+      )}
+      {card.outgoing.length > 0 && (
+        <>
+          <h5 className={cn(css.cardSub)}>{t('wiki.cardOutgoing')}</h5>
+          {card.outgoing.map(group => <RelationRow key={group.kind} group={group} t={t} />)}
+        </>
+      )}
+      {card.incomingGroups.length > 0 && (
+        <>
+          <h5 className={cn(css.cardSub)}>{t('wiki.cardIncoming')}</h5>
+          {card.incomingGroups.map(group => <RelationRow key={group.kind} group={group} t={t} />)}
+        </>
+      )}
+      {card.unresolved.total > 0 && (
+        <p className={cn(base.note)}>{t('wiki.cardUnresolved', { count: card.unresolved.total })}</p>
+      )}
+      <p className={cn(base.note)}>{card.page}</p>
+    </div>
+  )
+
+  /** Search results, shown in place of the tabs while a term is typed. */
+  const results = found === undefined ? null : (
+    <div className={cn(css.results)}>
+      <p className={cn(css.resultHead)}>
+        {t('wiki.searchSummary', { scanned: found.scanned, hits: found.hits.length })}
+      </p>
+      {found.hits.length === 0
+        ? <p className={cn(base.note)}>{t('wiki.searchNoHit')}</p>
+        : (
+          <>
+            <ul className={cn(css.resultList)}>
+              {found.hits.map(hit => (
+                <li key={hit.page}>
+                  <button type="button" className={cn(css.resultRow)}
+                    disabled={cardBusy !== undefined}
+                    onClick={() => { void openCard(hit.page) }}>
+                    <span className={cn(css.resultName)}>{hit.name}</span>
+                    <span className={cn(css.mono)}>{hit.uri ?? hit.page}</span>
+                    <span className={cn(css.resultFacts)}>
+                      <span className={cn(css.badge, hit.level === 'concept' ? css.badgeLow : undefined)}>
+                        {t(LEVEL_KEY[hit.level])}
+                      </span>
+                      {hit.fieldCount !== undefined && <span>{t('wiki.cardFields', { count: hit.fieldCount })}</span>}
+                      {hit.table !== undefined && <span className={cn(css.mono)}>{hit.table}</span>}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <p className={cn(base.note)}>{t('wiki.searchCardHint')}</p>
+          </>
+        )}
+    </div>
+  )
 
   return (
     <Modal
@@ -166,7 +566,12 @@ export function WikiManager({ listVaults, rebuildVault, recentWrites, onClose, t
                         aria-selected={vault.id === current?.id}
                         tabIndex={vault.id === tabbable ? 0 : -1}
                         className={cn(base.projectRow, !vault.ready ? css.rowNotReady : undefined)}
-                        onClick={() => { setSelected(vault.id) }}
+                        onClick={() => {
+                          setSelected(vault.id)
+                          setCard(undefined)
+                          setTerm('')
+                          setOpenGap(undefined)
+                        }}
                       >
                         <span className={cn(base.projectMark)} aria-hidden="true"><BookMark /></span>
                         <span className={cn(base.projectName)} title={vault.path}>{vault.label}</span>
@@ -194,39 +599,47 @@ export function WikiManager({ listVaults, rebuildVault, recentWrites, onClose, t
                 <span className={cn(base.projectMeta)}>{current.id}</span>
               </h3>
 
-              <dl className={cn(base.props)}>
-                <dt className={cn(base.propLabel)}>{t('wiki.path')}</dt>
-                <dd className={cn(base.propValue)}>
-                  <span className={cn(css.mono)}>{current.path}</span>
-                </dd>
+              <div className={cn(css.searchRow)}>
+                <input
+                  className={cn(base.inputFill, css.searchInput)}
+                  type="search"
+                  value={term}
+                  placeholder={t('wiki.searchPlaceholder')}
+                  aria-label={t('wiki.search')}
+                  onChange={event => { setTerm(event.target.value) }}
+                />
+                {searching && <span className={cn(base.note)}>{t('wiki.searching')}</span>}
+              </div>
 
-                <dt className={cn(base.propLabel)}>{t('wiki.pages')}</dt>
-                <dd className={cn(base.propValue)}>{current.ready ? current.pages : '—'}</dd>
-
-                <dt className={cn(base.propLabel)}>{t('wiki.indexedAt')}</dt>
-                <dd className={cn(base.propValue)}>{current.ready ? when(current) : '—'}</dd>
-
-                <dt className={cn(base.propLabel)}>{t('wiki.state')}</dt>
-                <dd className={cn(base.propValue)}>
-                  {current.ready ? t('wiki.ready') : t('wiki.notReady')}
-                </dd>
-              </dl>
-
-              <h4 className={cn(css.subTitle)}>{t('wiki.recent')}</h4>
-              {recent.length === 0
-                ? <p className={cn(base.note)}>{t('wiki.recentEmpty')}</p>
-                : (
-                  <ul className={cn(css.logList)}>
-                    {recent.map((entry, index) => (
-                      <li key={`${entry.date}-${String(index)}`} className={cn(css.logRow)}>
-                        <span className={cn(css.logDate)}>{entry.date}</span>
-                        <span className={cn(css.logText)}>{entry.text}</span>
-                      </li>
+              {results ?? (
+                <>
+                  <div className={cn(css.tabs)} role="tablist" aria-label={t('wiki.title')}>
+                    {tabs.map(entry => (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={tab === entry.id}
+                        className={cn(css.tab, tab === entry.id ? css.tabActive : undefined)}
+                        onClick={() => { setTab(entry.id) }}
+                      >
+                        {entry.label}
+                        {entry.count !== undefined && <span className={cn(css.tabCount)}>{entry.count}</span>}
+                      </button>
                     ))}
-                  </ul>
-                )}
+                  </div>
 
-              <p className={cn(base.hint)}>{t('wiki.rebuildHint')}</p>
+                  {tab === 'overview' && overview}
+                  {tab === 'gaps' && gaps}
+                  {tab === 'activity' && activity}
+                </>
+              )}
+
+              {cardView}
+
+              {tab === 'overview' && current.ready && (
+                <p className={cn(base.hint)}>{t('wiki.rebuildHint')}</p>
+              )}
 
               <div className={cn(base.detailActions)}>
                 <Button

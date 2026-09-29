@@ -3,6 +3,7 @@ import { type WikiAssessment, type WikiGap, type WikiGraphSummary, type WikiLeve
 import type { WikiStore } from './wiki-store.ts';
 import { type WikiUsageLog, type WikiUsageMiss } from './wiki-usage.ts';
 import type { WikiLogEntry, WikiVaultView } from '../shared/types.ts';
+import type { WikiCardView, WikiHealthReport } from '../shared/types.ts';
 /** What a knowledge base call can fail with. */
 export declare class WikiError extends Error {
     readonly code: 'not-found' | 'invalid-input' | 'not-configured';
@@ -164,6 +165,35 @@ export interface YonWikiService {
      * @param limit - how many gaps per vault, most-cited first; 15 when omitted.
      */
     gaps(vaultId?: string, limit?: number): Promise<readonly WikiGapReport[]>;
+    /**
+     * One vault's health, for the panel's overview and gap tabs.
+     *
+     * Everything the panel draws about a vault's state, in one answer: the page
+     * count, the level breakdown, the reference tallies, the largest holes and the
+     * query activity. Assembled here rather than by three panel calls, so that two
+     * tabs cannot show figures from two different moments.
+     * @param vaultId - which vault; all of them when omitted.
+     * @param gapLimit - how many holes to include; 20 when omitted.
+     */
+    health(vaultId?: string, gapLimit?: number): Promise<readonly WikiHealthReport[]>;
+    /**
+     * One page as a card: what it is good for and where it leads.
+     *
+     * Answered from the index and the graph alone — the page body is never read,
+     * because a card is what the panel shows *before* deciding to open anything.
+     * @param page - page name, with or without the `.md` suffix.
+     * @param vaultId - which vault; required when several could match.
+     */
+    card(page: string, vaultId?: string): Promise<WikiCardView>;
+    /**
+     * The pages citing one entity URI.
+     *
+     * Expands a gap: knowing `bip-usercenter.bip_user_ref` is cited 818 times is a
+     * number, and knowing which 818 pages cite it is a to-do list.
+     * @param uri - the entity URI, as a page writes it.
+     * @param vaultId - which vault; all of them when omitted.
+     */
+    citers(uri: string, vaultId?: string): Promise<readonly string[]>;
     /** Drop the cached indexes and rebuild them from disk. */
     rebuild(vaultId?: string): Promise<readonly WikiVaultView[]>;
     /**

@@ -285,6 +285,141 @@ export interface WikiLogPayload {
 }
 
 /**
+ * What a knowledge-base page can be used for, strongest first.
+ *
+ * Mirrors the host's `WikiLevel`. The two are kept in step by hand rather than by
+ * an import, because this module is shared by both halves and may not depend on
+ * either — the same reason every other payload here repeats a host shape.
+ */
+export type WikiLevel = 'query-ready' | 'locatable' | 'concept'
+
+/** How many of a vault's pages sit at one level. */
+export interface WikiLevelStat {
+  readonly level: WikiLevel
+  readonly pages: number
+}
+
+/** One entity a vault's pages cite and none of them covers. */
+export interface WikiGapView {
+  readonly uri: string
+  /** How many references name it. */
+  readonly cited: number
+  /** A few of the pages citing it, for judging whether the hole matters. */
+  readonly citedBy: readonly string[]
+}
+
+/** A vault's reference tallies. */
+export interface WikiGraphView {
+  readonly pages: number
+  readonly withOutgoing: number
+  readonly withIncoming: number
+  readonly isolated: number
+  readonly resolvedEdges: number
+  readonly danglingEdges: number
+  readonly missingEntities: number
+}
+
+/** A term that was asked for and came back empty. */
+export interface WikiMissView {
+  readonly term: string
+  readonly count: number
+  readonly last: string
+}
+
+/** What a vault has been asked, folded. */
+export interface WikiUsageView {
+  readonly total: number
+  readonly misses: readonly WikiMissView[]
+  readonly popular: readonly { readonly term: string, readonly count: number }[]
+  readonly since?: string
+}
+
+/**
+ * One vault's health: the 概览 and 缺口 tabs, in one answer.
+ *
+ * One call rather than three because the panel needs all of it to draw one
+ * screen, and three round trips would let the tabs disagree with each other
+ * about a vault that is being rebuilt while they load.
+ */
+export interface WikiHealthReport {
+  readonly vault: string
+  readonly vaultLabel: string
+  readonly pages: number
+  readonly indexedAt?: string
+  /** Size of the cached index on disk, so a slow rebuild has a visible cause. */
+  readonly indexBytes?: number
+  readonly graph: WikiGraphView
+  readonly levels: readonly WikiLevelStat[]
+  readonly gaps: readonly WikiGapView[]
+  readonly usage: WikiUsageView
+}
+
+/** Body of `GET /yon/api/wiki/health`. */
+export interface WikiHealthPayload {
+  readonly reports: readonly WikiHealthReport[]
+}
+
+/** One kind of relation, with a sample of its targets and how many there are. */
+export interface WikiRelationGroupView {
+  readonly kind: string
+  readonly total: number
+  readonly sample: readonly string[]
+}
+
+/** A page as a card: what it is good for and where it leads, without its body. */
+export interface WikiCardView {
+  readonly vault: string
+  readonly vaultLabel: string
+  readonly page: string
+  readonly uri: string | null
+  readonly name: string
+  readonly table?: string
+  readonly app?: string
+  readonly version?: string
+  readonly status?: string
+  readonly level: WikiLevel
+  readonly fieldCount?: number
+  /** What the page lacks to answer more, in the host's own words. */
+  readonly lacks: readonly string[]
+  readonly refs: number
+  readonly incoming: number
+  readonly outgoing: readonly WikiRelationGroupView[]
+  readonly incomingGroups: readonly WikiRelationGroupView[]
+  readonly unresolved: { readonly total: number, readonly sample: readonly string[] }
+}
+
+/** Body of `GET /yon/api/wiki/card`. */
+export interface WikiCardPayload {
+  readonly card: WikiCardView
+}
+
+/** One page a panel search matched. */
+export interface WikiSearchHit {
+  readonly page: string
+  readonly uri: string | null
+  readonly name: string
+  readonly table?: string
+  readonly app?: string
+  readonly level: WikiLevel
+  readonly fieldCount?: number
+  /** How the term matched: `uri`, `table`, `page`, `name` or `contains`. */
+  readonly matchedBy: string
+}
+
+/** Body of `GET /yon/api/wiki/search`. */
+export interface WikiSearchPayload {
+  readonly term: string
+  readonly scanned: number
+  readonly hits: readonly WikiSearchHit[]
+}
+
+/** Body of `GET /yon/api/wiki/citers`. */
+export interface WikiCitersPayload {
+  readonly uri: string
+  readonly pages: readonly string[]
+}
+
+/**
  * Build the identity both halves address one connection by.
  * @param configKey - the key the connection sits under in the configuration.
  * @param env - the environment branch under it.
