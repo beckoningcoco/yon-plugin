@@ -81,7 +81,19 @@ export interface CoverageCheck {
 export interface FidelityCheck {
   readonly total: number
   readonly fabricated: number
+  /** 按**唯一标识符**计的保真率。 */
   readonly rate: number
+  /**
+   * 按**出现次数**计的保真率。
+   *
+   * 比上面那个敏感得多：幻觉集中在高频词上时（把 `id` 换成 `xId`），唯一标识
+   * 符只少了一个，出现次数却少了几百次。只报前者会让人以为产物没问题。
+   */
+  readonly rateByOccurrence: number
+  /** 被判为臆造的标识符总共出现了多少次。 */
+  readonly fabricatedOccurrences: number
+  /** 产物里标识符的总出现次数。 */
+  readonly totalOccurrences: number
   /** 每条臆造及其出处，供人区分「合法引用」与「编造」。 */
   readonly located: readonly { readonly term: string, readonly file: string, readonly line: number }[]
 }
@@ -200,6 +212,32 @@ export function identifiers(text: string, config: DigestConfig): ReadonlySet<str
     found.add(term)
   }
   return found
+}
+
+/**
+ * 标识符及其出现次数。
+ *
+ * 保真率需要按出现次数算一份：只按去重后的唯一标识符算，会把幻觉稀释掉。
+ * 实测过——向产物注入 371 处编造标识符（占出现次数的 19.2%），去重后只涉及
+ * 27 个唯一标识符，保真率从 98.0% 只掉到 95.1%，两个点。阈值是 98%，余量
+ * 只剩两个点，规模再大一点的幻觉就蒙混过关了。
+ *
+ * @param text - 待统计的文本。
+ * @param config - 配置。
+ * @returns 标识符到出现次数的映射。
+ */
+export function identifierCounts(text: string, config: DigestConfig): ReadonlyMap<string, number> {
+  const patterns = compilePatterns(config)
+  const stop = new Set(config.identifiers.stop)
+  const counts = new Map<string, number>()
+  for (const match of text.matchAll(patterns.identifier)) {
+    const term = match[0]
+    if (term.length < config.identifiers.minLength || term.length > config.identifiers.maxLength) continue
+    if (stop.has(term)) continue
+    if (/^\d/.test(term)) continue
+    counts.set(term, (counts.get(term) ?? 0) + 1)
+  }
+  return counts
 }
 
 /**
@@ -448,7 +486,18 @@ function checkFidelity(
 ): FidelityCheck {
   const sourceSqueezed = squeeze(source)
   const productIdents = identifiers(productBody, config)
+  const counts = identifierCounts(productBody, config)
   const fabricated = [...productIdents].filter(term => !sourceSqueezed.includes(squeeze(term)))
+
+  // 两个口径一起报：唯一标识符的比率说明「有多少种知识是假的」，出现次数的比率
+  // 说明「读者撞上假知识的概率有多大」。后者才是使用者真正会遇到的问题。
+  let totalOccurrences = 0
+  let fabricatedOccurrences = 0
+  const fake = new Set(fabricated)
+  for (const [term, count] of counts) {
+    totalOccurrences += count
+    if (fake.has(term)) fabricatedOccurrences += count
+  }
 
   // 每条臆造带出处。没有出处就没法判断它是真幻觉，还是合法引用别的来源、或对
   // 原文拼写的批注——实测里 16 条报告有 13 条是后两种。
@@ -468,6 +517,9 @@ function checkFidelity(
     total: productIdents.size,
     fabricated: fabricated.length,
     rate: productIdents.size === 0 ? 1 : 1 - fabricated.length / productIdents.size,
+    rateByOccurrence: totalOccurrences === 0 ? 1 : 1 - fabricatedOccurrences / totalOccurrences,
+    fabricatedOccurrences,
+    totalOccurrences,
     located,
   }
 }
@@ -576,9 +628,13 @@ export async function auditDigest(input: {
     terms: coverage.terms.rate === null ? null : coverage.terms.rate >= t.coverage,
     // 样本不足时只报臆造、不比比例：五个标识符错一个就是 80%，这个比例没有意义。
     // 但仍要报——实测里那份编造的摘要靠 5 个标识符拿到了 100% 保真。
+    //
+    // 样本足够时取两个口径中**较低**的那个：按唯一标识符算的是「有多少种知识是
+    // 假的」，按出现次数算的是「读者撞上假知识的概率」。任一视角发现严重问题都
+    // 该判不合格——只看前者，一次 19% 的注入只掉两个点，就放过去了。
     fidelity: fidelity.total < t.fidelitySample
       ? (fidelity.fabricated > 0 ? false : null)
-      : fidelity.rate >= t.fidelity,
+      : Math.min(fidelity.rate, fidelity.rateByOccurrence) >= t.fidelity,
     provenance: provenance.rate >= t.provenance,
     overlap: overlap === undefined ? null : overlap.rate <= t.overlap,
     addressable: addressable.rate === null ? null : addressable.rate >= t.addressable,

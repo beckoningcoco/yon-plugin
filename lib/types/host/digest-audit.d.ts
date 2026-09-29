@@ -39,7 +39,19 @@ export interface CoverageCheck {
 export interface FidelityCheck {
     readonly total: number;
     readonly fabricated: number;
+    /** 按**唯一标识符**计的保真率。 */
     readonly rate: number;
+    /**
+     * 按**出现次数**计的保真率。
+     *
+     * 比上面那个敏感得多：幻觉集中在高频词上时（把 `id` 换成 `xId`），唯一标识
+     * 符只少了一个，出现次数却少了几百次。只报前者会让人以为产物没问题。
+     */
+    readonly rateByOccurrence: number;
+    /** 被判为臆造的标识符总共出现了多少次。 */
+    readonly fabricatedOccurrences: number;
+    /** 产物里标识符的总出现次数。 */
+    readonly totalOccurrences: number;
     /** 每条臆造及其出处，供人区分「合法引用」与「编造」。 */
     readonly located: readonly {
         readonly term: string;
@@ -109,6 +121,19 @@ export interface DigestAudit {
  * @returns 标识符集合。
  */
 export declare function identifiers(text: string, config: DigestConfig): ReadonlySet<string>;
+/**
+ * 标识符及其出现次数。
+ *
+ * 保真率需要按出现次数算一份：只按去重后的唯一标识符算，会把幻觉稀释掉。
+ * 实测过——向产物注入 371 处编造标识符（占出现次数的 19.2%），去重后只涉及
+ * 27 个唯一标识符，保真率从 98.0% 只掉到 95.1%，两个点。阈值是 98%，余量
+ * 只剩两个点，规模再大一点的幻觉就蒙混过关了。
+ *
+ * @param text - 待统计的文本。
+ * @param config - 配置。
+ * @returns 标识符到出现次数的映射。
+ */
+export declare function identifierCounts(text: string, config: DigestConfig): ReadonlyMap<string, number>;
 /**
  * 去掉封面、版权页、修订记录、目录和页眉，只留知识正文。
  *
