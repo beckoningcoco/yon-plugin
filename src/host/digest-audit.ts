@@ -36,6 +36,7 @@
 import { readFile, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { compilePatterns, type DigestConfig } from './digest-config.ts'
+import { headingsOf } from './digest-plan.ts'
 
 /** 一个「命中数 / 总数」对，比率为 null 表示该项不适用。 */
 export interface CountRate {
@@ -272,39 +273,24 @@ export function knowledgeBody(text: string, config: DigestConfig): string {
  * PDF 抽取出来的正文没有 markdown 标记，标题就是普通短行，只能靠编号形态认。
  * 只取到配置的 maxDepth（默认二级），三级太碎会把覆盖率稀释成没有意义的数字。
  *
+ * **识别逻辑复用 `digest-plan` 的 `headingsOf()`，不再自己写一套。** 这里曾经是
+ * 一份简化的副本，比 plan 侧少了五条过滤（有「第X章」时数字一级编号作废、一级
+ * 编号须严格递增、一级标题长度上限、一级标题禁含句读标点、跳过页标记与页眉）。
+ * 实测代价：某份红皮书的响应参数表里有一行「0 表示操作成功，和result 等同」，
+ * 简化逻辑把它当成一级章节，于是**合格的产物被判成覆盖率不合格**——plan 报 6 章、
+ * audit 报 10 章，同一份文档两个答案。
+ *
  * @param text - 源文档全文。
  * @param config - 配置。
  * @returns 一级与二级章节标题集合。
  */
 export function sections(text: string, config: DigestConfig): { level1: ReadonlySet<string>, level2: ReadonlySet<string> } {
-  const patterns = compilePatterns(config)
+  const lines = knowledgeBody(text, config).split(/\r?\n/)
   const level1 = new Set<string>()
   const level2 = new Set<string>()
-  for (const raw of knowledgeBody(text, config).split(/\r?\n/)) {
-    const line = raw.trim()
-    if (line === '' || line.length > config.sections.maxTitleLength) continue
-    if (patterns.tocLine.test(line)) continue
-
-    const chapter = patterns.chapter.exec(line)
-    if (chapter !== null) {
-      const title = (chapter[2] ?? '').trim()
-      if (title.length >= 2 && !/^[。；，,;]/.test(title)) level1.add(`第${chapter[1] ?? ''}章 ${title}`)
-      continue
-    }
-
-    const numbered = patterns.numbered.exec(line)
-    if (numbered === null) continue
-    const number = numbered[1] ?? ''
-    const depth = number.split('.').length
-    if (depth > config.sections.maxDepth) continue
-    const title = (numbered[2] ?? '').trim()
-    if (title.length < 2 || /[。；，,;]$/.test(title)) continue
-    if (/^\d/.test(title)) continue
-    if (/^(年|月|日|修订|页)/.test(title)) continue
-    if (/^[、，。；：,.;:（）()【】]/.test(title)) continue
-    if (!/[\u4e00-\u9fa5A-Za-z]/.test(title)) continue
-    if (depth === 1) level1.add(`${number} ${title}`)
-    if (depth === 2) level2.add(`${number} ${title}`)
+  for (const heading of headingsOf(lines, config)) {
+    if (heading.level === 1) level1.add(heading.title)
+    else if (heading.level === 2) level2.add(heading.title)
   }
   return { level1, level2 }
 }

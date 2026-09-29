@@ -151,6 +151,13 @@ export declare function knowledgeBody(text: string, config: DigestConfig): strin
  * PDF 抽取出来的正文没有 markdown 标记，标题就是普通短行，只能靠编号形态认。
  * 只取到配置的 maxDepth（默认二级），三级太碎会把覆盖率稀释成没有意义的数字。
  *
+ * **识别逻辑复用 `digest-plan` 的 `headingsOf()`，不再自己写一套。** 这里曾经是
+ * 一份简化的副本，比 plan 侧少了五条过滤（有「第X章」时数字一级编号作废、一级
+ * 编号须严格递增、一级标题长度上限、一级标题禁含句读标点、跳过页标记与页眉）。
+ * 实测代价：某份红皮书的响应参数表里有一行「0 表示操作成功，和result 等同」，
+ * 简化逻辑把它当成一级章节，于是**合格的产物被判成覆盖率不合格**——plan 报 6 章、
+ * audit 报 10 章，同一份文档两个答案。
+ *
  * @param text - 源文档全文。
  * @param config - 配置。
  * @returns 一级与二级章节标题集合。
