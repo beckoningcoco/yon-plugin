@@ -1,16 +1,25 @@
 /**
- * The knowledge base surface: which vaults are registered, how much is in them,
- * and a way to rebuild an index that has fallen behind.
+ * The knowledge base surface: every registered vault on one side, the selected
+ * one's state on the other, and a way to rebuild an index that has fallen behind.
  *
- * Read-only by design. The two things a knowledge base needs are here — seeing
- * what is registered, and refreshing what was indexed — while adding a vault stays
- * a file edit, because a vault path is a fact about this machine rather than
- * something the panel should invite someone to type by hand into a browser.
+ * Same shape as the other three surfaces, on purpose: the shared stylesheet
+ * carries the pane split, the list, the property grid and the action row, and the
+ * dialog chrome comes from `Modal`. What this file adds is only what a vault has
+ * that a connection does not — an index, a page count, and the fact that a vault is
+ * a directory on this machine rather than a set of credentials.
+ *
+ * Read-only by design. The two things a knowledge base needs from a panel are
+ * seeing what is registered and refreshing what was indexed; adding a vault stays
+ * a file edit, because a machine path is not something to invite somebody to type
+ * into a browser field.
  */
 import { useCallback, useEffect, useState } from 'react'
+import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { WikiVaultView } from '../../shared/types.ts'
+import { cn } from '../cn.ts'
 import type { WikiApi } from './api.ts'
+import base from '../panel.module.css'
 import css from './panel.module.css'
 
 /** Props the entry hands this surface. */
@@ -19,41 +28,26 @@ export interface WikiManagerProps extends WikiApi, PropsLocale<'yonPanel'> {
   onClose(): void
 }
 
-/** One vault as a card: what it is, what it holds, and how to refresh it. */
-function VaultCard({ vault, busy, onRebuild, t }: {
-  vault: WikiVaultView
-  busy: boolean
-  onRebuild(vault: string): void
-  t: WikiManagerProps['t']
-}) {
-  const when = vault.indexedAt === undefined
-    ? t('wiki.neverIndexed')
-    : vault.indexedAt.slice(0, 19).replace('T', ' ')
-
+/**
+ * The vault mark: an open book, matching the cell that opened this surface.
+ * @returns the decorative svg.
+ */
+function BookMark() {
   return (
-    <li className={css.card}>
-      <div className={css.cardHead}>
-        <span className={css.cardTitle}>{vault.label}</span>
-        <span className={css.badge}>{vault.id}</span>
-        {!vault.ready && <span className={css.badgeWarn}>{t('wiki.notReady')}</span>}
-      </div>
-      <div className={css.path}>{vault.path}</div>
-      <div className={css.stats}>
-        <span>{t('wiki.pages').replace('{count}', String(vault.pages))}</span>
-        <span>·</span>
-        <span>{t('wiki.indexedAt')} {when}</span>
-      </div>
-      <div className={css.actions}>
-        <button
-          type="button"
-          className={css.button}
-          disabled={busy || !vault.ready}
-          onClick={() => { onRebuild(vault.id) }}
-        >
-          {busy ? t('wiki.rebuilding') : t('wiki.rebuild')}
-        </button>
-      </div>
-    </li>
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M2.75 3.25h4.1c.66 0 1.15.53 1.15 1.18v8.32H3.9a1.15 1.15 0 0 1-1.15-1.15z"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M13.25 3.25h-4.1c-.66 0-1.15.53-1.15 1.18v8.32h4.1a1.15 1.15 0 0 0 1.15-1.15z"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+    </svg>
   )
 }
 
@@ -64,18 +58,20 @@ function VaultCard({ vault, busy, onRebuild, t }: {
  */
 export function WikiManager({ listVaults, rebuildVault, onClose, t }: WikiManagerProps) {
   const [vaults, setVaults] = useState<readonly WikiVaultView[]>([])
+  const [selected, setSelected] = useState<string | undefined>(undefined)
+  /** The vault being rebuilt, or `'*'` while every vault is. */
   const [busy, setBusy] = useState<string | undefined>(undefined)
-  const [error, setError] = useState<string | undefined>(undefined)
+  const [failure, setFailure] = useState<string | undefined>(undefined)
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
-    setError(undefined)
+    setFailure(undefined)
     try {
       const answer = await listVaults()
       setVaults(answer.vaults)
     } catch (cause: unknown) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      setFailure(cause instanceof Error ? cause.message : String(cause))
     } finally {
       setLoading(false)
     }
@@ -84,68 +80,139 @@ export function WikiManager({ listVaults, rebuildVault, onClose, t }: WikiManage
   useEffect(() => { void load() }, [load])
 
   const rebuild = async (vault?: string): Promise<void> => {
-    setBusy(vault ?? 'all')
-    setError(undefined)
+    setBusy(vault ?? '*')
+    setFailure(undefined)
     try {
       const answer = await rebuildVault(vault)
       setVaults(answer.vaults)
     } catch (cause: unknown) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      setFailure(cause instanceof Error ? cause.message : String(cause))
     } finally {
       setBusy(undefined)
     }
   }
 
+  const current = vaults.find(vault => vault.id === selected) ?? vaults[0]
+  const tabbable = selected ?? vaults[0]?.id
+  const when = (vault: WikiVaultView): string => vault.indexedAt === undefined
+    ? t('wiki.neverIndexed')
+    : vault.indexedAt.slice(0, 19).replace('T', ' ')
+
   return (
-    <div className={css.backdrop} role="presentation" onMouseDown={onClose}>
-      <div
-        className={css.dialog}
-        role="dialog"
-        aria-modal="true"
-        aria-label={t('wiki.title')}
-        onMouseDown={event => { event.stopPropagation() }}
-      >
-        <header className={css.head}>
-          <h2 className={css.title}>{t('wiki.title')}</h2>
-          <button type="button" className={css.close} onClick={onClose} aria-label={t('wiki.close')}>
-            ×
+    <Modal
+      open
+      onClose={onClose}
+      title={t('wiki.title')}
+      closeLabel={t('wiki.close')}
+      className={cn(base.manager)}
+      contentClassName={cn(base.managerContent)}
+    >
+      {failure !== undefined && (
+        <p className={cn(base.error)} role="alert">
+          <span className={cn(base.errorText)}>{t('wiki.actionFailed', { message: failure })}</span>
+          <button type="button" className={cn(base.errorAction)} onClick={() => { void load() }}>
+            {t('wiki.retry')}
           </button>
-        </header>
+        </p>
+      )}
 
-        {error !== undefined && <p className={css.error}>{error}</p>}
+      <div className={cn(base.body)}>
+        <section className={cn(base.listPane)} aria-label={t('wiki.list')}>
+          <div className={cn(base.listHead)}>
+            <span className={cn(base.listTitle)}>{t('wiki.list')}</span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy !== undefined || vaults.length === 0}
+              onClick={() => { void rebuild() }}
+            >
+              {busy === '*' ? t('wiki.rebuilding') : t('wiki.rebuildAll')}
+            </Button>
+          </div>
 
-        {loading
-          ? <p className={css.empty}>{t('wiki.loading')}</p>
-          : vaults.length === 0
-            ? <p className={css.empty}>{t('wiki.empty')}</p>
-            : (
-              <ul className={css.list}>
-                {vaults.map(vault => (
-                  <VaultCard
-                    key={vault.id}
-                    vault={vault}
-                    busy={busy !== undefined}
-                    onRebuild={(id) => { void rebuild(id) }}
-                    t={t}
-                  />
-                ))}
-              </ul>
-            )}
+          {loading
+            ? <p className={cn(base.note)}>{t('wiki.loading')}</p>
+            : vaults.length === 0
+              ? <p className={cn(base.note)}>{t('wiki.empty')}</p>
+              : (
+                <ul className={cn(base.projects)} role="listbox" aria-label={t('wiki.list')}>
+                  {vaults.map(vault => (
+                    <li key={vault.id}>
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={vault.id === current?.id}
+                        tabIndex={vault.id === tabbable ? 0 : -1}
+                        className={cn(base.projectRow, !vault.ready ? css.rowNotReady : undefined)}
+                        onClick={() => { setSelected(vault.id) }}
+                      >
+                        <span className={cn(base.projectMark)} aria-hidden="true"><BookMark /></span>
+                        <span className={cn(base.projectName)} title={vault.path}>{vault.label}</span>
+                        <span className={cn(base.projectMeta)}>
+                          {vault.ready ? `${vault.pages} ${t('wiki.pagesUnit')}` : t('wiki.notReady')}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+        </section>
 
-        <footer className={css.foot}>
-          <button
-            type="button"
-            className={css.button}
-            disabled={busy !== undefined || vaults.length === 0}
-            onClick={() => { void rebuild() }}
-          >
-            {busy === 'all' ? t('wiki.rebuilding') : t('wiki.rebuildAll')}
-          </button>
-          <button type="button" className={css.buttonGhost} disabled={loading} onClick={() => { void load() }}>
-            {t('wiki.refresh')}
-          </button>
-        </footer>
+        <section className={cn(base.detailPane)}>
+          {current === undefined ? (
+            <div className={cn(base.empty)}>
+              <span className={cn(base.emptyMark)} aria-hidden="true"><BookMark /></span>
+              <p className={cn(base.emptyTitle)}>{t('wiki.empty')}</p>
+              <p className={cn(base.note)}>{t('wiki.emptyHint')}</p>
+            </div>
+          ) : (
+            <>
+              <h3 className={cn(css.title)}>
+                {current.label}
+                <span className={cn(base.projectMeta)}>{current.id}</span>
+              </h3>
+
+              <dl className={cn(base.props)}>
+                <dt className={cn(base.propLabel)}>{t('wiki.path')}</dt>
+                <dd className={cn(base.propValue)}>
+                  <span className={cn(css.mono)}>{current.path}</span>
+                </dd>
+
+                <dt className={cn(base.propLabel)}>{t('wiki.pages')}</dt>
+                <dd className={cn(base.propValue)}>{current.ready ? current.pages : '—'}</dd>
+
+                <dt className={cn(base.propLabel)}>{t('wiki.indexedAt')}</dt>
+                <dd className={cn(base.propValue)}>{current.ready ? when(current) : '—'}</dd>
+
+                <dt className={cn(base.propLabel)}>{t('wiki.state')}</dt>
+                <dd className={cn(base.propValue)}>
+                  {current.ready ? t('wiki.ready') : t('wiki.notReady')}
+                </dd>
+              </dl>
+
+              <p className={cn(base.hint)}>{t('wiki.rebuildHint')}</p>
+
+              <div className={cn(base.detailActions)}>
+                <Button
+                  size="sm"
+                  disabled={busy !== undefined || !current.ready}
+                  onClick={() => { void rebuild(current.id) }}
+                >
+                  {busy === current.id ? t('wiki.rebuilding') : t('wiki.rebuild')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={loading}
+                  onClick={() => { void load() }}
+                >
+                  {t('wiki.refresh')}
+                </Button>
+              </div>
+            </>
+          )}
+        </section>
       </div>
-    </div>
+    </Modal>
   )
 }

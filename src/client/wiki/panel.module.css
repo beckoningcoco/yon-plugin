@@ -1,160 +1,36 @@
-/* The knowledge base surface: a dialog listing the registered vaults. */
+/* Knowledge-base pieces the shared dialog chrome does not cover: the detail title,
+   the vault path, and the dimming of a vault whose directory has moved. Everything
+   structural — the pane split, the list, the property grid, the action row, the
+   empty state — comes from the shared stylesheet, so this surface, the project
+   surface, the datasource surface and the skill surface stay one family.
 
-.backdrop {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgb(0 0 0 / 35%);
-  z-index: 40;
-}
-
-.dialog {
-  width: min(560px, calc(100vw - 32px));
-  max-height: min(70vh, 640px);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px 18px;
-  border-radius: 10px;
-  background: var(--dsh-surface, #fff);
-  color: var(--dsh-text, #1a1a1a);
-  box-shadow: 0 12px 40px rgb(0 0 0 / 24%);
-}
-
-.head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
+   Every colour here is a theme alias. The previous revision of this file drew its
+   own backdrop, dialog, card and buttons; that is what made the surface look like
+   a visitor rather than one of the four. */
 
 .title {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.close {
-  border: none;
-  background: none;
-  font-size: 20px;
-  line-height: 1;
-  cursor: pointer;
-  color: inherit;
-  opacity: 0.6;
-}
-
-.close:hover { opacity: 1; }
-
-.list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.card {
-  border: 1px solid var(--dsh-border, #e3e3e3);
-  border-radius: 8px;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.cardHead {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.cardTitle {
+  margin: 0 0 6px;
+  font-size: 15px;
   font-weight: 600;
-  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
 }
 
-.badge {
-  font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--dsh-surface-alt, #f0f0f0);
-  opacity: 0.85;
-}
-
-.badgeWarn {
-  font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: #fdecec;
-  color: #a33;
-}
-
-.path {
-  font-family: var(--dsh-mono, ui-monospace, monospace);
-  font-size: 11px;
-  opacity: 0.7;
+/* A vault path is read character by character — drive letter, separators, mixed
+   case, sometimes Chinese — so it gets the monospaced face and wraps rather than
+   pushing the property grid out of shape. */
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
   word-break: break-all;
+  color: var(--dsw-alias-label-secondary);
 }
 
-.stats {
-  display: flex;
-  gap: 6px;
-  font-size: 12px;
-  opacity: 0.8;
-}
-
-.actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.button,
-.buttonGhost {
-  font: inherit;
-  font-size: 12px;
-  padding: 4px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.button {
-  border: 1px solid transparent;
-  background: var(--dsh-accent, #2b6cb0);
-  color: #fff;
-}
-
-.button:disabled,
-.buttonGhost:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.buttonGhost {
-  border: 1px solid var(--dsh-border, #d8d8d8);
-  background: none;
-  color: inherit;
-}
-
-.empty,
-.error {
-  margin: 0;
-  font-size: 13px;
-  padding: 12px 0;
-  opacity: 0.75;
-}
-
-.error {
-  color: #a33;
-  opacity: 1;
-}
-
-.foot {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding-top: 4px;
+/* A registered vault whose directory no longer holds a readable vault. Dimmed
+   rather than hidden: the row is still a real registration the operator may be
+   about to fix, and dropping it from the list would only hide the problem. */
+.rowNotReady {
+  opacity: 0.55;
 }
