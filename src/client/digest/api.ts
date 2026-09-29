@@ -11,6 +11,7 @@
  */
 import { request } from '../request.ts'
 import type { DigestLogEntryView, DigestSummaryPayload } from '../../shared/types.ts'
+import type { YonPanelKey } from '../locales.ts'
 
 // The shared failure keeps this module's name for it, as its siblings do.
 export { ApiError as DigestApiError } from '../request.ts'
@@ -70,6 +71,26 @@ export const METRIC_ORDER: readonly string[] = [
   'terms', 'identifiers', 'level1', 'level2', 'constraints',
   'fidelity', 'provenance', 'overlap', 'addressable',
 ]
+
+/**
+ * 每一项的说明在词典里的键。
+ *
+ * 这一屏上每个词都是这套流程的内部术语——摸底、门禁、保真、溯源——它们此前只
+ * 存在于工具报告和 skill 里。**一个要先读文档才能读懂的面板，等于没把结果交付
+ * 出去**，所以每项都要有一句话解释它是什么、阈值多少。类型写成 `YonPanelKey`
+ * 而不是 `string`：漏一个键时编译就不过。
+ */
+export const METRIC_ABOUT_KEYS: Readonly<Record<string, YonPanelKey>> = {
+  terms: 'digest.metricTermsAbout',
+  identifiers: 'digest.metricIdentifiersAbout',
+  level1: 'digest.metricLevel1About',
+  level2: 'digest.metricLevel2About',
+  constraints: 'digest.metricConstraintsAbout',
+  fidelity: 'digest.metricFidelityAbout',
+  provenance: 'digest.metricProvenanceAbout',
+  overlap: 'digest.metricOverlapAbout',
+  addressable: 'digest.metricAddressableAbout',
+}
 
 /** 结局的中文名。 */
 export const OUTCOME_LABELS: Readonly<Record<string, string>> = {

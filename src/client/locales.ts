@@ -263,6 +263,33 @@ export const zh = {
   'digest.fieldSize': '体积',
   'digest.fieldMs': '耗时',
   'digest.failedItems': '未通过：',
+
+  // 面板要能自己解释自己。
+  //
+  // 「看到数据却不知道含义」不是读者的问题：这一屏里每一个词都是这套流程的
+  // 内部术语（摸底、门禁、保真、溯源），而它们此前只存在于工具报告和 skill 里。
+  // 一个需要先读文档才能读懂的面板，等于没把结果交付出去。
+  'digest.helpToggle': '怎么读这些数字',
+  'digest.helpIntro': '每跑一次检查就在这里记一条。上面的计数是账本总量，中间的均分取自最近有判定的那些验收，下面是逐条记录——点任意一条可以看到它的九项明细与未通过项。',
+  'digest.helpAboutPlan': '摸底只看这份文档分几章、每章从哪行到哪行，不判定好坏，所以没有分数。',
+  'digest.helpAboutGate': '门禁在消化前判断这份素材值不值得做——只算它与已有知识库的重叠度。产物就是源文档自己，所以各项覆盖率必然满分，那些数字没有意义，面板不显示它们。',
+  'digest.helpAboutAudit': '验收把产物与源文档逐项比对，九项全过才算合格。',
+  'digest.helpAboutSweep': '体检按产物自己声明的源文档分组，一次扫一个目录里的所有产物。',
+  'digest.helpThreshold': '每项都有阈值，低于阈值就是不合格项。均分是「最近若干次验收的平均表现」——看趋势，不看单次。',
+  'digest.aboutPlan': '摸底：分几章、每章从哪行到哪行。不判定',
+  'digest.aboutGate': '门禁：消化前判断值不值得做。不产生分数',
+  'digest.aboutAudit': '验收：产物与源文档逐项比对，九项全过才算合格',
+  'digest.aboutSweep': '体检：一次扫一个目录里的所有产物',
+  'digest.metricTermsAbout': '源文档里的中文术语有多少进了产物。阈值 85%',
+  'digest.metricIdentifiersAbout': '类名、字段名、表名这类标识符的覆盖率。它不进判定——只用来发现「产物里满是源文档没有的名字」',
+  'digest.metricLevel1About': '源文档的一级章节有多少能在产物里找到。阈值 85%',
+  'digest.metricLevel2About': '源文档的二级小节有多少能在产物里找到。阈值 60%',
+  'digest.metricConstraintsAbout': '含「必须 / 禁止 / 不支持」的句子有多少进了产物。最容易被摘要吃掉，又最不能丢。阈值 85%',
+  'digest.metricFidelityAbout': '产物里的标识符有多少能在源文档找到——这一项是防幻觉的。阈值 98%',
+  'digest.metricProvenanceAbout': '产物里有多少小节标了页码出处。阈值 50%',
+  'digest.metricOverlapAbout': '与已有知识库的重复度，越高越不值得做。消化前跑的。阈值 ≤85%',
+  'digest.metricAddressableAbout': '源文档的术语能否在产物里定位到。阈值 70%',
+  'digest.noSample': '这一项还没有样本：只有跑过带判定的验收才会算均值。',
 } satisfies Record<string, string>
 
 /** The yonPanel namespace key union. */
@@ -525,4 +552,26 @@ export const en = {
   'digest.fieldSize': 'Size',
   'digest.fieldMs': 'Took',
   'digest.failedItems': 'Failed: ',
+
+  'digest.helpToggle': 'How to read these numbers',
+  'digest.helpIntro': 'Every check you run appends one row here. The counts above are the whole ledger; the averages in the middle come from the most recent audits that produced a verdict; the rows below are the checks themselves — open any one to see its nine figures and what failed.',
+  'digest.helpAboutPlan': 'A plan only reports how many chapters the document has and where each one starts. It judges nothing, so it has no score.',
+  'digest.helpAboutGate': 'A gate runs before digesting to decide whether the material is worth doing — it only compares it against the existing knowledge base. Its product IS the source document, so every coverage figure is necessarily 100%; those numbers mean nothing and the panel does not show them.',
+  'digest.helpAboutAudit': 'An audit compares the pages against the source item by item. All nine checks must pass.',
+  'digest.helpAboutSweep': 'A sweep groups pages by the source their own frontmatter declares, and checks a whole directory at once.',
+  'digest.helpThreshold': 'Every metric has a threshold, and falling below it is what makes an audit fail. The averages are how the last several audits went on average — read the trend, not one verdict.',
+  'digest.aboutPlan': 'A plan: chapters and line ranges. Judges nothing',
+  'digest.aboutGate': 'A gate: is this material worth digesting? Produces no score',
+  'digest.aboutAudit': 'An audit: pages vs source, item by item. All nine must pass',
+  'digest.aboutSweep': 'A sweep: every page in a directory, at once',
+  'digest.metricTermsAbout': 'How much of the source\'s Chinese terminology reached the pages. Threshold 85%',
+  'digest.metricIdentifiersAbout': 'Coverage of identifiers: class names, field names, table names. Not a pass/fail item — it is what exposes "the pages are full of names the source never had"',
+  'digest.metricLevel1About': 'How many of the source\'s top-level chapters can be found in the pages. Threshold 85%',
+  'digest.metricLevel2About': 'How many of the source\'s subsections can be found in the pages. Threshold 60%',
+  'digest.metricConstraintsAbout': 'How many sentences saying must / must not / not supported reached the pages. A summary eats these first and they matter most. Threshold 85%',
+  'digest.metricFidelityAbout': 'How many identifiers in the pages can be found in the source — this is the anti-fabrication check. Threshold 98%',
+  'digest.metricProvenanceAbout': 'How many sections cite a page number. Threshold 50%',
+  'digest.metricOverlapAbout': 'Overlap with the existing knowledge base; higher means less worth doing. Measured before digesting. Threshold ≤85%',
+  'digest.metricAddressableAbout': 'Whether the source\'s terms can be located in the pages. Threshold 70%',
+  'digest.noSample': 'No sample for this one yet: only audits that produced a verdict are averaged.',
 } satisfies Record<YonPanelKey, string>

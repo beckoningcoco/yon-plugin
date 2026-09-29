@@ -258,4 +258,20 @@ describe('预览导出', () => {
       expect(inner.length).toBeGreaterThan(100)
     })
   }
+
+  it('渲染帮助展开态', async () => {
+    const { fireEvent } = await import('@testing-library/react')
+    const view = render(
+      <DigestManager summary={() => Promise.resolve(DAY_ONE)} onClose={() => {}} t={t} />,
+    )
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const toggle = view.container.ownerDocument.querySelector('[class*="helpToggle"]')
+    expect(toggle).not.toBeNull()
+    fireEvent.click(toggle as Element)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const inner = view.container.ownerDocument.body.innerHTML
+    writeFileSync('preview/panel-day-one-help.html', page(inner, 'day-one-help'), 'utf8')
+    cleanup()
+    expect(inner).toContain('helpList')
+  })
 })

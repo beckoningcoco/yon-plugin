@@ -1,4 +1,5 @@
 import type { DigestLogEntryView, DigestSummaryPayload } from '../../shared/types.ts';
+import type { YonPanelKey } from '../locales.ts';
 export { ApiError as DigestApiError } from '../request.ts';
 /** The ledger operations the UI drives. */
 export interface DigestApi {
@@ -23,6 +24,15 @@ export declare function createDigestApi(): DigestApi;
 export declare const METRIC_LABELS: Readonly<Record<string, string>>;
 /** 面板上显示计量项的顺序。 */
 export declare const METRIC_ORDER: readonly string[];
+/**
+ * 每一项的说明在词典里的键。
+ *
+ * 这一屏上每个词都是这套流程的内部术语——摸底、门禁、保真、溯源——它们此前只
+ * 存在于工具报告和 skill 里。**一个要先读文档才能读懂的面板，等于没把结果交付
+ * 出去**，所以每项都要有一句话解释它是什么、阈值多少。类型写成 `YonPanelKey`
+ * 而不是 `string`：漏一个键时编译就不过。
+ */
+export declare const METRIC_ABOUT_KEYS: Readonly<Record<string, YonPanelKey>>;
 /** 结局的中文名。 */
 export declare const OUTCOME_LABELS: Readonly<Record<string, string>>;
 /**

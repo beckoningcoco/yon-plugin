@@ -35,7 +35,7 @@ import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { DigestLogEntryView, DigestSummaryPayload } from '../../shared/types.ts'
 import { cn } from '../cn.ts'
 import type { DigestApi } from './api.ts'
-import { METRIC_LABELS, METRIC_ORDER, OUTCOME_LABELS, entryLine } from './api.ts'
+import { METRIC_ABOUT_KEYS, METRIC_LABELS, METRIC_ORDER, OUTCOME_LABELS, entryLine } from './api.ts'
 import base from '../panel.module.css'
 import css from './panel.module.css'
 
@@ -110,6 +110,7 @@ export function DigestManager({ summary, onClose, t }: DigestManagerProps) {
   const [busy, setBusy] = useState(false)
   const [filter, setFilter] = useState<Filter>('all')
   const [openKey, setOpenKey] = useState<string | undefined>(undefined)
+  const [helpOpen, setHelpOpen] = useState(false)
 
   const load = useCallback(async () => {
     setBusy(true)
@@ -148,17 +149,17 @@ export function DigestManager({ summary, onClose, t }: DigestManagerProps) {
         {' '}{t('digest.tallyTotal')}
       </span>
       <span className={css.tallySep} aria-hidden="true">·</span>
-      <span className={css.tallyItem}>
+      <span className={css.tallyItem} title={t('digest.aboutAudit')}>
         <span className={cn(css.tallyNum, css.tonePass)}>{counts.pass ?? 0}</span>
         {' '}{t('digest.tallyPass')}
       </span>
       <span className={css.tallySep} aria-hidden="true">·</span>
-      <span className={css.tallyItem}>
+      <span className={css.tallyItem} title={t('digest.aboutAudit')}>
         <span className={cn(css.tallyNum, css.toneFail)}>{counts.fail ?? 0}</span>
         {' '}{t('digest.tallyFail')}
       </span>
       <span className={css.tallySep} aria-hidden="true">·</span>
-      <span className={css.tallyItem}>
+      <span className={css.tallyItem} title={t('digest.aboutPlan')}>
         <span className={css.tallyNum}>{counts.plan ?? 0}</span>
         {' '}{t('digest.tallyPlan')}
       </span>
@@ -166,12 +167,12 @@ export function DigestManager({ summary, onClose, t }: DigestManagerProps) {
       {/* 门禁与摸底分开计数。它们曾被并成一个数字，而那两种检查回答的是不同的
           问题（一个"这份素材值不值得做"，一个"分几章"）——合并之后既看不出各
           自几次，也看不出总数里有没有门禁。 */}
-      <span className={css.tallyItem}>
+      <span className={css.tallyItem} title={t('digest.aboutGate')}>
         <span className={css.tallyNum}>{counts.gate ?? 0}</span>
         {' '}{t('digest.tallyGate')}
       </span>
       <span className={css.tallySep} aria-hidden="true">·</span>
-      <span className={css.tallyItem}>
+      <span className={css.tallyItem} title={t('digest.aboutSweep')}>
         <span className={css.tallyNum}>{counts.sweep ?? 0}</span>
         {' '}{t('digest.tallySweep')}
       </span>
@@ -216,11 +217,49 @@ export function DigestManager({ summary, onClose, t }: DigestManagerProps) {
                   </button>
                 ))}
               </div>
+              {/* 这一屏上的每个词都是这套流程的内部术语。把解释放在面板里，而不是
+                  指望读者先读过 skill——一个要先读文档才读得懂的面板，等于没把结果
+                  交付出去。 */}
+              <button
+                type="button"
+                className={cn(css.helpToggle, helpOpen ? css.helpToggleOn : undefined)}
+                aria-pressed={helpOpen}
+                aria-controls="digest-help"
+                onClick={() => { setHelpOpen(value => !value) }}
+              >
+                {helpOpen ? '×' : '?'} {t('digest.helpToggle')}
+              </button>
               <Button size="sm" variant="outline" disabled={busy} onClick={() => { void load() }}>
                 {busy ? t('digest.loading') : t('digest.refresh')}
               </Button>
             </div>
           </div>
+
+          {helpOpen && (
+            <div className={css.help} id="digest-help">
+              <p className={css.helpBody}>{t('digest.helpIntro')}</p>
+              <dl className={css.helpList}>
+                <dt>{t('digest.tallyPlan')}</dt>
+                <dd>{t('digest.helpAboutPlan')}</dd>
+                <dt>{t('digest.tallyGate')}</dt>
+                <dd>{t('digest.helpAboutGate')}</dd>
+                <dt>{`${t('digest.tallyPass')} / ${t('digest.tallyFail')}`}</dt>
+                <dd>{t('digest.helpAboutAudit')}</dd>
+                <dt>{t('digest.tallySweep')}</dt>
+                <dd>{t('digest.helpAboutSweep')}</dd>
+              </dl>
+              <p className={css.helpBody}>{t('digest.helpThreshold')}</p>
+              <ul className={css.helpMetrics}>
+                {METRIC_ORDER.map((key) => (
+                  <li key={key}>
+                    <b>{METRIC_LABELS[key] ?? key}</b>
+                    {' — '}
+                    {t(METRIC_ABOUT_KEYS[key] ?? 'digest.noSample')}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* 九格只在确实算得出均值时才出现。
               全部没有样本时它是一排九个破折号——占了这一屏三分之一的高度而
@@ -245,6 +284,7 @@ export function DigestManager({ summary, onClose, t }: DigestManagerProps) {
                         key={key}
                         className={css.averageCell}
                         data-empty={shown ? undefined : ''}
+                        title={t(METRIC_ABOUT_KEYS[key] ?? 'digest.noSample')}
                         style={{ '--bar-ratio': String(ratio) } as CSSProperties}
                       >
                         <span className={css.averageLabel}>{METRIC_LABELS[key] ?? key}</span>
