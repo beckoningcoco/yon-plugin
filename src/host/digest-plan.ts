@@ -156,6 +156,11 @@ export function headingsOf(lines: readonly string[], config: DigestConfig): read
       if (title.length > config.sections.maxChapterTitleLength) continue
       if ([...config.sections.chapterTitleForbidden].some(ch => title.includes(ch))) continue
       lastLevel1 = value
+    } else if ([...config.sections.sectionTitleForbidden].some(ch => title.includes(ch))) {
+      // 二级及以下也要拦句子。此前只有一级做这件事，于是正文里被硬折行截断的编号项
+      // （`1.2 如果是更新，有子表回写（…无法获取到`）成了二级小节，把「二级章节」
+      // 的分母抬高，一份各项都合格的消化被判 level2 不合格。
+      continue
     }
     found.push({ title: `${number} ${title}`, level: depth, line: i + 1 })
   }

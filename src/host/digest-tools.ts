@@ -467,8 +467,15 @@ export function registerYonDigestTools(
           description: 'Absolute path to the source material — the extracted text of the PDF or document being digested.',
         },
         product: {
-          type: 'string',
-          description: 'Absolute path to the produced knowledge page, or a directory of them. Omit to run only the overlap gate.',
+          oneOf: [
+            { type: 'string' },
+            { type: 'array', items: { type: 'string' } },
+          ],
+          description: 'Absolute path to the produced knowledge page, or a directory of them; or an array of paths '
+            + 'when one digestion\'s pages live in different directories (topic pages in topics/, the index page in '
+            + 'sources/). Omit to run only the overlap gate. Prefer the real paths inside the vault — a copy placed '
+            + 'elsewhere cannot be excluded from the overlap scan, so the overlap figure would then measure the '
+            + 'product against itself.',
         },
         vault: {
           type: 'string',
@@ -499,9 +506,24 @@ export function registerYonDigestTools(
       const input = args as Record<string, unknown>
       const source = typeof input.source === 'string' ? input.source.trim() : ''
       if (source === '') throw new Error('digest_audit 需要 source（源文档的绝对路径）')
-      const product = typeof input.product === 'string' && input.product.trim() !== ''
-        ? input.product.trim()
-        : undefined
+      // 一组产物常常分居两个目录（主题页在 topics/、索引页在 sources/），而 product
+      // 只收一个目录时唯一的办法是把它们复制到别处——那样从重叠扫描里排掉的是副本
+      // 路径，库里的原件照旧算作「已有内容」：实测把 47.8% 虚报成 88.9%，一份合格
+      // 的消化差点被判「重叠过高、不值得做」。所以放行数组，直接给库内真实路径。
+      const productArg = input.product
+      const productList = Array.isArray(productArg)
+        ? productArg
+          .filter((item): item is string => typeof item === 'string' && item.trim() !== '')
+          .map(item => item.trim())
+        : typeof productArg === 'string' && productArg.trim() !== ''
+          ? [productArg.trim()]
+          : []
+      const product: string | readonly string[] | undefined =
+        productList.length === 0
+          ? undefined
+          : productList.length === 1
+            ? (productList[0] ?? '')
+            : productList
 
       // vault 可以是 id，也可以是路径。给 id 时借知识库服务的登记表解析。
       let vaultPath: string | undefined
