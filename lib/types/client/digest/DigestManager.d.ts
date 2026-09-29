@@ -10,4 +10,4 @@ export interface DigestManagerProps extends DigestApi, PropsLocale<'yonPanel'> {
  * @param props - composed slot props.
  * @returns the dialog.
  */
-export declare function DigestManager({ summary, entries, onClose, t }: DigestManagerProps): import("react").JSX.Element;
+export declare function DigestManager({ summary, onClose, t }: DigestManagerProps): import("react").JSX.Element;

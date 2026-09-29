@@ -14,18 +14,21 @@
  * messaging-platform manual a message-queue guide. Every one of those numbers was
  * computed at some point and thrown away.
  *
- * ## What it shows
+ * ## What it shows, and in what order
  *
- * - the tallies: how many checks ran, how many passed;
- * - **the averages** — a single verdict is an anecdote, the running average is the
- *   measurement. Averages are taken only over entries where the metric applies,
- *   so a plan (which has no fidelity rate) never drags that rate down;
- * - the recent rows, newest first, each expandable to its failing items.
+ * One line of tallies (what has been checked), then the averages (how it has been
+ * going), then the entries themselves (what exactly happened). The order is the
+ * order of the questions: a reader arrives asking "is this thing working", and
+ * only sometimes "what did the 3rd run say".
+ *
+ * Averages are taken only over entries where the metric applies, so a plan — which
+ * has no fidelity rate — never drags that rate down, and the line above them names
+ * how many audits they actually cover rather than saying "recent".
  *
  * Read-only by design. The ledger is appended by the tools themselves; a browser
  * tab has no business writing a verdict it did not compute.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { DigestLogEntryView, DigestSummaryPayload } from '../../shared/types.ts'
@@ -35,20 +38,32 @@ import { METRIC_LABELS, METRIC_ORDER, OUTCOME_LABELS, entryLine } from './api.ts
 import base from '../panel.module.css'
 import css from './panel.module.css'
 
+/** How many entries the ledger is asked for; the host caps at 2000. */
+const LEDGER_LIMIT = 200
+
+/** Which entries the list is showing. */
+type Filter = 'all' | 'fail' | 'pass'
+
 /** Composed props of the ledger surface. */
 export interface DigestManagerProps extends DigestApi, PropsLocale<'yonPanel'> {
   /** Close the dialog. */
   onClose(): void
 }
 
-/** 结局对应的色标类名。 */
-function outcomeClass(outcome: string): string {
-  if (outcome === 'pass') return css.outcomePass ?? ''
-  if (outcome === 'fail') return css.outcomeFail ?? ''
-  return css.outcomeNeutral ?? ''
+/**
+ * A stable key for one entry.
+ *
+ * Deliberately not the array index: the list is refetched whenever the operator
+ * hits refresh, and an index-keyed row would silently transfer its expanded state
+ * to whatever entry slid into that position.
+ * @param entry - the ledger row.
+ * @returns the key.
+ */
+function keyOf(entry: DigestLogEntryView): string {
+  return `${entry.at}|${entry.tool}|${entry.label}|${entry.source}`
 }
 
-/** 时间戳显示成本地短格式；空的就显示破折号。 */
+/** 时间戳显示成本地短格式；空的就连破折号也不给，免得看着像一条真记录。 */
 function shortTime(at: string): string {
   if (at === '') return '—'
   const date = new Date(at)
@@ -68,32 +83,71 @@ function percent(value: number | null | undefined): string {
  * @param props - composed slot props.
  * @returns the dialog.
  */
-export function DigestManager({ summary, entries, onClose, t }: DigestManagerProps) {
+export function DigestManager({ summary, onClose, t }: DigestManagerProps) {
   const [data, setData] = useState<DigestSummaryPayload | undefined>(undefined)
-  const [detail, setDetail] = useState<readonly DigestLogEntryView[] | undefined>(undefined)
   const [failure, setFailure] = useState<string | undefined>(undefined)
   const [busy, setBusy] = useState(false)
+  const [filter, setFilter] = useState<Filter>('all')
   const [openKey, setOpenKey] = useState<string | undefined>(undefined)
 
   const load = useCallback(async () => {
     setBusy(true)
     try {
-      const [head, tail] = await Promise.all([summary(), entries(200)])
-      setData(head)
-      setDetail(tail.entries)
+      // One request, not two: the summary already carries the recent entries, so
+      // asking for the tail separately would fetch the same rows twice and then
+      // let one copy shadow the other.
+      setData(await summary(LEDGER_LIMIT))
       setFailure(undefined)
     } catch (error: unknown) {
       setFailure(error instanceof Error ? error.message : String(error))
     } finally {
       setBusy(false)
     }
-  }, [summary, entries])
+  }, [summary])
 
   useEffect(() => { void load() }, [load])
 
-  const rows = detail ?? data?.summary.recent ?? []
-  const counts = data?.summary.byOutcome ?? {}
-  const averages = data?.summary.averages ?? {}
+  const head = data?.summary
+  const counts = head?.byOutcome ?? {}
+  const averages = head?.averages ?? {}
+  const all = head?.recent ?? []
+  const rows = useMemo(
+    () => (filter === 'all' ? all : all.filter(entry => entry.outcome === filter)),
+    [all, filter],
+  )
+
+  const loading = data === undefined && busy
+  // Each count is one element, not a loose number followed by a loose word: a
+  // screen reader then reads "12 failed" as a phrase rather than three fragments,
+  // and the pair survives being matched as text.
+  const tally = (
+    <>
+      <span className={css.tallyItem}>
+        <span className={css.tallyNum}>{head?.total ?? 0}</span>
+        {' '}{t('digest.tallyTotal')}
+      </span>
+      <span className={css.tallySep} aria-hidden="true">·</span>
+      <span className={css.tallyItem}>
+        <span className={cn(css.tallyNum, css.tonePass)}>{counts.pass ?? 0}</span>
+        {' '}{t('digest.tallyPass')}
+      </span>
+      <span className={css.tallySep} aria-hidden="true">·</span>
+      <span className={css.tallyItem}>
+        <span className={cn(css.tallyNum, css.toneFail)}>{counts.fail ?? 0}</span>
+        {' '}{t('digest.tallyFail')}
+      </span>
+      <span className={css.tallySep} aria-hidden="true">·</span>
+      <span className={css.tallyItem}>
+        <span className={css.tallyNum}>{(counts.gate ?? 0) + (counts.plan ?? 0)}</span>
+        {' '}{t('digest.tallyOther')}
+      </span>
+      <span className={css.tallySep} aria-hidden="true">·</span>
+      <span className={css.tallyItem}>
+        <span className={css.tallyNum}>{counts.sweep ?? 0}</span>
+        {' '}{t('digest.tallySweep')}
+      </span>
+    </>
+  )
 
   return (
     <Modal
@@ -115,44 +169,45 @@ export function DigestManager({ summary, entries, onClose, t }: DigestManagerPro
 
       <div className={cn(base.body)}>
         <section className={cn(base.detailPane)} aria-label={t('digest.title')}>
-          <div className={cn(css.tallyRow)}>
-            <span className={cn(css.tally)}>
-              <span className={cn(css.tallyValue)}>{data?.summary.total ?? 0}</span>
-              <span className={cn(css.tallyLabel)}>{t('digest.tallyTotal')}</span>
-            </span>
-            <span className={cn(css.tally, css.outcomePass)}>
-              <span className={cn(css.tallyValue)}>{counts.pass ?? 0}</span>
-              <span className={cn(css.tallyLabel)}>{t('digest.tallyPass')}</span>
-            </span>
-            <span className={cn(css.tally, css.outcomeFail)}>
-              <span className={cn(css.tallyValue)}>{counts.fail ?? 0}</span>
-              <span className={cn(css.tallyLabel)}>{t('digest.tallyFail')}</span>
-            </span>
-            <span className={cn(css.tally)}>
-              <span className={cn(css.tallyValue)}>{(counts.gate ?? 0) + (counts.plan ?? 0)}</span>
-              <span className={cn(css.tallyLabel)}>{t('digest.tallyOther')}</span>
-            </span>
-            <span className={cn(css.tally)}>
-              <span className={cn(css.tallyValue)}>{counts.sweep ?? 0}</span>
-              <span className={cn(css.tallyLabel)}>{t('digest.tallySweep')}</span>
-            </span>
-            <span className={cn(css.spacer)} />
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => { void load() }}>
-              {busy ? t('digest.loading') : t('digest.refresh')}
-            </Button>
+          <div className={css.toolbar}>
+            <p className={cn(css.tally, loading ? css.dim : undefined)}>{tally}</p>
+            <div className={css.actions}>
+              <div className={css.filters} role="group" aria-label={t('digest.filterAll')}>
+                {(['all', 'fail', 'pass'] as const).map(value => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={cn(css.filter, filter === value ? css.filterOn : undefined)}
+                    aria-pressed={filter === value}
+                    onClick={() => { setFilter(value) }}
+                  >
+                    {value === 'all'
+                      ? t('digest.filterAll')
+                      : value === 'fail' ? t('digest.filterFail') : t('digest.filterPass')}
+                  </button>
+                ))}
+              </div>
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => { void load() }}>
+                {busy ? t('digest.loading') : t('digest.refresh')}
+              </Button>
+            </div>
           </div>
 
-          <p className={cn(css.hint)}>{t('digest.averageHint')}</p>
-          <div className={cn(css.averageGrid)}>
+          <p className={css.sectionNote}>
+            {(head?.averagedOver ?? 0) === 0
+              ? t('digest.averageNone')
+              : t('digest.averageHint', { count: head?.averagedOver ?? 0 })}
+          </p>
+          <div className={css.averageGrid}>
             {METRIC_ORDER.map((key) => {
               const value = averages[key]
               const shown = typeof value === 'number'
               return (
-                <div key={key} className={cn(css.averageCell)} data-empty={shown ? undefined : ''}>
-                  <span className={cn(css.averageLabel)}>{METRIC_LABELS[key] ?? key}</span>
-                  <span className={cn(css.averageValue)}>{percent(value ?? null)}</span>
+                <div key={key} className={css.averageCell} data-empty={shown ? undefined : ''}>
+                  <span className={css.averageLabel}>{METRIC_LABELS[key] ?? key}</span>
+                  <span className={css.averageValue}>{percent(value ?? null)}</span>
                   <span
-                    className={cn(css.averageBar)}
+                    className={css.averageBar}
                     style={{ inlineSize: `${shown ? Math.max(2, Math.round(value * 100)) : 0}%` }}
                     aria-hidden="true"
                   />
@@ -161,74 +216,83 @@ export function DigestManager({ summary, entries, onClose, t }: DigestManagerPro
             })}
           </div>
 
-          <p className={cn(css.hint)}>
-            {data?.summary.since === undefined
-              ? t('digest.empty')
-              : t('digest.since', { at: shortTime(data.summary.since) })}
-          </p>
-
-          {rows.length === 0 ? (
-            <p className={cn(base.note)}>{t('digest.none')}</p>
-          ) : (
-            <ul className={cn(css.logList)}>
-              {rows.map((entry, index) => {
-                const key = `${entry.at}-${entry.tool}-${String(index)}`
-                const open = openKey === key
-                return (
-                  <li key={key} className={cn(css.logRow)}>
-                    <button
-                      type="button"
-                      className={cn(css.logHead)}
-                      aria-expanded={open}
-                      onClick={() => { setOpenKey(open ? undefined : key) }}
-                    >
-                      <span className={cn(css.logTime)}>{shortTime(entry.at)}</span>
-                      <span className={cn(css.logLine)}>{entryLine(entry)}</span>
-                      <span className={cn(css.logOutcome, outcomeClass(entry.outcome))}>
-                        {OUTCOME_LABELS[entry.outcome] ?? entry.outcome}
-                      </span>
-                    </button>
-                    {open && (
-                      <div className={cn(css.logDetail)}>
-                        <dl className={cn(css.detailGrid)}>
-                          <dt>{t('digest.fieldLabel')}</dt>
-                          <dd>{entry.label === '' ? '—' : entry.label}</dd>
-                          <dt>{t('digest.fieldSource')}</dt>
-                          <dd className={cn(css.mono)}>{entry.source}</dd>
-                          {entry.product !== '' && (
-                            <>
-                              <dt>{t('digest.fieldProduct')}</dt>
-                              <dd className={cn(css.mono)}>{entry.product}</dd>
-                            </>
-                          )}
-                          <dt>{t('digest.fieldSize')}</dt>
-                          <dd>{`${(entry.sourceBytes / 1024).toFixed(0)} KB → ${(entry.productBytes / 1024).toFixed(1)} KB`}</dd>
-                          <dt>{t('digest.fieldMs')}</dt>
-                          <dd>{`${entry.ms} ms`}</dd>
-                        </dl>
-                        <div className={cn(css.metricStrip)}>
-                          {METRIC_ORDER.map((key) => (
-                            <span key={key} className={cn(css.metricChip)}>
-                              {`${METRIC_LABELS[key] ?? key} ${percent(entry.metrics[key] ?? null)}`}
-                            </span>
-                          ))}
-                        </div>
-                        {entry.failed.length > 0 && (
-                          <p className={cn(css.failedLine)}>
-                            {`${t('digest.failedItems')}${entry.failed.join('、')}`}
-                          </p>
+          {loading
+            ? <p className={cn(base.note)}>{t('digest.loadingList')}</p>
+            : rows.length === 0
+              ? (
+                <p className={cn(base.note)}>
+                  {all.length === 0 ? t('digest.empty') : t('digest.emptyFiltered')}
+                </p>
+              )
+              : (
+                <ul className={css.logList}>
+                  {rows.map((entry) => {
+                    const key = keyOf(entry)
+                    const open = openKey === key
+                    return (
+                      <li key={key} className={css.logRow}>
+                        <button
+                          type="button"
+                          className={css.logHead}
+                          aria-expanded={open}
+                          onClick={() => { setOpenKey(open ? undefined : key) }}
+                        >
+                          <span className={css.logTime}>{shortTime(entry.at)}</span>
+                          <span className={css.logLine}>{entryLine(entry)}</span>
+                          <span className={cn(
+                            css.logOutcome,
+                            entry.outcome === 'pass'
+                              ? css.tonePass
+                              : entry.outcome === 'fail' ? css.toneFail : undefined,
+                          )}>
+                            {OUTCOME_LABELS[entry.outcome] ?? entry.outcome}
+                          </span>
+                        </button>
+                        {open && (
+                          <div className={css.logDetail}>
+                            <dl className={css.detailGrid}>
+                              <dt>{t('digest.fieldLabel')}</dt>
+                              <dd>{entry.label === '' ? '—' : entry.label}</dd>
+                              <dt>{t('digest.fieldSource')}</dt>
+                              <dd className={css.mono}>{entry.source}</dd>
+                              {entry.product !== '' && (
+                                <>
+                                  <dt>{t('digest.fieldProduct')}</dt>
+                                  <dd className={css.mono}>{entry.product}</dd>
+                                </>
+                              )}
+                              <dt>{t('digest.fieldSize')}</dt>
+                              <dd>{`${(entry.sourceBytes / 1024).toFixed(0)} KB → ${(entry.productBytes / 1024).toFixed(1)} KB`}</dd>
+                              <dt>{t('digest.fieldMs')}</dt>
+                              <dd>{`${entry.ms} ms`}</dd>
+                            </dl>
+                            <div className={css.metricStrip}>
+                              {METRIC_ORDER.map((metric) => (
+                                <span key={metric} className={css.metricChip}>
+                                  {`${METRIC_LABELS[metric] ?? metric} ${percent(entry.metrics[metric] ?? null)}`}
+                                </span>
+                              ))}
+                            </div>
+                            {entry.failed.length > 0 && (
+                              <p className={css.failedLine}>
+                                {`${t('digest.failedItems')}${entry.failed.join('、')}`}
+                              </p>
+                            )}
+                          </div>
                         )}
-                      </div>
-                    )}
-                  </li>
-                )
-              })}
-            </ul>
-          )}
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
 
           {data !== undefined && (
-            <p className={cn(css.hint)}>
-              <span className={cn(css.mono)}>{data.path}</span>
+            <p className={css.foot}>
+              <span>{t('digest.logAt')}</span>
+              <span className={css.mono}>{data.path}</span>
+              {head?.since !== undefined && (
+                <span className={css.footSince}>{t('digest.since', { at: shortTime(head.since) })}</span>
+              )}
             </p>
           )}
         </section>

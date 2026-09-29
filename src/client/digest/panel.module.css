@@ -1,103 +1,164 @@
-/* The digestion ledger's own pieces: the tally strip, the average bars, and the
-   expandable log rows. Everything structural — the dialog chrome, the pane split
-   the empty state, the error line — comes from the shared stylesheet, so this
-   surface stays one family with the project, datasource, skill and knowledge-base
-   surfaces.
+/* The digestion ledger's own pieces: the tool row, the tally line, the average
+   bars, and the expandable log rows. Everything structural — the dialog chrome,
+   the pane split, the empty state, the error line, the buttons — comes from the
+   shared stylesheet, so this surface stays one family with the project,
+   datasource, skill and knowledge-base surfaces.
 
-   Every colour is a theme alias, as in the sibling stylesheets. The pass/fail
-   pair uses the platform's own state aliases rather than a hard-coded green and
-   red: this file may not choose a colour that only works on one theme. */
+   Every colour is a theme alias. The pass/fail pair uses the platform's own state
+   aliases rather than a hard-coded green and red: this file may not choose a
+   colour that only works on one theme.
 
-/* ---- the tally strip: what the checker has been asked ---- */
+   Layout notes worth keeping:
+   - the toggle and the entry list are laid out with one shared column width
+     (`--time-col`), so an expanded row's detail lines up under its own title
+     instead of under a magic number that breaks the moment the font changes;
+   - the list grows into the space the dialog gives it rather than reserving a
+     viewport fraction, so a short list does not leave a hole and a long one does
+     not produce a second scrollbar inside the dialog's own. */
 
-.tallyRow {
+.toolbar {
   display: flex;
   align-items: baseline;
-  gap: 18px;
+  justify-content: space-between;
+  gap: 12px;
   flex-wrap: wrap;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
+/* One line of counts rather than four oversized figures: the numbers answer
+   "is this thing working", and a reader who wants that answer should not have to
+   scroll past a dashboard to reach the entries. */
 .tally {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 56px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--dsw-alias-label-secondary);
 }
 
-.tallyValue {
-  font-size: 20px;
+.tallyNum {
+  font-size: 13px;
   font-weight: 600;
-  line-height: 1.1;
   color: var(--dsw-alias-label-primary);
   font-variant-numeric: tabular-nums;
 }
 
-.tallyLabel {
-  font-size: 11px;
-  color: var(--dsw-alias-label-tertiary);
+/* A count and its label stay on one line together — "12 不合格" is one fact, and
+   letting it break between the number and the word turns it into two. */
+.tallyItem {
+  display: inline-block;
+  white-space: nowrap;
 }
 
-.spacer {
-  flex: 1 1 auto;
+.tallySep {
+  margin: 0 6px;
+  color: var(--dsw-alias-label-dimmed);
 }
 
-.outcomePass .tallyValue {
+.tonePass {
   color: var(--dsw-alias-state-success-primary);
 }
 
-.outcomeFail .tallyValue {
+.toneFail {
   color: var(--dsw-alias-state-error-primary);
 }
 
-/* ---- the averages: the measurement, as opposed to one verdict ---- */
+/* A reading in progress is not the same as a ledger with nothing in it — dimming
+   the counts says "these are not final yet" without inventing a spinner. */
+.dim {
+  opacity: 0.45;
+}
 
-.hint {
-  margin: 10px 0 6px;
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filters {
+  display: inline-flex;
+  border: 1px solid var(--dsw-alias-border-l);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.filter {
+  padding: 3px 9px;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.filter + .filter {
+  border-inline-start: 1px solid var(--dsw-alias-border-l);
+}
+
+.filter:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.filter:focus-visible {
+  outline: 2px solid var(--dsw-alias-button-primary-fill);
+  outline-offset: -2px;
+}
+
+.filterOn {
+  background: var(--dsw-alias-interactive-bg-active);
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+}
+
+.sectionNote {
+  margin: 0 0 6px;
   font-size: 11px;
   line-height: 1.5;
   color: var(--dsw-alias-label-tertiary);
 }
 
+/* ---- the averages: the measurement, as opposed to one verdict ---- */
+
 .averageGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-  gap: 8px;
-  margin-bottom: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 6px;
+  margin-bottom: 14px;
 }
 
 .averageCell {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 8px 10px 10px;
+  gap: 1px;
+  padding: 6px 8px 9px;
   border: 1px solid var(--dsw-alias-border-l);
   border-radius: 6px;
   overflow: hidden;
 }
 
-/* A metric that has no measured sample yet reads as absent, not as zero: zero
-   would look like a failing score. */
+/* A metric with no measured sample reads as absent, not as zero: zero would look
+   like a failing score. */
 .averageCell[data-empty] {
-  opacity: 0.45;
+  opacity: 0.4;
 }
 
 .averageLabel {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--dsw-alias-label-tertiary);
 }
 
 .averageValue {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--dsw-alias-label-primary);
   font-variant-numeric: tabular-nums;
 }
 
-/* The bar sits at the cell's foot and is sized inline from the value. It is one
-   pixel of colour on a border tint, not a filled panel: a filled bar would need a
-   contrasting text colour this file is not allowed to invent. */
+/* The bar sits at the cell's foot and is sized inline from the value — a reading
+   drawn as a length, which is what a bar is for. It stays a hairline rather than a
+   filled panel: a filled cell would need a contrasting text colour this file is
+   not allowed to invent. */
 .averageBar {
   position: absolute;
   inset-block-end: 0;
@@ -106,17 +167,20 @@
   background: var(--dsw-alias-state-business-primary);
 }
 
-/* ---- the log rows ---- */
+/* ---- the log ---- */
 
 .logList {
+  --time-col: 132px;
   list-style: none;
-  margin: 8px 0 0;
+  margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
+  /* Grow into whatever the dialog has left, and scroll only past that. */
+  flex: 1 1 auto;
+  min-block-size: 0;
   overflow-y: auto;
-  max-block-size: 46vh;
   scrollbar-color: var(--dsw-alias-scrollbar-bg-l) transparent;
 }
 
@@ -126,11 +190,11 @@
 
 .logHead {
   display: grid;
-  grid-template-columns: 140px 1fr auto;
+  grid-template-columns: var(--time-col) minmax(0, 1fr) auto;
   align-items: baseline;
   gap: 10px;
   inline-size: 100%;
-  padding: 6px 8px;
+  padding: 5px 8px;
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -146,14 +210,17 @@
 
 .logHead:focus-visible {
   outline: 2px solid var(--dsw-alias-button-primary-fill);
-  outline-offset: 1px;
+  outline-offset: -2px;
 }
 
+/* Monospace is for the measurement here, not for decoration: a column of
+   timestamps only reads as a column when the digits line up. */
 .logTime {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11px;
   color: var(--dsw-alias-label-tertiary);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .logLine {
@@ -166,30 +233,24 @@
 
 .logOutcome {
   font-size: 11px;
-  padding: 1px 6px;
+  padding: 0 6px;
   border: 1px solid var(--dsw-alias-border-l);
   border-radius: 999px;
   color: var(--dsw-alias-label-secondary);
-}
-
-.outcomePass.logOutcome {
-  color: var(--dsw-alias-state-success-primary);
-}
-
-.outcomeFail.logOutcome {
-  color: var(--dsw-alias-state-error-primary);
+  white-space: nowrap;
 }
 
 /* ---- one expanded row ---- */
 
+/* Aligned under its own title, from the same column width the header uses. */
 .logDetail {
-  padding: 4px 8px 12px 148px;
+  padding: 2px 8px 10px calc(var(--time-col) + 10px);
 }
 
 .detailGrid {
   display: grid;
-  grid-template-columns: 64px 1fr;
-  gap: 2px 10px;
+  grid-template-columns: 60px minmax(0, 1fr);
+  gap: 1px 10px;
   margin: 0 0 8px;
   font-size: 12px;
 }
@@ -212,7 +273,7 @@
 .metricStrip {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 5px;
 }
 
 .metricChip {
@@ -225,8 +286,42 @@
 }
 
 .failedLine {
-  margin: 8px 0 0;
+  margin: 7px 0 0;
   font-size: 11px;
   color: var(--dsw-alias-state-error-primary);
   word-break: break-all;
+}
+
+/* ---- the foot: where the ledger actually is ---- */
+
+.foot {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.footSince {
+  margin-inline-start: auto;
+}
+
+/* Narrow dialog: the timestamp moves above its own title rather than squeezing it,
+   and the detail stops indenting — an indent that no longer has a column to align
+   to is just a wasted margin. */
+@media (max-width: 640px) {
+  .logHead {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 1px;
+  }
+
+  .logTime {
+    grid-column: 1 / -1;
+  }
+
+  .logDetail {
+    padding-inline-start: 8px;
+  }
 }

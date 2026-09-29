@@ -1,20 +1,18 @@
-import type { DigestLogEntryView, DigestLogPayload, DigestSummaryPayload } from '../../shared/types.ts';
+import type { DigestLogEntryView, DigestSummaryPayload } from '../../shared/types.ts';
 export { ApiError as DigestApiError } from '../request.ts';
 /** The ledger operations the UI drives. */
 export interface DigestApi {
     /**
      * The ledger folded into what the panel shows: counts, averages, recent rows.
-     * @param recent - how many detail rows to include; the host defaults to 50.
+     *
+     * One call, not two. The host's `summary` already carries the recent entries, so
+     * a second call for the raw tail would fetch the same rows twice and then let
+     * one copy shadow the other — which is exactly what the first revision did.
+     * @param recent - how many detail rows to include; the host defaults to 50 and caps at 200.
      * @param window - how many recent audits the averages cover; the host defaults to 100.
      * @returns the summary, plus where the log file lives.
      */
     summary(recent?: number, window?: number): Promise<DigestSummaryPayload>;
-    /**
-     * The raw tail of the ledger, oldest first.
-     * @param limit - how many entries; the host defaults to 200 and caps at 2000.
-     * @returns the entries, plus where the log file lives.
-     */
-    entries(limit?: number): Promise<DigestLogPayload>;
 }
 /**
  * Build the API client.
@@ -32,8 +30,8 @@ export declare const TOOL_LABELS: Readonly<Record<string, string>>;
 /**
  * One entry rendered as the one line a reader needs.
  *
- * Exported because the panel's list and its detail row must agree on the wording
- * — a second formatter would drift.
+ * The wording lives here rather than inline in the list so the compact row and any
+ * future detail view cannot drift apart on what a sweep or a plan reads as.
  * @param entry - the ledger row.
  * @returns the line.
  */

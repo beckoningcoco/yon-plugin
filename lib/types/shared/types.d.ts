@@ -418,6 +418,8 @@ export interface DigestLogEntryView {
 export interface DigestLogSummaryView {
     readonly total: number;
     readonly since?: string;
+    /** 均值实际覆盖了多少次验收；面板用它写明依据，而不是写「最近若干次」。 */
+    readonly averagedOver: number;
     readonly byOutcome: Readonly<Record<string, number>>;
     readonly byTool: readonly {
         readonly tool: string;

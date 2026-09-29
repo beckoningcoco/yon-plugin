@@ -54,6 +54,8 @@ export interface DigestLogSummary {
     readonly total: number;
     /** 最早一条的时间；空日志时缺省。 */
     readonly since?: string;
+    /** 均值实际覆盖了多少次验收（有判定的那些）。面板用它写明依据。 */
+    readonly averagedOver: number;
     /** 按结局计数。 */
     readonly byOutcome: Readonly<Record<string, number>>;
     /** 按工具计数。 */
