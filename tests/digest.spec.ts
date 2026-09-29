@@ -19,7 +19,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { DEFAULT_DIGEST_CONFIG } from '../src/host/digest-config.ts'
 import { headingsOf, planDigest } from '../src/host/digest-plan.ts'
 import {
-  bodyOnly, chineseTerms, constraints, identifierCounts, identifiers, sections,
+  auditDigest, bodyOnly, chineseTerms, constraints, identifierCounts, identifiers, sections,
 } from '../src/host/digest-audit.ts'
 import { sourceKey, sourcePathOf, sweepDigests } from '../src/host/digest-sweep.ts'
 
@@ -322,5 +322,58 @@ describe('批量体检', () => {
     // 不给流水账时全部算从未验收：「没有记录」不能默认读成「验过了」
     const bare = await sweepDigests({ root, config })
     expect(bare.neverAudited).toBe(bare.counts.audited)
+  })
+})
+
+describe('重叠门禁', () => {
+  let dir: string | undefined
+
+  afterEach(async () => {
+    if (dir !== undefined) await rm(dir, { recursive: true, force: true })
+    dir = undefined
+  })
+
+  /** 建一个小库：源文档、一份躺在 wiki/topics 里的产物、一份无关页面。 */
+  async function scaffold(): Promise<{ root: string, source: string, product: string }> {
+    dir = await mkdtemp(path.join(tmpdir(), 'digest-overlap-'))
+    const root = dir
+    const { mkdir } = await import('node:fs/promises')
+    await mkdir(path.join(root, 'raw', 'articles'), { recursive: true })
+    await mkdir(path.join(root, 'wiki', 'topics'), { recursive: true })
+    await mkdir(path.join(root, 'wiki', 'sources'), { recursive: true })
+
+    const source = path.join(root, 'raw', 'articles', 'src.md')
+    await writeFile(source,
+      '第一章 基本概念\n用 MessageChannel 与 rpcTemplate 发送，字段 esnData 必填。\n', 'utf8')
+    const product = path.join(root, 'wiki', 'topics', 'msg.md')
+    await writeFile(product,
+      '---\ntags: [x]\nsources: [raw/articles/src.md]\n---\n\n# 消息\n\nMessageChannel rpcTemplate esnData\n', 'utf8')
+    await writeFile(path.join(root, 'wiki', 'sources', 'other.md'),
+      '---\ntags: [x]\n---\n\n# 别的\n\nunrelatedThing\n', 'utf8')
+    return { root, source, product }
+  }
+
+  it('判定排掉本次产物自身，同时把「连产物一起算」的值也报出来', async () => {
+    const { root, source, product } = await scaffold()
+    const audit = await auditDigest({ source, product, config, vault: root })
+    const overlap = audit.overlap
+    expect(overlap).toBeDefined()
+    if (overlap === undefined) return
+
+    // 连产物一起算：源文档的标识符全在产物里，于是全中——这就是虚高的来源。
+    // 实测一份 13 页的消化因此从 37.4% 涨到 77.5%。
+    expect(overlap.rateWithProducts).toBe(1)
+    // 排掉产物后，库里只剩那份无关页面：一个都不中
+    expect(overlap.hit).toBe(0)
+    expect(overlap.rate).toBe(0)
+    // 判定用排掉后的值——判据问的是「与**已有的**库重了多少」
+    expect(audit.verdicts.overlap).toBe(true)
+  })
+
+  it('产物路径的斜杠方向不影响排除', async () => {
+    const { root, source, product } = await scaffold()
+    // 对不上不会报错，只会静默地一个都排不掉，于是重叠率又回到「量产物自己」
+    const audit = await auditDigest({ source, product: product.replace(/\\/g, '/'), config, vault: root })
+    expect(audit.overlap?.hit).toBe(0)
   })
 })

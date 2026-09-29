@@ -117,10 +117,28 @@ export interface VolumeCheck {
 /** 重叠门禁明细。 */
 export interface OverlapCheck {
   readonly scannedFiles: number
+  /** 已有库里的标识符个数——**不含**本次验收的产物。 */
   readonly knownTerms: number
   readonly total: number
+  /**
+   * 命中数——**判定用的是这一个**：扫描时排掉了本次验收的产物。
+   *
+   * 判据问的是「这份素材与**已有的库**重了多少」，而验收这一刻，这份产物自己
+   * 就躺在库里，且它必然覆盖源文档的标识符。不排掉它，量到的就是「产物与
+   * 自己」——实测一份 13 页的消化因此从 37.4% 虚高到 77.5%（+40 点），而且
+   * **产物做得越全，这个数越高**：它把「做得好」显示成「像重复」。
+   */
   readonly hit: number
   readonly rate: number
+  /**
+   * 把本次产物也算进去的命中数与比率，恒 ≥ `hit`。
+   *
+   * 留它不是念旧：差额是这次产物给库里带来的新覆盖，是「这次的产出到底有没有
+   * 增加东西」的一个侧写。只报排除后的数而不报差额，等于把「同一份素材消化
+   * 前后会测出两个值」这件事从报告里删掉而不解释。
+   */
+  readonly hitWithProducts: number
+  readonly rateWithProducts: number
 }
 
 /** 可寻址明细。 */
@@ -160,6 +178,18 @@ interface Page {
 /** 产物读不到时抛错，因为源文档读不到就没法验收。 */
 async function readText(file: string): Promise<string> {
   return await readFile(file, 'utf8')
+}
+
+/**
+ * 路径对账用的键。
+ *
+ * 产物路径来自 `collectProduct`（可能是扫描目录拼出来的，也可能是调用方直接
+ * 给的），扫描时的是 `path.join(vaultRoot, scope, name)`——斜杠方向与大小写都
+ * 不保证一致。对不上不会报错，只会**静默地一个产物都排不掉**，于是重叠率又
+ * 回到「量产物自己」的老样子，而报告照样理直气壮。
+ */
+function fileKey(file: string): string {
+  return path.resolve(file).split(path.sep).join('/').toLowerCase()
 }
 
 /** 没给 label 时的默认标签：单文件用文件名，一组文件用「首名 等 N 页」。 */
@@ -554,29 +584,57 @@ function checkVolume(source: string, productText: string, config: DigestConfig):
   }
 }
 
-/** 【6】重叠门禁：源文档与已有知识库的标识符重叠率。 */
-async function checkOverlap(source: string, vaultRoot: string | undefined, config: DigestConfig): Promise<OverlapCheck | undefined> {
+/**
+ * 【6】重叠门禁：源文档的标识符有多少已经在知识库里了。
+ *
+ * @param source - 源文档正文。
+ * @param vaultRoot - 知识库根；未给时不跑这一项。
+ * @param config - 配置。
+ * @param exclude - 本次验收的产物，扫描时排掉。理由见 `OverlapCheck.hit`。
+ * @returns 两个口径的重叠率；没给库时为 undefined。
+ */
+async function checkOverlap(
+  source: string,
+  vaultRoot: string | undefined,
+  config: DigestConfig,
+  exclude?: ReadonlySet<string>,
+): Promise<OverlapCheck | undefined> {
   if (vaultRoot === undefined) return undefined
-  const known = new Set<string>()
+  // 两个集合来自**同一次**读取，而不是扫两遍：扫两遍的话，两次之间库要是变了，
+  // 差额就不再是「产物贡献的」而是「库变了多少」——一个没法解释的数。
+  const knownAll = new Set<string>()
+  const knownOutside = new Set<string>()
   let scanned = 0
   for (const scope of config.vaultScopes) {
     const dir = path.join(vaultRoot, scope)
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
     for (const entry of entries) {
       if (!entry.isFile() || !entry.name.endsWith('.md')) continue
-      const text = await readFile(path.join(dir, entry.name), 'utf8').catch(() => '')
+      const full = path.join(dir, entry.name)
+      const text = await readFile(full, 'utf8').catch(() => '')
       scanned += 1
-      for (const match of text.matchAll(/[A-Za-z_][A-Za-z0-9_]{2,}/g)) known.add(match[0].toLowerCase())
+      const isProduct = exclude?.has(fileKey(full)) ?? false
+      for (const match of text.matchAll(/[A-Za-z_][A-Za-z0-9_]{2,}/g)) {
+        const term = match[0].toLowerCase()
+        knownAll.add(term)
+        if (!isProduct) knownOutside.add(term)
+      }
     }
   }
   const sourceIdents = identifiers(source, config)
-  const hit = [...sourceIdents].filter(term => known.has(term.toLowerCase()))
+  const count = (known: ReadonlySet<string>): number =>
+    [...sourceIdents].filter(term => known.has(term.toLowerCase())).length
+  const hit = count(knownOutside)
+  const hitWithProducts = count(knownAll)
+  const rateOf = (n: number): number => sourceIdents.size === 0 ? 0 : n / sourceIdents.size
   return {
     scannedFiles: scanned,
-    knownTerms: known.size,
+    knownTerms: knownOutside.size,
     total: sourceIdents.size,
-    hit: hit.length,
-    rate: sourceIdents.size === 0 ? 0 : hit.length / sourceIdents.size,
+    hit,
+    rate: rateOf(hit),
+    hitWithProducts,
+    rateWithProducts: rateOf(hitWithProducts),
   }
 }
 
@@ -621,7 +679,14 @@ export async function auditDigest(input: {
   const fidelity = checkFidelity(sourceText, productBody, pages, input.config)
   const provenance = checkProvenance(productText, input.config)
   const volume = checkVolume(sourceText, productText, input.config)
-  const overlap = await checkOverlap(sourceText, input.vault, input.config)
+  // 产物此刻已经躺在库里了。不排掉它，这一项量的就是「产物与自己」——
+  // 做得越全，虚高越多。见 OverlapCheck.hit 的实测数据。
+  const overlap = await checkOverlap(
+    sourceText,
+    input.vault,
+    input.config,
+    new Set(pages.map(page => fileKey(page.file))),
+  )
   const addressable = checkAddressable(sourceText, productText, input.config)
 
   const t = input.config.thresholds

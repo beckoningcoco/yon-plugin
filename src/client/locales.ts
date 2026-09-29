@@ -287,7 +287,7 @@ export const zh = {
   'digest.metricConstraintsAbout': '含「必须 / 禁止 / 不支持」的句子有多少进了产物。最容易被摘要吃掉，又最不能丢。它不进判定——抽取本身带噪声，拿噪声主导的比例当门槛会误判。',
   'digest.metricFidelityAbout': '产物里的标识符有多少能在源文档找到——这一项是防幻觉的。阈值 98%',
   'digest.metricProvenanceAbout': '产物里有多少小节标了页码出处。阈值 50%',
-  'digest.metricOverlapAbout': '与已有知识库的重复度，越高越不值得做。消化前跑的。阈值 ≤85%',
+  'digest.metricOverlapAbout': '与已有知识库的重复度，越高越不值得做。消化前跑的；判定时排掉本次产物自身，否则量到的是「产物与自己」。阈值 ≤85%',
   'digest.metricAddressableAbout': '源文档的术语能否在产物里定位到。阈值 70%',
   'digest.noSample': '这一项还没有样本：只有跑过带判定的验收才会算均值。',
 } satisfies Record<string, string>
@@ -571,7 +571,7 @@ export const en = {
   'digest.metricConstraintsAbout': 'How many sentences saying must / must not / not supported reached the pages. A summary eats these first and they matter most. Not a pass/fail item — extraction noise dominates its ratio.',
   'digest.metricFidelityAbout': 'How many identifiers in the pages can be found in the source — this is the anti-fabrication check. Threshold 98%',
   'digest.metricProvenanceAbout': 'How many sections cite a page number. Threshold 50%',
-  'digest.metricOverlapAbout': 'Overlap with the existing knowledge base; higher means less worth doing. Measured before digesting. Threshold ≤85%',
+  'digest.metricOverlapAbout': 'Overlap with the existing knowledge base; higher means less worth doing. Measured before digesting; the pages from this run are excluded from the verdict, or the figure would be measuring the product against itself. Threshold ≤85%',
   'digest.metricAddressableAbout': 'Whether the source\'s terms can be located in the pages. Threshold 70%',
   'digest.noSample': 'No sample for this one yet: only audits that produced a verdict are averaged.',
 } satisfies Record<YonPanelKey, string>

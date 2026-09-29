@@ -162,6 +162,14 @@ function renderAudit(audit: DigestAudit, config: DigestConfig, gateOnly = false)
     } else {
       lines.push(`  扫描 ${audit.overlap.scannedFiles} 个已有页面、${audit.overlap.knownTerms} 个术语`)
       lines.push(`  重叠 ${String(audit.overlap.hit).padStart(5)} / ${String(audit.overlap.total).padEnd(5)} ${pct(audit.overlap.rate)}${mark(audit.verdicts.overlap)}  （阈值 ≤ ${t.overlap * 100}%）`)
+      // 这次产物自己也躺在被扫描的库里。两个数都摆出来，否则同一份素材在消化
+      // 前后会测出两个值（实测 37.4% vs 77.5%），而报告对此一言不发。
+      const selfExtra = audit.overlap.hitWithProducts - audit.overlap.hit
+      if (selfExtra > 0) {
+        lines.push(`  ·  连本次产物自己一起算是 ${audit.overlap.hitWithProducts} / ${audit.overlap.total}`
+          + ` = ${pct(audit.overlap.rateWithProducts)}——高出的 ${selfExtra} 个是这次刚写进去的，`
+          + '不是与已有内容的重复。判定用上面那个排掉产物后的值。')
+      }
       if (audit.verdicts.overlap === false) {
         lines.push('  ⚠ 重叠过高：这份素材大部分内容已在库里，先确认增量价值再消化')
       } else {

@@ -75,10 +75,28 @@ export interface VolumeCheck {
 /** 重叠门禁明细。 */
 export interface OverlapCheck {
     readonly scannedFiles: number;
+    /** 已有库里的标识符个数——**不含**本次验收的产物。 */
     readonly knownTerms: number;
     readonly total: number;
+    /**
+     * 命中数——**判定用的是这一个**：扫描时排掉了本次验收的产物。
+     *
+     * 判据问的是「这份素材与**已有的库**重了多少」，而验收这一刻，这份产物自己
+     * 就躺在库里，且它必然覆盖源文档的标识符。不排掉它，量到的就是「产物与
+     * 自己」——实测一份 13 页的消化因此从 37.4% 虚高到 77.5%（+40 点），而且
+     * **产物做得越全，这个数越高**：它把「做得好」显示成「像重复」。
+     */
     readonly hit: number;
     readonly rate: number;
+    /**
+     * 把本次产物也算进去的命中数与比率，恒 ≥ `hit`。
+     *
+     * 留它不是念旧：差额是这次产物给库里带来的新覆盖，是「这次的产出到底有没有
+     * 增加东西」的一个侧写。只报排除后的数而不报差额，等于把「同一份素材消化
+     * 前后会测出两个值」这件事从报告里删掉而不解释。
+     */
+    readonly hitWithProducts: number;
+    readonly rateWithProducts: number;
 }
 /** 可寻址明细。 */
 export interface AddressableCheck {
