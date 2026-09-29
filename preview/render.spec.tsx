@@ -201,8 +201,47 @@ function page(inner: string, note: string): string {
 </body></html>`
 }
 
+/** 真实的「第一天」：只跑过一次门禁和一次摸底，还没有任何带判定的验收。
+ *
+ *  这是每个使用者看到的第一屏，而第一版预览只用「有判定的完整数据」当样本——
+ *  于是「摸底 3 章摸底」「门禁 · 术语 100.0%」这类问题一直没被看到，直到用户
+ *  截了一张真实截图过来。**预览的样本必须覆盖真实的第一天。** */
+const DAY_ONE: DigestSummaryPayload = {
+  path: 'C:/Users/operator/.dsh/yon-panel/digest-log.jsonl',
+  summary: {
+    total: 2,
+    since: '2026-09-29T13:44:29.000Z',
+    averagedOver: 0,
+    byOutcome: { plan: 1, gate: 1 },
+    byTool: [{ tool: 'digest_plan', count: 1 }, { tool: 'digest_audit', count: 1 }],
+    averages: {
+      terms: null, identifiers: null, level1: null, level2: null,
+      constraints: null, fidelity: null, provenance: null,
+      overlap: null, addressable: null,
+    },
+    recent: [
+      entry({
+        at: '2026-09-29T13:44:29.000Z', tool: 'digest_audit', outcome: 'gate',
+        label: 'iuap-元数据及业务对象红皮书（门禁）',
+        source: 'raw/articles/2026-06-14-iuap-元数据及业务对象红皮书.md',
+        product: '', pages: 1, failed: [],
+        metrics: { terms: 1, identifiers: 1, overlap: 0.334 },
+        sourceBytes: 77274, productBytes: 77274, ms: 1204,
+      }),
+      entry({
+        at: '2026-09-29T13:44:29.000Z', tool: 'digest_plan', outcome: 'plan',
+        label: '2026-06-14-iuap-元数据及业务对象红皮书.md',
+        source: 'raw/articles/2026-06-14-iuap-元数据及业务对象红皮书.md',
+        product: '', pages: 0, failed: [], metrics: {},
+        sourceBytes: 77274, productBytes: 0, ms: 7, chapters: 6,
+      }),
+    ],
+  },
+}
+
 describe('预览导出', () => {
   const cases: readonly (readonly [string, DigestSummaryPayload | undefined])[] = [
+    ['day-one', DAY_ONE],
     ['full', FULL],
     ['empty', { path: FULL.path, summary: { ...FULL.summary, total: 0, recent: [], byOutcome: {}, averagedOver: 0 } }],
   ]

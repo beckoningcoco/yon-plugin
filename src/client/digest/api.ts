@@ -80,31 +80,34 @@ export const OUTCOME_LABELS: Readonly<Record<string, string>> = {
   sweep: '体检',
 }
 
-/** 工具名 → 短标签。 */
-export const TOOL_LABELS: Readonly<Record<string, string>> = {
-  digest_plan: '摸底',
-  digest_audit: '验收',
-  digest_sweep: '体检',
-}
-
 /**
- * One entry rendered as the one line a reader needs.
+ * One entry's **content**, without naming its tool or its outcome.
  *
- * The wording lives here rather than inline in the list so the compact row and any
- * future detail view cannot drift apart on what a sweep or a plan reads as.
+ * Both of those are already on the row — the outcome is the badge on the right, the
+ * tool is in the label — so repeating them here produced rows like
+ * 「摸底 3 章摸底」. The line's job is to say *what the run found*, nothing else.
+ *
+ * Two outcomes deliberately report no score:
+ * - a **plan** has no verdict at all, only a chapter count;
+ * - a **gate** run's product IS the source document, so every coverage figure is
+ *   necessarily 100%. That is a denominator cancelling out, not a measurement —
+ *   showing it would dress up "nothing was measured" as "measured, and perfect".
+ *
  * @param entry - the ledger row.
  * @returns the line.
  */
 export function entryLine(entry: DigestLogEntryView): string {
-  const tool = TOOL_LABELS[entry.tool] ?? entry.tool
-  const outcome = OUTCOME_LABELS[entry.outcome] ?? entry.outcome
   if (entry.outcome === 'sweep') {
-    return `${tool} ${entry.scanned ?? 0} 份 → 合格 ${entry.passing ?? 0} / 不合格 ${entry.failing ?? 0}`
+    return `${entry.scanned ?? 0} 份 → 合格 ${entry.passing ?? 0} / 不合格 ${entry.failing ?? 0}`
   }
   if (entry.outcome === 'plan') {
-    return `${tool} ${entry.chapters ?? 0} 章`
+    // 「6 章」孤零零地摆在宽列中间，读者不知道是什么的 6 章；带上动词才自明。
+    return `识别到 ${entry.chapters ?? 0} 章`
+  }
+  if (entry.outcome === 'gate') {
+    return entry.source.split(/[\\/]/).pop() ?? entry.source
   }
   const terms = entry.metrics.terms
-  const score = typeof terms === 'number' ? `术语 ${(terms * 100).toFixed(1)}%` : ''
-  return `${tool} ${outcome}${score === '' ? '' : ` · ${score}`}`
+  if (typeof terms === 'number') return `术语 ${(terms * 100).toFixed(1)}%`
+  return entry.product === '' ? entry.label : entry.product
 }

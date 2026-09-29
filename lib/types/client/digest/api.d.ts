@@ -25,13 +25,19 @@ export declare const METRIC_LABELS: Readonly<Record<string, string>>;
 export declare const METRIC_ORDER: readonly string[];
 /** 结局的中文名。 */
 export declare const OUTCOME_LABELS: Readonly<Record<string, string>>;
-/** 工具名 → 短标签。 */
-export declare const TOOL_LABELS: Readonly<Record<string, string>>;
 /**
- * One entry rendered as the one line a reader needs.
+ * One entry's **content**, without naming its tool or its outcome.
  *
- * The wording lives here rather than inline in the list so the compact row and any
- * future detail view cannot drift apart on what a sweep or a plan reads as.
+ * Both of those are already on the row — the outcome is the badge on the right, the
+ * tool is in the label — so repeating them here produced rows like
+ * 「摸底 3 章摸底」. The line's job is to say *what the run found*, nothing else.
+ *
+ * Two outcomes deliberately report no score:
+ * - a **plan** has no verdict at all, only a chapter count;
+ * - a **gate** run's product IS the source document, so every coverage figure is
+ *   necessarily 100%. That is a denominator cancelling out, not a measurement —
+ *   showing it would dress up "nothing was measured" as "measured, and perfect".
+ *
  * @param entry - the ledger row.
  * @returns the line.
  */

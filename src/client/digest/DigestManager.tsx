@@ -159,8 +159,16 @@ export function DigestManager({ summary, onClose, t }: DigestManagerProps) {
       </span>
       <span className={css.tallySep} aria-hidden="true">·</span>
       <span className={css.tallyItem}>
-        <span className={css.tallyNum}>{(counts.gate ?? 0) + (counts.plan ?? 0)}</span>
-        {' '}{t('digest.tallyOther')}
+        <span className={css.tallyNum}>{counts.plan ?? 0}</span>
+        {' '}{t('digest.tallyPlan')}
+      </span>
+      <span className={css.tallySep} aria-hidden="true">·</span>
+      {/* 门禁与摸底分开计数。它们曾被并成一个数字，而那两种检查回答的是不同的
+          问题（一个"这份素材值不值得做"，一个"分几章"）——合并之后既看不出各
+          自几次，也看不出总数里有没有门禁。 */}
+      <span className={css.tallyItem}>
+        <span className={css.tallyNum}>{counts.gate ?? 0}</span>
+        {' '}{t('digest.tallyGate')}
       </span>
       <span className={css.tallySep} aria-hidden="true">·</span>
       <span className={css.tallyItem}>
@@ -214,33 +222,40 @@ export function DigestManager({ summary, onClose, t }: DigestManagerProps) {
             </div>
           </div>
 
-          <p className={css.sectionNote}>
-            {(head?.averagedOver ?? 0) === 0
-              ? t('digest.averageNone')
-              : t('digest.averageHint', { count: head?.averagedOver ?? 0 })}
-          </p>
-          <div className={css.averageGrid}>
-            {METRIC_ORDER.map((key) => {
-              const value = averages[key]
-              const shown = typeof value === 'number'
-              // The component contributes the ratio; the geometry lives in the
-              // stylesheet, so a bar that has to align with its own label stays
-              // aligned when the padding changes.
-              const ratio = shown ? Math.max(0.02, Math.min(1, value)) : 0
-              return (
-                <div
-                  key={key}
-                  className={css.averageCell}
-                  data-empty={shown ? undefined : ''}
-                  style={{ '--bar-ratio': String(ratio) } as CSSProperties}
-                >
-                  <span className={css.averageLabel}>{METRIC_LABELS[key] ?? key}</span>
-                  <span className={css.averageValue}>{percent(value ?? null)}</span>
-                  <span className={css.averageBar} aria-hidden="true" />
+          {/* 九格只在确实算得出均值时才出现。
+              全部没有样本时它是一排九个破折号——占了这一屏三分之一的高度而
+              零信息，还把上面那句话又说了一遍。空着比摆一排「—」诚实。 */}
+          {(head?.averagedOver ?? 0) === 0
+            ? <p className={css.sectionNote}>{t('digest.averageNone')}</p>
+            : (
+              <>
+                <p className={css.sectionNote}>
+                  {t('digest.averageHint', { count: head?.averagedOver ?? 0 })}
+                </p>
+                <div className={css.averageGrid}>
+                  {METRIC_ORDER.map((key) => {
+                    const value = averages[key]
+                    const shown = typeof value === 'number'
+                    // The component contributes the ratio; the geometry lives in the
+                    // stylesheet, so a bar that has to align with its own label stays
+                    // aligned when the padding changes.
+                    const ratio = shown ? Math.max(0.02, Math.min(1, value)) : 0
+                    return (
+                      <div
+                        key={key}
+                        className={css.averageCell}
+                        data-empty={shown ? undefined : ''}
+                        style={{ '--bar-ratio': String(ratio) } as CSSProperties}
+                      >
+                        <span className={css.averageLabel}>{METRIC_LABELS[key] ?? key}</span>
+                        <span className={css.averageValue}>{percent(value ?? null)}</span>
+                        <span className={css.averageBar} aria-hidden="true" />
+                      </div>
+                    )
+                  })}
                 </div>
-              )
-            })}
-          </div>
+              </>
+            )}
 
           {loading || rows.length === 0
             ? (

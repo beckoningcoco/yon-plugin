@@ -233,7 +233,8 @@ export declare const zh: {
     'digest.tallyTotal': string;
     'digest.tallyPass': string;
     'digest.tallyFail': string;
-    'digest.tallyOther': string;
+    'digest.tallyPlan': string;
+    'digest.tallyGate': string;
     'digest.tallySweep': string;
     'digest.refresh': string;
     'digest.loading': string;
@@ -487,7 +488,8 @@ export declare const en: {
     'digest.tallyTotal': string;
     'digest.tallyPass': string;
     'digest.tallyFail': string;
-    'digest.tallyOther': string;
+    'digest.tallyPlan': string;
+    'digest.tallyGate': string;
     'digest.tallySweep': string;
     'digest.refresh': string;
     'digest.loading': string;

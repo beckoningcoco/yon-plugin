@@ -379,6 +379,16 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
+/* The ledger path is long enough to fill the row on its own, and when it does the
+   `margin-inline-start: auto` below has nothing left to push against — so the
+   timestamp ran straight into the path ("…digest-log.jsonl最早一条：…"). A
+   separator before it survives that case. */
+.footSince::before {
+  content: '·';
+  margin-inline-end: 6px;
+  color: var(--dsw-alias-label-dimmed);
+}
+
 .footSince {
   margin-inline-start: auto;
 }

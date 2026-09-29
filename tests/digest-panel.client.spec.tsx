@@ -125,9 +125,29 @@ describe('检查器面板', () => {
     expect(await screen.findByText(/取自 7 次有判定/)).toBeTruthy()
   })
 
-  it('没有可算均值的记录时说明原因，而不是显示一排 0%', async () => {
-    show(payload([], { averagedOver: 0 }))
+  it('没有可算均值的记录时说明原因，而且不摆一排破折号', async () => {
+    show(payload([entry()], { averagedOver: 0 }))
     expect(await screen.findByText(zh['digest.averageNone'])).toBeTruthy()
+    // 九个空格子在这一屏占三分之一高度而零信息，还把上面那句话又说了一遍
+    expect(screen.queryByText('可寻址')).toBeNull()
+  })
+
+  it('摸底记录不把「摸底」说两遍', async () => {
+    show(payload([entry({
+      tool: 'digest_plan', outcome: 'plan', product: '', pages: 0, metrics: {}, chapters: 3,
+    })]))
+    const row = await screen.findByRole('button', { expanded: false })
+    expect(row.textContent).toContain('识别到 3 章')
+    // 徽标已经写了「摸底」，描述里再写一遍就成了「摸底 3 章摸底」
+    expect(row.textContent?.match(/摸底/g)).toHaveLength(1)
+  })
+
+  it('门禁记录不显示分数——那是分母相同，不是一次测量', async () => {
+    show(payload([entry({ tool: 'digest_audit', outcome: 'gate', metrics: { terms: 1 } })]))
+    const row = await screen.findByRole('button', { expanded: false })
+    expect(row.textContent).not.toContain('100.0%')
+    // 换成源文档名，读者至少知道刚看过哪一份
+    expect(row.textContent).toContain('a.md')
   })
 
   it('「只看不合格」筛掉合格行，但计数条仍是全量', async () => {
@@ -135,9 +155,10 @@ describe('检查器面板', () => {
       entry({ outcome: 'fail', label: '坏的' }),
       entry({ outcome: 'pass', label: '好的', at: '2026-09-30T04:00:00.000Z' }),
     ]))
-    expect(await screen.findByText(/术语/)).toBeTruthy()
+    // 行头是列表里唯一带 aria-expanded 的按钮（筛选用 aria-pressed），用它当锚点，
+    // 别用文本——「术语」既是列表行的一部分也是均值格的标签，正则匹配会撞上两个。
+    await screen.findAllByRole('button', { expanded: false })
     expect(bodyText()).toContain('2 次检查')
-    // 行头是列表里唯一带 aria-expanded 的按钮，筛选用 aria-pressed，不会混进来
     expect(screen.getAllByRole('button', { expanded: false })).toHaveLength(2)
 
     fireEvent.click(screen.getByRole('button', { name: zh['digest.filterFail'] }))
@@ -148,7 +169,7 @@ describe('检查器面板', () => {
 
   it('筛完没有匹配时，说「没有符合条件的」而不是「还没有记录」', async () => {
     show(payload([entry({ outcome: 'fail' })]))
-    expect(await screen.findByText(/术语/)).toBeTruthy()
+    await screen.findAllByRole('button', { expanded: false })
     expect(bodyText()).toContain('1 次检查')
     fireEvent.click(screen.getByRole('button', { name: zh['digest.filterPass'] }))
     expect(screen.getByText(zh['digest.emptyFiltered'])).toBeTruthy()
