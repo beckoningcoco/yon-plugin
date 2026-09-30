@@ -38,6 +38,7 @@ import { CLASS_TOOL_NAMES, registerYonClassTools } from './host/class-tools.ts'
 import { registerYonWikiWriteTools, WIKI_WRITE_TOOL_NAMES } from './host/wiki-write.ts'
 import { DIGEST_TOOL_NAMES, registerYonDigestTools } from './host/digest-tools.ts'
 import { createDigestLog, digestLogPath } from './host/digest-log.ts'
+import { registerYonPromptSection } from './host/prompt.ts'
 
 export { DOMAIN_NAME, YON_DOMAIN } from './host/domain.ts'
 export { SKILL_DOMAIN_NAME, YON_SKILL_DOMAIN } from './host/skill-domain.ts'
@@ -58,6 +59,7 @@ export { KNOWLEDGE_TOOL_NAMES, KnowledgeError } from './host/knowledge-tools.ts'
 export { CLASS_TOOL_NAMES, ClassIndexError } from './host/class-tools.ts'
 export { WIKI_WRITE_TOOL_NAMES, WikiWriteError } from './host/wiki-write.ts'
 export { DIGEST_TOOL_NAMES } from './host/digest-tools.ts'
+export { YON_PROMPT_SECTION, YON_PROMPT_ORDER, YON_PROMPT_TEXT } from './host/prompt.ts'
 export { createDigestLog, digestLogPath, DIGEST_METRIC_KEYS, DIGEST_METRIC_LABELS } from './host/digest-log.ts'
 export type { DigestLog, DigestLogEntry, DigestLogSummary, DigestOutcome } from './host/digest-log.ts'
 export { sweepDigests, sourcePathOf, frontmatterValueOf } from './host/digest-sweep.ts'
@@ -200,6 +202,12 @@ export async function apply(ctx: Context): Promise<void> {
   // checked, and how did it go" had no answer. The panel reads it back.
   const digestLog = createDigestLog()
   ctx.effect(() => registerYonDigestTools(ctx, wiki, digestLog), 'yon-panel: digest audit tool')
+
+  // The one paragraph the model reads before it ever calls a tool: what this
+  // panel brings, and the rules that no single tool description can state. It
+  // is global (the profile loads this plugin, not an agent scope), so every
+  // conversation the panel is installed into carries it.
+  registerYonPromptSection(ctx)
 
   // A skill registered through the registry exists exactly as long as this
   // plugin does, which is what makes these skills shippable without ever

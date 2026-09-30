@@ -13,7 +13,8 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   CLASS_TOOL_NAMES, DATASOURCE_TOOL_NAMES, DIGEST_TOOL_NAMES, DOMAIN_NAME, GBK_TOOL_NAMES,
   KNOWLEDGE_TOOL_NAMES, SKILL_DOMAIN_NAME, WIKI_TOOL_NAMES, WIKI_WRITE_TOOL_NAMES,
-  YON_BUNDLED_SKILLS, YON_SKILL_SOURCE, apply, inject, YON_TOOL_NAMES,
+  YON_BUNDLED_SKILLS, YON_PROMPT_ORDER, YON_PROMPT_SECTION, YON_PROMPT_TEXT,
+  YON_SKILL_SOURCE, apply, inject, YON_TOOL_NAMES,
 } from '../src/index.ts'
 
 /** Every tool this package registers, in the order apply() adds them. */
@@ -39,8 +40,9 @@ function emptyTable() {
  * Mount the host half over stand-in services.
  * @param withWebServer - whether this deployment has an HTTP carrier at all.
  * @param withSkills - whether this deployment mounts a skill registry.
+ * @param withSystemPrompt - whether this deployment runs an agent loop at all.
  */
-async function bench(withWebServer = true, withSkills = false) {
+async function bench(withWebServer = true, withSkills = false, withSystemPrompt = true) {
   const ctx = new Context()
   const closeDomain = vi.fn(async () => {})
   const open = vi.fn(async (spec: { name?: string }) => ({
@@ -54,9 +56,12 @@ async function bench(withWebServer = true, withSkills = false) {
   const registerTool = vi.fn((_definition: unknown) => disposeTool)
   const disposeSkill = vi.fn()
   const registerSkill = vi.fn((_skill: unknown) => disposeSkill)
+  const disposeSection = vi.fn()
+  const registerSection = vi.fn((_section: unknown) => disposeSection)
   ctx.provide('storageDomain', { open } as never)
   ctx.provide('tools', { register: registerTool } as never)
   if (withWebServer) ctx.provide('webServer', { register } as never)
+  if (withSystemPrompt) ctx.provide('systemPrompt', { section: registerSection } as never)
   if (withSkills) {
     ctx.provide('skills', {
       register: registerSkill,
@@ -69,7 +74,7 @@ async function bench(withWebServer = true, withSkills = false) {
   await fiber.await()
   return {
     ctx, open, register, closeDomain, disposeRoute, registerTool, disposeTool,
-    registerSkill, disposeSkill, fiber,
+    registerSkill, disposeSkill, registerSection, disposeSection, fiber,
   }
 }
 
@@ -163,5 +168,35 @@ describe('dsh-plugin-yon-panel host half', () => {
 
     expect(closeDomain).toHaveBeenCalledTimes(2)
     expect(disposeRoute).toHaveBeenCalledTimes(1)
+  })
+
+  it('contributes its capability section to the system prompt', async () => {
+    const { registerSection } = await bench()
+
+    expect(registerSection).toHaveBeenCalledTimes(1)
+    expect(registerSection.mock.calls[0]?.[0]).toEqual({
+      name: YON_PROMPT_SECTION,
+      order: YON_PROMPT_ORDER,
+      text: YON_PROMPT_TEXT,
+    })
+  })
+
+  it('withdraws the prompt section with its own fiber', async () => {
+    const { disposeSection, fiber } = await bench()
+
+    await fiber.dispose()
+
+    expect(disposeSection).toHaveBeenCalledTimes(1)
+  })
+
+  it('loads in a deployment that has no prompt registry at all', async () => {
+    // Same reasoning as the web server and the skill registry: this plugin is
+    // useful without an agent loop, and requiring the registry would leave the
+    // entry pending — which fails the whole profile.
+    const { ctx, registerSection, registerTool } = await bench(true, false, false)
+
+    expect(registerSection).not.toHaveBeenCalled()
+    expect(registerTool).toHaveBeenCalledTimes(ALL_TOOL_NAMES.length)
+    expect(ctx.get('yonProjects')).toBeDefined()
   })
 })
