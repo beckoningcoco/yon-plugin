@@ -218,10 +218,13 @@ export function registerYonHomeTools(ctx: Context, homes: YonHomesService): () =
         lines.push(home.index === undefined
           ? '      类索引：没有'
           : `      类索引：${home.index.totalClasses} 个类，${home.index.builtAt.slice(0, 10)} 建`)
-        // Whether a metadata index exists is what decides whether `ncc_meta_*` can
-        // answer at all, so it belongs in the one answer the model reads first.
+        // Whether a metadata index exists is what decides whether the metadata tools
+        // can answer at all, so it belongs in the one answer the model reads first —
+        // and named, because this is the line it acts on. A `*` here would be a name
+        // the model cannot call: the wildcard is this package's shorthand, not the
+        // tool registry's. The same reason the prompt section names them.
         lines.push(home.meta === undefined
-          ? '      元数据索引：没有（ncc_meta_* 用不了，要先在「Home 管理」里建一次）'
+          ? '      元数据索引：没有（ncc_meta_find / ncc_meta_detail 用不了，要先在「Home 管理」里建一次）'
           : `      元数据索引：${home.meta.counts.entities} 个实体 · ${home.meta.counts.fields} 个字段 · `
             + `${home.meta.counts.enums} 个枚举，${home.meta.builtAt.slice(0, 10)} 建`)
       }

@@ -202,6 +202,15 @@ export const META_TOOL_NAMES = ['ncc_meta_find', 'ncc_meta_detail'] as const
 > · `ncc_meta_*` —— NCC 安装目录里的元数据索引（实体/表名/VO/字段/枚举）。想知道「某个中文名
 > 对应的表」「哪些表有这个字段」先查它，不要 `ncc_home_find` 去翻 `.bmf`。
 
+**落地时改了一个字**：那一组在正文里写的是 **`ncc_meta_find / ncc_meta_detail`**，不是
+`ncc_meta_*`。原因是 `tests/prompt.spec.ts` 那道「每个工具都要在提示词里出现」的守卫**认不了
+`ncc_*_*` 这种三段名**——它的 family 取到第一个下划线为止，`ncc_meta_find` 的 family 算出来是
+`ncc_*`。所以按 `ncc_meta_*` 写，守卫查不到名字、整个 metadata 组等于隐身，而**守卫当时也没
+覆盖这两个 family**（那份手写清单漏了 `HOME_TOOL_NAMES`/`META_TOOL_NAMES`，已补）。补全后
+守卫立刻报 `['ncc_meta_find','ncc_meta_detail']` 未记账——这正是它该做的。正文因此照
+`ncc_class_search`、`ncc_home_find / ncc_home_read` 的写法点名，而不是放宽守卫。
+`ncc_home_list` 的输出里同一句话也点了名（`home-tools.ts`）。
+
 ## 9. 测试
 
 | 文件 | 覆盖 |
@@ -223,6 +232,10 @@ export const META_TOOL_NAMES = ['ncc_meta_find', 'ncc_meta_detail'] as const
 - `tests/meta-service.spec.ts` —— 服务此前**没有**任何 spec，本轮真机跑出来的那个
   「按记录数报」的缺陷因此没人挡。三例：按文件计数与清单、`others` 只列别的文件、单文件不算选择题。
 - `tests/home-manager.client.spec.tsx` —— 面板的渲染循环守卫（见 §12）。
+
+另修一处**已有**守卫的漏：`tests/prompt.spec.ts` 的「每个注册的工具都要在提示词里出现」
+用的是一份手写工具清单，漏了 `HOME_TOOL_NAMES` 与 `META_TOOL_NAMES`。补全后它立刻报
+`ncc_meta_find`/`ncc_meta_detail` 未记账（原因见 §7），正文点名为准。
 
 ## 10. 验收（顺序不能省）
 

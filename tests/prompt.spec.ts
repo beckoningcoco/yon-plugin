@@ -9,14 +9,15 @@
 import { describe, expect, it } from 'vitest'
 import {
   CLASS_TOOL_NAMES, DATASOURCE_TOOL_NAMES, DIGEST_TOOL_NAMES, GBK_TOOL_NAMES,
-  KNOWLEDGE_TOOL_NAMES, WIKI_TOOL_NAMES, WIKI_WRITE_TOOL_NAMES,
-  YON_PROMPT_ORDER, YON_PROMPT_SECTION, YON_PROMPT_TEXT, YON_TOOL_NAMES,
+  HOME_TOOL_NAMES, KNOWLEDGE_TOOL_NAMES, META_TOOL_NAMES, WIKI_TOOL_NAMES,
+  WIKI_WRITE_TOOL_NAMES, YON_PROMPT_ORDER, YON_PROMPT_SECTION, YON_PROMPT_TEXT, YON_TOOL_NAMES,
 } from '../src/index.ts'
 
 /** Every tool this package registers. */
 const ALL_TOOL_NAMES = [
   ...YON_TOOL_NAMES, ...DATASOURCE_TOOL_NAMES, ...WIKI_TOOL_NAMES, ...WIKI_WRITE_TOOL_NAMES,
-  ...GBK_TOOL_NAMES, ...KNOWLEDGE_TOOL_NAMES, ...CLASS_TOOL_NAMES, ...DIGEST_TOOL_NAMES,
+  ...GBK_TOOL_NAMES, ...KNOWLEDGE_TOOL_NAMES, ...CLASS_TOOL_NAMES, ...HOME_TOOL_NAMES,
+  ...META_TOOL_NAMES, ...DIGEST_TOOL_NAMES,
 ]
 
 describe('the Yon prompt section', () => {
@@ -25,6 +26,13 @@ describe('the Yon prompt section', () => {
     // point is not that each name is printed, it is that no family is invisible.
     // A tool whose neither name nor `family_*` appears is one the model has no
     // way to know it should reach for.
+    //
+    // The family is read up to the *first* underscore, so an `ncc_`-prefixed tool
+    // has no family of its own: the family of `ncc_meta_find` is `ncc_*`, not
+    // `ncc_meta_*`. Writing `ncc_meta_*` in the text therefore accounts for
+    // nothing, and the text names these tools the way it names `ncc_class_search`
+    // and `ncc_home_find` — individually. This is exactly how the guard caught the
+    // metadata group being listed as `ncc_meta_*` only.
     const unaccounted = ALL_TOOL_NAMES.filter(name => {
       const family = `${name.slice(0, name.indexOf('_'))}_*`
       return !YON_PROMPT_TEXT.includes(name) && !YON_PROMPT_TEXT.includes(family)
