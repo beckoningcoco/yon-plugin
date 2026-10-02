@@ -404,18 +404,20 @@ export function WikiManager({
       <p className={cn(base.note)}>{t('wiki.levelHint')}</p>
 
       <h4 className={cn(css.subTitle)}>{t('wiki.connectivity')}</h4>
-      <div className={cn(css.stats)}>
+      <div className={cn(css.statBlock)}>
         <Stat label={t('wiki.withOutgoing')} value={`${report.graph.withOutgoing}`}
           note={`/ ${report.pages}`} />
         <Stat label={t('wiki.withIncoming')} value={`${report.graph.withIncoming}`}
           note={`/ ${report.pages}`} />
         <Stat label={t('wiki.isolated')} value={`${report.graph.isolated}`} />
         <Stat label={t('wiki.edges')}
-          value={`${report.graph.resolvedEdges + report.graph.danglingEdges}`}
-          note={t('wiki.edgeDetail', {
-            resolved: report.graph.resolvedEdges,
-            dangling: report.graph.danglingEdges,
-          })} />
+          value={`${report.graph.resolvedEdges + report.graph.danglingEdges}`} />
+        {/* 这段注释一行要 293.48px，留在值列里会把这一行撑成两行（30px，其余四行
+            15px）；挪出来自成一行，五行才等高。 */}
+        <p className={cn(base.note, css.statFootnote)}>{t('wiki.edgeDetail', {
+          resolved: report.graph.resolvedEdges,
+          dangling: report.graph.danglingEdges,
+        })}</p>
         <Stat label={t('wiki.missing')} value={`${report.graph.missingEntities}`} />
       </div>
     </>
@@ -425,6 +427,10 @@ export function WikiManager({
   const gaps = report === undefined ? null : (
     <>
       <h4 className={cn(css.subTitle)}>{t('wiki.gapsTitle')}</h4>
+      {/* 这段提醒放在清单**上面**：放在下面时它的顶边在 pane 顶下方 460px、高 48px，
+          而 pane 只有 450px 高——一个字都看不到（详见本文件 panel.module.css 的
+          .gapList 注释）。 */}
+      <p className={cn(base.note)}>{t('wiki.gapNote')}</p>
       {report.gaps.length === 0
         ? <p className={cn(base.note)}>{t('wiki.noGaps')}</p>
         : (
@@ -435,9 +441,14 @@ export function WikiManager({
                   <span className={cn(css.gapRank)}>{index + 1}</span>
                   <span className={cn(css.gapUri)}>{gap.uri}</span>
                   <span className={cn(css.gapCited)}>{t('wiki.citedTimes', { count: gap.cited })}</span>
-                  <button type="button" className={cn(css.gapToggle)}
+                  <button type="button" className={cn(base.foldToggle, css.gapToggle)}
                     onClick={() => { void toggleGap(gap.uri) }}>
-                    {openGap === gap.uri ? t('wiki.hideCiters') : t('wiki.showCiters')}
+                    <span>{openGap === gap.uri ? t('wiki.hideCiters') : t('wiki.showCiters')}</span>
+                    {/* 两个标签叠在同一格里、只让隐形的那个占宽：按钮的宽度就与展开态
+                        无关了。否则展开那一行的被引次数会跟着往右跳（实测 36px，见
+                        panel.module.css 的 .gapToggle）。 */}
+                    <span className={cn(css.gapToggleGhost)} aria-hidden="true">{t('wiki.showCiters')}</span>
+                    <span className={cn(css.gapToggleGhost)} aria-hidden="true">{t('wiki.hideCiters')}</span>
                   </button>
                 </div>
                 {openGap === gap.uri && (
@@ -467,7 +478,6 @@ export function WikiManager({
             ))}
           </ul>
         )}
-      <p className={cn(base.note)}>{t('wiki.gapNote')}</p>
     </>
   )
 
@@ -534,7 +544,7 @@ export function WikiManager({
           onClick={() => { setCard(undefined) }}>{t('wiki.hideCiters')}</button>
       </div>
       <div className={cn(css.cardFacts)}>
-        <span className={cn(css.badge, card.level === 'concept' ? css.badgeLow : undefined)}>
+        <span className={cn(base.tag, card.level === 'concept' ? base.tagMuted : undefined)}>
           {t(LEVEL_KEY[card.level])}
         </span>
         {card.fieldCount !== undefined && (
@@ -588,7 +598,7 @@ export function WikiManager({
                     <span className={cn(css.resultName)}>{hit.name}</span>
                     <span className={cn(css.mono)}>{hit.uri ?? hit.page}</span>
                     <span className={cn(css.resultFacts)}>
-                      <span className={cn(css.badge, hit.level === 'concept' ? css.badgeLow : undefined)}>
+                      <span className={cn(base.tag, hit.level === 'concept' ? base.tagMuted : undefined)}>
                         {t(LEVEL_KEY[hit.level])}
                       </span>
                       {hit.fieldCount !== undefined && <span>{t('wiki.cardFields', { count: hit.fieldCount })}</span>}

@@ -12,4 +12,4 @@ export type YonPanelRootProps = PropsRuntime<'sidebar.footer.action'> & PropsRen
  * @param props - composed slot props.
  * @returns the trigger plus the open panel.
  */
-export declare function YonPanelRoot({ usePanel, onToggle, onSetOpen, renderSlot, t }: YonPanelRootProps): import("react").JSX.Element;
+export declare function YonPanelRoot({ usePanel, useItems, onToggle, onSetOpen, renderSlot, t, }: YonPanelRootProps): import("react").JSX.Element;

@@ -27,6 +27,14 @@ export declare function classIndexPath(version: string): string;
  */
 export declare function classNamesOf(jar: string): Promise<readonly string[]>;
 /**
+ * Whether a path segment is a bundled JDK rather than platform code.
+ *
+ * Exported so `home-probe.ts` skips the same tree this indexer does. Two copies of
+ * this list would drift, and the drift would show up as a Home reporting a jar
+ * count that disagrees with the index built from it.
+ */
+export declare function isJdk(root: string): boolean;
+/**
  * Walk a home directory and index every class it holds.
  *
  * @param home - the NCC or BIP home directory to scan.

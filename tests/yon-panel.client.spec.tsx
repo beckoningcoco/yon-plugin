@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
- * The panel shell: the sidebar-foot trigger, the panel it opens, and the two
- * dismissals the panel yields while something stands above it.
+ * The panel shell: the sidebar-foot trigger, the rows it opens above itself, and
+ * the two dismissals the panel yields while something stands above it.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -9,6 +9,7 @@ import { useSyncExternalStore } from 'react'
 import type { ReactElement } from 'react'
 import { createYonPanelStore } from '../src/client/panel-store.ts'
 import { en, zh } from '../src/client/locales.ts'
+import type { YonPanelItemRow } from '../src/client/slots.ts'
 import { YonPanelRoot, type YonPanelRootProps } from '../src/client/YonPanelRoot.tsx'
 
 /**
@@ -34,7 +35,7 @@ afterEach(() => {
  */
 type HarnessProps = Pick<
   YonPanelRootProps,
-  'wide' | 'usePanel' | 'onToggle' | 'onSetOpen' | 'renderSlot' | 't'
+  'wide' | 'usePanel' | 'useItems' | 'onToggle' | 'onSetOpen' | 'renderSlot' | 't'
 >
 
 const Panel = YonPanelRoot as unknown as (props: HarnessProps) => ReactElement
@@ -52,11 +53,35 @@ const panelHook = (store: ReturnType<typeof createYonPanelStore>): HarnessProps[
     () => store.getSnapshot(),
   ))
 
-function harness(renderSlot = vi.fn(() => <span>contributed</span>), wide = true) {
+/** Bind a fixed row list the same way, over a source whose snapshot never moves. */
+const rowsHook = (rows: readonly YonPanelItemRow[]): HarnessProps['useItems'] =>
+  <T,>(select: (rows: readonly YonPanelItemRow[]) => T): T => select(rows)
+
+/** The rows the panel would have projected from a seat holding two entries. */
+const TWO_ROWS: readonly YonPanelItemRow[] = [
+  { id: 'project', label: '项目管理' },
+  { id: 'skills', label: '技能' },
+]
+
+/**
+ * A dispatch stand-in that draws the name the panel handed it, so the panel's own
+ * markup can be read back from the document. The node it returns is the entry's
+ * business, hence the cast: what the harness has to see is the call.
+ * @returns the stand-in.
+ */
+const rowStub = (): HarnessProps['renderSlot'] =>
+  vi.fn((_key: string, owner: { label: string }) => <span>{owner.label}</span>) as unknown as HarnessProps['renderSlot']
+
+function harness(
+  renderSlot: HarnessProps['renderSlot'] = rowStub(),
+  wide = true,
+  rows: readonly YonPanelItemRow[] = TWO_ROWS,
+) {
   const store = createYonPanelStore()
   const props: HarnessProps = {
     wide,
     usePanel: panelHook(store),
+    useItems: rowsHook(rows),
     onToggle: () => { store.toggle() },
     onSetOpen: (open) => {
       if (open) store.open()
@@ -91,14 +116,32 @@ describe('yon panel surface', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('opens the panel on the trigger gesture and renders the declared seat', () => {
+  it('opens the panel on the trigger gesture and renders one row per seat entry', () => {
     const { renderSlot } = harness()
 
     fireEvent.click(screen.getByRole('button', { name: TRIGGER }))
 
     expect(screen.getByRole('dialog', { name: TRIGGER })).toBeTruthy()
-    expect(screen.getByText('contributed')).toBeTruthy()
-    expect(renderSlot).toHaveBeenCalledWith('yon.panel.item', { open: true })
+    // One dispatch per projected row, addressed by its own registration id and
+    // handed its own name: the panel names the rows, the entries draw them.
+    expect(renderSlot).toHaveBeenCalledTimes(TWO_ROWS.length)
+    expect(renderSlot).toHaveBeenCalledWith(
+      'yon.panel.item', { open: true, label: '项目管理' }, { only: 'project' })
+    expect(renderSlot).toHaveBeenCalledWith(
+      'yon.panel.item', { open: true, label: '技能' }, { only: 'skills' })
+    expect(screen.getByText('项目管理')).toBeTruthy()
+    expect(screen.getByText('技能')).toBeTruthy()
+  })
+
+  it('renders no row for a seat nothing has contributed to', () => {
+    const { renderSlot } = harness(undefined, true, [])
+
+    fireEvent.click(screen.getByRole('button', { name: TRIGGER }))
+
+    // An empty seat is not an error: the panel opens and says nothing rather than
+    // dispatching a row it has no id for.
+    expect(screen.getByRole('dialog', { name: TRIGGER })).toBeTruthy()
+    expect(renderSlot).not.toHaveBeenCalled()
   })
 
   it('closes from the trigger itself, since the panel has no header', () => {
@@ -172,6 +215,7 @@ describe('yon panel surface', () => {
     const props: HarnessProps = {
       wide: true,
       usePanel: panelHook(store),
+      useItems: rowsHook(TWO_ROWS),
       onToggle: () => { store.toggle() },
       onSetOpen: (open) => {
         if (open) store.open()

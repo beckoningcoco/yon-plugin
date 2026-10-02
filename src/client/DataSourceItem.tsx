@@ -1,16 +1,14 @@
 /**
- * The panel's third built-in entry: one icon cell that opens the datasource
- * surface.
+ * The panel's third built-in entry: one row that opens the datasource surface.
  *
  * The surface is a dialog rather than a region of the panel body — a 280px strip
  * cannot hold a list beside a connection's details — and this entry owns it, so
  * opening it needs no cross-seat coordination. While the surface is up the entry
  * also tells the panel to stand down, and when it closes the entry hands focus
- * back to the cell that opened it. Both gestures are the ones the project entry
- * already makes; only the mark and the surface differ.
+ * back to the row that opened it. Both gestures are the ones the project entry
+ * already makes; the mark, the name it is given, and the surface differ.
  */
 import { useEffect, useRef, useState } from 'react'
-import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   InjectFace, PropsLocale, PropsRuntime,
 } from '@deepseek-ai/dsh-client-ui-slots'
@@ -20,8 +18,8 @@ import css from './panel-item.module.css'
 
 /**
  * Composed props of this panel button seat: the owner share carries the panel's
- * live open state, and the inject face carries the datasource operations, the
- * project list, and the overlay announcement.
+ * live open state and this entry's name, and the inject face carries the
+ * datasource operations, the project list, and the overlay announcement.
  */
 export type DataSourceItemProps =
   PropsRuntime<'yon.panel.item'>
@@ -54,11 +52,11 @@ function DatabaseMark() {
 }
 
 /**
- * Render the entry cell and, while open, the datasource surface.
+ * Render the entry row and, while open, the datasource surface.
  * @param props - composed slot props.
- * @returns the cell, plus the dialog when it is showing.
+ * @returns the row, plus the dialog when it is showing.
  */
-export function DataSourceItem({ t, pushOverlay, ...api }: DataSourceItemProps) {
+export function DataSourceItem({ t, label, pushOverlay, ...api }: DataSourceItemProps) {
   const [open, setOpen] = useState(false)
   const trigger = useRef<HTMLButtonElement | null>(null)
   // The face may be rebuilt by the host between renders; the announcement must
@@ -82,22 +80,20 @@ export function DataSourceItem({ t, pushOverlay, ...api }: DataSourceItemProps) 
 
   return (
     <>
-      <Tooltip label={t('item.datasource')} side="bottom" delayMs={300}>
-        <span className={css.cell}>
-          <button
-            ref={trigger}
-            type="button"
-            className={css.item}
-            data-active={open ? '' : undefined}
-            aria-label={t('item.datasource')}
-            aria-expanded={open}
-            aria-haspopup="dialog"
-            onClick={() => { setOpen(value => !value) }}
-          >
-            <DatabaseMark />
-          </button>
-        </span>
-      </Tooltip>
+      {/* The panel's name for this row is its visible text, which is also its
+          accessible name — nothing restates the line the pointer is already on. */}
+      <button
+        ref={trigger}
+        type="button"
+        className={css.item}
+        data-active={open ? '' : undefined}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={() => { setOpen(value => !value) }}
+      >
+        <DatabaseMark />
+        <span className={css.label}>{label}</span>
+      </button>
       {open && <DataSourceManager t={t} onClose={() => { setOpen(false) }} {...api} />}
     </>
   )

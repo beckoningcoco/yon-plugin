@@ -1,6 +1,7 @@
 /**
  * Yon panel, host half: opens the project, skill-switch and datasource domains,
- * publishes them as `ctx.yonProjects`, `ctx.yonSkills` and `ctx.yonDataSources`,
+ * publishes them as `ctx.yonProjects`, `ctx.yonSkills`, `ctx.yonDataSources`,
+ * `ctx.yonWiki` and `ctx.yonHomes`,
  * offers the projects and the data sources to the agent as tools, contributes
  * this plugin's own skills to the skill registry, and — where a web server
  * exists — serves all three over `/yon/api`.
@@ -38,6 +39,12 @@ import { CLASS_TOOL_NAMES, registerYonClassTools } from './host/class-tools.ts'
 import { registerYonWikiWriteTools, WIKI_WRITE_TOOL_NAMES } from './host/wiki-write.ts'
 import { DIGEST_TOOL_NAMES, registerYonDigestTools } from './host/digest-tools.ts'
 import { createDigestLog, digestLogPath } from './host/digest-log.ts'
+import { createHomeStore } from './host/home-store.ts'
+import { createYonHomesService, HomeError as HomesError, type YonHomesService } from './host/home-service.ts'
+import { registerYonHomeTools } from './host/home-tools.ts'
+import { buildMetaIndex, writeMetaIndex } from './host/meta-index.ts'
+import { createYonMetaService, type YonMetaService } from './host/meta-service.ts'
+import { registerYonMetaTools } from './host/meta-tools.ts'
 import { registerYonPromptSection } from './host/prompt.ts'
 
 export { DOMAIN_NAME, YON_DOMAIN } from './host/domain.ts'
@@ -80,6 +87,26 @@ export type {
 } from './host/wiki-service.ts'
 export type { WikiIndex, WikiPage, WikiVault } from './host/wiki-index.ts'
 export { defaultStorePath } from './host/datasource-store.ts'
+export { createHomeStore, defaultHomeStorePath } from './host/home-store.ts'
+export type { HomeStore, StoredHome } from './host/home-store.ts'
+export { createYonHomesService, HomeError } from './host/home-service.ts'
+export type { YonHomesService, HomeFindQuery } from './host/home-service.ts'
+export { probeHome } from './host/home-probe.ts'
+export { mirrorHomes, mirrorPathOf } from './host/home-mirror.ts'
+export { HOME_TOOL_NAMES } from './host/home-tools.ts'
+export { decodeText, declaredEncoding, isBinary, redactSecrets, resolveInside } from './host/home-files.ts'
+export { META_TOOL_NAMES } from './host/meta-tools.ts'
+export { buildMetaIndex, readMetaIndex, writeMetaIndex, metaIndexPath, metaIndexDir } from './host/meta-index.ts'
+export { createYonMetaService } from './host/meta-service.ts'
+export type { YonMetaService, MetaQueryAnswer, MetaDetailAnswer } from './host/meta-service.ts'
+export { parseBmf } from './host/meta-bmf.ts'
+export type { BmfComponent, BmfEntity, BmfEnum, BmfField } from './host/meta-bmf.ts'
+export type {
+  HomeFileView, HomeFindPayload, HomeIndexView, HomeKeyView, HomeListPayload, HomeMetaIndexView,
+  HomeProduct, HomeProfileView, HomeReadPayload, HomeShape, HomeView, MetaBuildView, MetaCountsView,
+  MetaFreshnessView, MetaIndexPayload, MetaIndexStatusView, SaveHomeInput,
+} from './shared/types.ts'
+export { HOME_PRODUCTS } from './shared/types.ts'
 export type {
   CreateProjectInput, DataSourceBinding, DataSourceListPayload, DataSourceProbeResult,
   DataSourceView, JsonValue, ProjectDetail, ProjectSummary, ProjectStatus,
@@ -96,6 +123,10 @@ declare module '@deepseek-ai/cordis' {
     yonDataSources: YonDataSourcesService
     /** The operator's Obsidian knowledge base, read through its own tools. */
     yonWiki: YonWikiService
+    /** The NCC/BIP installation directories the operator registered. */
+    yonHomes: YonHomesService
+    /** The metadata index over those installations' `.bmf` files. */
+    yonMeta: YonMetaService
   }
 }
 
@@ -184,11 +215,53 @@ export async function apply(ctx: Context): Promise<void> {
   // two tools the documents would ship and stay unreachable.
   ctx.effect(() => registerYonKnowledgeTools(ctx), 'yon-panel: knowledge tools')
 
+  // Where the installations are. The operator registers a Home once — path,
+  // product line, version — and afterwards the model looks it up instead of
+  // asking, which is the whole point of the feature. The same registration is
+  // written back to the skills' own `*_home_path.json`, so Claude Code's half of
+  // the toolchain benefits from the same fact.
+  const homeStore = createHomeStore()
+  const homes = createYonHomesService(homeStore)
+  ctx.effect(() => homes.dispose, 'yon-panel: home store')
+  ctx.provide('yonHomes', homes.service)
+
   // The class index: build one over an installation, then ask it which jar holds a
   // class. The other half of "read the platform's own implementation" — the
   // reference documents cover what someone wrote down, this covers what did not
   // get written down.
-  ctx.effect(() => registerYonClassTools(ctx), 'yon-panel: class index tools')
+  //
+  // The default Home is passed in because it is the only thing a registration
+  // changes about an existing tool: a search that names no version should mean
+  // "the installation I am working on", and without this it means "whichever
+  // index was built last".
+  ctx.effect(
+    () => registerYonClassTools(ctx, () => homes.service.defaultVersion()),
+    'yon-panel: class index tools',
+  )
+
+  // The Home tools: what is registered, what is inside it, and how to read a file
+  // out of it in the encoding it is actually stored in.
+  ctx.effect(() => registerYonHomeTools(ctx, homes.service), 'yon-panel: home tools')
+
+  // The metadata index: what the installation's `.bmf` files say, flattened so that
+  // "which table is 报销单据类型" and "which entities have a 员工 field" are questions
+  // with answers. It resolves a Home through the registration above rather than
+  // holding its own copy — the seam is one function, and this direction is the one
+  // with no cycle.
+  const meta = createYonMetaService(
+    async id => {
+      const found = (await homes.service.list()).homes.find(home => home.id === id)
+      if (found === undefined) {
+        throw new HomesError('not-found', `没有登记这个 Home：${id}。先调 ncc_home_list 拿 id。`)
+      }
+      return { id: found.id, path: found.path, version: found.version, product: found.product }
+    },
+    buildMetaIndex,
+    writeMetaIndex,
+  )
+  ctx.effect(() => meta.dispose, 'yon-panel: metadata index')
+  ctx.provide('yonMeta', meta)
+  ctx.effect(() => registerYonMetaTools(ctx, meta), 'yon-panel: metadata tools')
 
   // The digestion auditor: the one tool that judges the other tools' output.
   //
@@ -225,7 +298,8 @@ export async function apply(ctx: Context): Promise<void> {
   // the route simply never appears there.
   ctx.inject(['webServer'], (web) => {
     web.effect(
-      () => registerYonApi(web, service, skills.service, dataSources.service, wiki, digestLog),
+      () => registerYonApi(web, service, skills.service, dataSources.service, wiki, digestLog,
+        homes.service, meta),
       'yon-panel: project api',
     )
   })

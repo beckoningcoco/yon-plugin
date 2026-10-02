@@ -13,9 +13,10 @@
  * Nothing here fetches: every call arrives as a prop from the entry's inject
  * face, which is what keeps this file testable without the host.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { Button, Input, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, Input, MarkdownText, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SkillDetail, SkillView } from '../../shared/types.ts'
 import { cn } from '../cn.ts'
@@ -25,6 +26,17 @@ import css from './panel.module.css'
 
 /** Below this many skills the list is short enough to read without a search box. */
 const SEARCH_THRESHOLD = 8
+
+/**
+ * A description longer than this folds to four lines.
+ *
+ * The value is not a preference — it sits in a gap in the data. The thirteen
+ * skills this plugin ships split cleanly: seven descriptions of 101 characters
+ * or fewer, six of 182 or more, and nothing in between. Anything in that band
+ * separates the same two groups. See `.clampOn` for why this is a character
+ * count and not a measurement of the laid-out box.
+ */
+const DESC_FOLD_AT = 120
 
 /**
  * The mark in front of every skill row: a sheet with a folded corner.
@@ -64,6 +76,7 @@ export function SkillManager({ t, onClose, ...api }: SkillManagerProps) {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string>()
+  const [descriptionOpen, setDescriptionOpen] = useState(false)
 
   const list = useRef<HTMLUListElement | null>(null)
   // A late answer is dropped rather than repainting a newer selection.
@@ -119,6 +132,15 @@ export function SkillManager({ t, onClose, ...api }: SkillManagerProps) {
     )
   }
 
+  // The chrome the host's markdown asks for: its copy button and footnotes
+  // heading. Memoised on `t` because the host keys its renderer table off this
+  // object's identity — a fresh one per render would rebuild it on every
+  // keystroke in the search box, with a 2000-character body on screen.
+  const markdownLabels = useMemo<MarkdownLabels>(() => ({
+    code: { copyLabel: t('skill.copyCode'), copiedLabel: t('skill.copied') },
+    footnotes: t('skill.footnotes'),
+  }), [t])
+
   /** Flip the selected skill, then re-read so the list shows the new state too. */
   const toggle = (): void => {
     const target = selected
@@ -149,6 +171,11 @@ export function SkillManager({ t, onClose, ...api }: SkillManagerProps) {
     focusedOnce.current = true
     list.current?.querySelector<HTMLElement>('[role="option"][tabindex="0"]')?.focus()
   }, [loading])
+
+  // An unfolded description belongs to the skill it was unfolded on. Selecting
+  // another one by keyboard lands on the pane's 停用 button almost immediately,
+  // so the state has to follow the selection rather than the click that made it.
+  useEffect(() => { setDescriptionOpen(false) }, [selected?.name])
 
   const needle = query.trim().toLowerCase()
   const visible = needle === ''
@@ -274,7 +301,7 @@ export function SkillManager({ t, onClose, ...api }: SkillManagerProps) {
               live in an agent preset's scope layer, and a request from this
               panel cannot name that scope. An empty second group would read as
               "your skills are gone" instead of "this panel does not cover them". */}
-          <p className={cn(base.note)}>{t('skill.scopeHint')}</p>
+          <p className={cn(base.note, css.scopeHint)}>{t('skill.scopeHint')}</p>
 
           {needle !== '' && visible.length === 0 && (
             <p className={cn(base.note)}>{t('skill.searchEmpty', { query: query.trim() })}</p>
@@ -295,14 +322,27 @@ export function SkillManager({ t, onClose, ...api }: SkillManagerProps) {
             )
             : (
               <>
-                <h3 className={cn(css.title)}>
-                  {selected.name}
-                  <span className={cn(base.projectMeta)}>
-                    {selected.managed
-                      ? selected.enabled ? t('skill.enabled') : t('skill.disabled')
-                      : t('skill.readonly')}
-                  </span>
-                </h3>
+                <div className={cn(css.head)}>
+                  <h3 className={cn(css.title)}>
+                    {selected.name}
+                    <span className={cn(base.projectMeta)}>
+                      {selected.managed
+                        ? selected.enabled ? t('skill.enabled') : t('skill.disabled')
+                        : t('skill.readonly')}
+                    </span>
+                  </h3>
+
+                  {selected.managed && (
+                    <Button
+                      variant={selected.enabled ? 'outline' : 'primary'}
+                      size="sm"
+                      disabled={busy}
+                      onClick={toggle}
+                    >
+                      {selected.enabled ? t('skill.disable') : t('skill.enable')}
+                    </Button>
+                  )}
+                </div>
 
                 <p className={cn(base.note)}>
                   {selected.managed ? t('skill.managedHint') : t('skill.readonlyHint')}
@@ -310,7 +350,21 @@ export function SkillManager({ t, onClose, ...api }: SkillManagerProps) {
 
                 <dl className={cn(base.props)}>
                   <dt className={cn(base.propLabel)}>{t('skill.description')}</dt>
-                  <dd className={cn(base.propValue)}>{selected.description}</dd>
+                  <dd className={cn(base.propValue)}>
+                    <span className={cn(css.clamp, !descriptionOpen && css.clampOn)}>
+                      {selected.description}
+                    </span>
+                    {selected.description.length > DESC_FOLD_AT && (
+                      <button
+                        type="button"
+                        className={cn(base.foldToggle)}
+                        aria-expanded={descriptionOpen}
+                        onClick={() => { setDescriptionOpen(!descriptionOpen) }}
+                      >
+                        {descriptionOpen ? t('skill.fold') : t('skill.unfold')}
+                      </button>
+                    )}
+                  </dd>
 
                   {selected.whenToUse !== undefined && (
                     <>
@@ -323,23 +377,12 @@ export function SkillManager({ t, onClose, ...api }: SkillManagerProps) {
                   <dd className={cn(base.propValue)}>{selected.source}</dd>
                 </dl>
 
-                {selected.managed && (
-                  <div className={cn(base.detailActions)}>
-                    <Button
-                      variant={selected.enabled ? 'outline' : 'primary'}
-                      size="sm"
-                      disabled={busy}
-                      onClick={toggle}
-                    >
-                      {selected.enabled ? t('skill.disable') : t('skill.enable')}
-                    </Button>
-                  </div>
-                )}
-
                 <hr className={cn(base.rule)} />
 
                 <h4 className={cn(base.sectionTitle)}>{t('skill.body')}</h4>
-                <pre className={cn(css.body)}>{selected.content}</pre>
+                <div className={cn(css.doc)}>
+                  <MarkdownText text={selected.content} labels={markdownLabels} />
+                </div>
               </>
             )}
         </section>

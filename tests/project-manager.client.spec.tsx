@@ -286,7 +286,11 @@ describe('project surface', () => {
       p1: { name: 'proj', code: '', status: 'active', archived: false, fields: { 环境信息: '10.0.0.1' } },
     })
 
-    const value = await screen.findByLabelText(`环境信息 · ${at('project.fieldValue')}`)
+    const label = `环境信息 · ${at('project.fieldValue')}`
+    // A value is read as text and becomes an input on click; one control holds
+    // the label at a time, so the second query is the editor, not the reader.
+    fireEvent.click(await screen.findByLabelText(label))
+    const value = screen.getByLabelText(label)
     fireEvent.change(value, { target: { value: '10.0.0.9' } })
     fireEvent.blur(value)
 
@@ -302,19 +306,126 @@ describe('project surface', () => {
     })
     vi.mocked(api.setField).mockRejectedValueOnce(new Error('boom'))
 
-    const row = await screen.findByLabelText(`环境信息 · ${at('project.fieldValue')}`)
+    const label = `环境信息 · ${at('project.fieldValue')}`
+    fireEvent.click(await screen.findByLabelText(label))
+    const row = screen.getByLabelText(label)
     fireEvent.change(row, { target: { value: '10.0.0.9' } })
     fireEvent.blur(row)
 
     const retry = await screen.findByText(at('project.fieldFailed'))
-    // The operator's text survives the failure instead of looking saved.
-    expect((screen.getByLabelText(`环境信息 · ${at('project.fieldValue')}`) as HTMLInputElement).value).toBe('10.0.0.9')
+    // A failure reopens the row with the text still in it, so the retry button
+    // means "this text again" rather than "whatever happens to be stored".
+    expect((screen.getByLabelText(label) as HTMLTextAreaElement).value).toBe('10.0.0.9')
 
     fireEvent.click(retry)
     await waitFor(() => {
       expect(api.setField).toHaveBeenLastCalledWith('p1', '环境信息', '10.0.0.9')
     })
     await screen.findByText(at('project.fieldSaved'))
+  })
+
+  it('reads a structured value as a key-value list, and the raw text on click', async () => {
+    bench({
+      p1: {
+        name: 'proj',
+        code: '',
+        status: 'active',
+        archived: false,
+        fields: { 扩展参数: { 来源: 'NCC2312', 目标: 'BIP2507' } },
+      },
+    })
+
+    const label = `扩展参数 · ${at('project.fieldValue')}`
+    const read = await screen.findByLabelText(label)
+
+    // The row shows the pairs themselves: keys and values are their own text, and
+    // no brace from the JSON the value is stored as appears in it.
+    expect(screen.getByText('来源')).toBeTruthy()
+    expect(screen.getByText('NCC2312')).toBeTruthy()
+    expect(read.textContent).not.toContain('{')
+    // Nothing to type into until the value is clicked.
+    expect(document.querySelector('textarea')).toBeNull()
+
+    fireEvent.click(read)
+
+    // The editor is seeded from the text that is stored, not from the list.
+    expect((screen.getByLabelText(label) as HTMLTextAreaElement).value)
+      .toBe('{"来源":"NCC2312","目标":"BIP2507"}')
+  })
+
+  it('lists an array one entry per line instead of one JSON blob', async () => {
+    bench({
+      p1: {
+        name: 'proj',
+        code: '',
+        status: 'active',
+        archived: false,
+        fields: { 应用服务器: ['10.20.31.7', '10.20.31.8'] },
+      },
+    })
+
+    const read = await screen.findByLabelText(`应用服务器 · ${at('project.fieldValue')}`)
+
+    expect(screen.getByText('10.20.31.7')).toBeTruthy()
+    expect(screen.getByText('10.20.31.8')).toBeTruthy()
+    // An entry has no key of its own, so it gets the mark rather than an index.
+    expect(screen.getAllByText('·')).toHaveLength(2)
+    expect(read.textContent).not.toContain('[')
+  })
+
+  it('reads a value nested deeper than one level as JSON', async () => {
+    bench({
+      p1: {
+        name: 'proj',
+        code: '',
+        status: 'active',
+        archived: false,
+        fields: { 扩展参数: { 来源: { 编码: 'NCC2312' } } },
+      },
+    })
+
+    const read = await screen.findByLabelText(`扩展参数 · ${at('project.fieldValue')}`)
+
+    // Indented JSON beats a key-value list indented two levels deep.
+    expect(read.textContent).toContain('"编码": "NCC2312"')
+  })
+
+  it('leaves a JSON string a string while reading it as pairs', async () => {
+    // How the real stores hold a datasource config: one long string of JSON.
+    const stored = '{"数据源key":"FAKE-01","类型":"NCC2312"}'
+    const { api } = bench({
+      p1: { name: 'proj', code: '', status: 'active', archived: false, fields: { 数据库连接串: stored } },
+    })
+
+    const label = `数据库连接串 · ${at('project.fieldValue')}`
+    const read = await screen.findByLabelText(label)
+    expect(screen.getByText('数据源key')).toBeTruthy()
+    expect(screen.getByText('FAKE-01')).toBeTruthy()
+
+    fireEvent.click(read)
+    const editor = screen.getByLabelText(label) as HTMLTextAreaElement
+    expect(editor.value).toBe(stored)
+
+    // Read and typed text are the same, so looking at a value writes nothing.
+    fireEvent.blur(editor)
+    expect(api.setField).not.toHaveBeenCalled()
+  })
+
+  it('gives up an edit on Escape without writing', async () => {
+    const { api } = bench({
+      p1: { name: 'proj', code: '', status: 'active', archived: false, fields: { 环境信息: '10.0.0.1' } },
+    })
+
+    const label = `环境信息 · ${at('project.fieldValue')}`
+    fireEvent.click(await screen.findByLabelText(label))
+    const editor = screen.getByLabelText(label)
+    fireEvent.change(editor, { target: { value: '改了但不要' } })
+    fireEvent.keyDown(editor, { key: 'Escape' })
+
+    expect(api.setField).not.toHaveBeenCalled()
+    // Back to what is stored, with the editor closed again.
+    expect(screen.getByText('10.0.0.1')).toBeTruthy()
+    expect(document.querySelector('textarea')).toBeNull()
   })
 
   it('keeps a long digit string a string', async () => {

@@ -1,6 +1,7 @@
 /** Slot contract this package owns: the button seat inside the Yon panel. */
 import type { DataSourceApi } from './datasource/api.ts';
 import type { DigestApi } from './digest/api.ts';
+import type { HomeApi } from './home/api.ts';
 import type { ProjectApi } from './project/api.ts';
 import type { SkillApi } from './skill/api.ts';
 import type { WikiApi } from './wiki/api.ts';
@@ -82,6 +83,20 @@ export type DigestItemFace = DigestApi & {
     pushOverlay(): () => void;
 };
 /**
+ * Data face the panel's installation-directory entry receives: the Home API plus
+ * the same panel-level gesture.
+ *
+ * It borrows nothing, like the wiki and ledger entries: a Home is addressed by its
+ * own generated id, and nothing about it belongs to a project or a vault.
+ */
+export type HomeItemFace = HomeApi & {
+    /**
+     * Announce a layer standing above the panel (the Home surface).
+     * @returns the release for that layer.
+     */
+    pushOverlay(): () => void;
+};
+/**
  * Bare observable source: the getSnapshot/subscribe pair the DSH renderer binds
  * into a `use<Name>` selector hook. Declared here rather than imported, so this
  * plugin carries no compile-time dependency on one harness release's type names.
@@ -103,10 +118,30 @@ export interface YonPanelSnapshot {
      */
     readonly overlayDepth: number;
 }
-/** Owner share of one panel button seat: the panel's live open state. */
+/** Owner share of one panel button seat: the panel's live open state and name. */
 export interface YonPanelItemOwnerProps {
     /** Whether the panel hosting this button is open (true whenever it renders). */
     readonly open: boolean;
+    /**
+     * What to call this entry, resolved by the panel from the entry's own
+     * registration `label` — a string, or a thunk read per render so it follows the
+     * active locale. Never empty: an entry that declares no label is named by its
+     * registration id, so no button is anonymous.
+     *
+     * The shell supplies it rather than each entry reading its own dictionary key,
+     * because the panel is the one place that knows every entry it hosts: it can
+     * order, list, and name them without having rendered any of them, which is what
+     * lets a foreign entry arrive labelled without that package knowing the panel's
+     * copy at all.
+     */
+    readonly label: string;
+}
+/** One entry in the panel's row projection: its registration id and its name. */
+export interface YonPanelItemRow {
+    /** The registration id of the entry this row addresses. */
+    readonly id: string;
+    /** The entry's resolved display name; see {@link YonPanelItemOwnerProps.label}. */
+    readonly label: string;
 }
 declare module '@deepseek-ai/dsh-client-ui-slots' {
     interface SlotMap {
@@ -131,6 +166,8 @@ export interface YonPanelRootFace {
     hooks: {
         /** Live panel state. */
         panel: PanelSource<YonPanelSnapshot>;
+        /** The panel's rows, in registration order: which entries it hosts, and their names. */
+        items: PanelSource<readonly YonPanelItemRow[]>;
     };
     /** Flip the panel open/closed (the trigger gesture). */
     onToggle(): void;

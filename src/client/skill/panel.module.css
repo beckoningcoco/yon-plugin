@@ -1,36 +1,89 @@
-/* Skill-surface pieces the shared dialog chrome does not cover: the group
-   headings, the switched-off row, and the body reader. Everything structural —
-   the pane split, the list, the property grid, the error strip — comes from the
-   shared stylesheet, so this surface and the project surface stay one family. */
+/* Skill-surface pieces the shared dialog chrome does not cover: the header row
+   that carries the switch, the group headings, the switched-off row, and the
+   fold for a long description. Everything structural — the pane split, the list,
+   the property grid, the error strip — comes from the shared stylesheet, so this
+   surface and the project surface stay one family. The skill's own instructions
+   are the host's markdown, styled by the host's own sheet, so nothing here
+   describes them. */
 
-/* The skill name plus its state, on one line. Defined here rather than reusing
-   the project surface's editable title: this name is the identifier the registry
-   addresses the skill by, so offering to rename it would be a lie. */
-.title {
+/* The name, its state, and the one control that changes that state, on one line.
+ *
+ * 启用/停用 used to sit at the foot of the pane, under the property grid, and
+ * measured, it was not reachable: 描述 alone runs to 198px in the widest case,
+ * the grid ended 6px above the fold, and everything after it — the button, the
+ * rule, the 技能正文 heading and the whole body — began below. So the surface's
+ * only verb was the one thing on it you could not see, and the state it acts on
+ * was announced 300px above it. The two are now adjacent, which is also where
+ * the list rows put the state.
+ *
+ * The name itself stays read-only and is defined here rather than reusing the
+ * project surface's editable title: this name is the identifier the registry
+ * addresses the skill by, so offering to rename it would be a lie. */
+.head {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 0 6px;
-  font-size: 15px;
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
   font-weight: 600;
   color: var(--dsw-alias-label-primary);
 }
 
+/* The two groups scroll as one, between the search box above them and the scope
+   hint below.
+ *
+ * Measured with twelve skills on screen, this column's content ran 131px past
+ * the bottom of the pane and nothing scrolled: the second group was cut off and
+ * the scope hint — the line that says the operator's own skills live elsewhere
+ * and are not missing — was pushed entirely out of the dialog. The lists inside
+ * carry `overflow-y: auto` of their own, but they are children of plain blocks
+ * and size to their content, so `flex: 1` does nothing there and there was never
+ * a restricted height for the overflow to travel into. The scroll belongs here,
+ * where the height is actually bounded.
+ *
+ * The search box stays out of it: it filters both lists at once, so scrolling it
+ * away would hide the control that explains why the list looks short. */
 .groups {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
 /* A group heading, not a control: two lists share one scroll area, and which
-   list a row belongs to is what decides whether it can be switched at all. */
+   list a row belongs to is what decides whether it can be switched at all.
+   12px, the size the shared stylesheet's own section titles use — this was the
+   only heading in the plugin at 11px, so the same kind of label changed size
+   when you moved between two panels of the same dialog. */
 .group {
   margin: 0 0 4px;
   padding: 0 2px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
   color: var(--dsw-alias-label-tertiary);
+}
+
+/* The scope hint is pinned below the scrolling list, and a scroll edge always
+   cuts the row it lands on — mid-row, at an arbitrary height. With 6px of the
+   pane's own gap between them the cut row and the hint read as one block, the
+   hint looking like it is drawn over the row. The hairline is `l1`, the rung
+   this plugin uses for internal dividers, and it says where the list stops. */
+.scopeHint {
+  flex: none;
+  margin-top: 0;
+  padding-top: 8px;
+  border-top: 0.5px solid var(--dsw-alias-border-l1);
 }
 
 /* A skill this plugin ships but is not offering right now. Dimmed rather than
@@ -39,18 +92,77 @@
   opacity: 0.55;
 }
 
-.body {
-  margin: 0;
-  max-height: 300px;
-  overflow: auto;
-  padding: 10px 12px;
-  border: 0.5px solid var(--dsw-alias-border-l1);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--dsw-alias-label-primary) 4%, transparent);
-  color: var(--dsw-alias-label-secondary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.65;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+/* The skill's own instructions, rendered rather than quoted.
+ *
+ * This was a `<pre>` holding the raw markdown source, in a bordered monospace
+ * well with its own `max-height: 300px; overflow: auto`. Two things were wrong
+ * with that, and only the second one is a matter of taste:
+ *
+ *   - the well was a second scroll area inside the detail pane's own, 20px tall
+ *     against 2029px of content. A nested scroller whose visible height is one
+ *     line does not read as "scroll me", it reads as "the text stops here";
+ *   - the source is not what the reader wants. The body is written for the model
+ *     — `#`, `>`, `|` tables, fenced Java — and the host already ships the
+ *     renderer for exactly this (`MarkdownText`, exported by the host's own
+ *     `ui-primitives/src/index.ts`, unlike the newer `Tag` atom which the host
+ *     this plugin runs inside does not have). Hand-rolling a second reading of
+ *     markdown was the alternative; there was no reason to.
+ *
+ * With the source gone, so is the box: rendered prose already carries its own
+ * hierarchy and does not need a hairline around it. That also removes the class
+ * name `.body`, which was doing double duty — this file's `.body` and the shared
+ * stylesheet's `.body` (the two-column area) collided in the preview harness,
+ * where class names are not hashed, and the later rule gave the two-column area
+ * `overflow: auto`. The measurement that came out of that ("the shared body
+ * overflows by 280px") was an artifact of one page carrying two `.body` rules,
+ * not something the real client does.
+ *
+ * The wrapper is the only element this file owns, and it says one thing: let it
+ * shrink. `min-width: 0` is load-bearing — a body may carry a wide table, and
+ * without it the flex item refuses to go below its content and pushes the pane
+ * wide.
+ *
+ * A rule used to sit beside this one, zeroing the first block's top margin to
+ * close a void blamed on the host's chat-tuned spacing. Both halves of that were
+ * wrong. The host already zeroes it, with `!important`, in its own sheet
+ * (`MarkdownText.module.css`: `.markdown > *:first-child`), so the rule here
+ * never applied to anything; and the 26px gap under 技能正文 that was visible on
+ * screen was never markdown — it was `.sectionTitle`'s, an `<h4>` whose default
+ * heading margin nothing in this plugin reset. That is now fixed on the shared
+ * sheet. A dead rule is worse than no rule, because the next reader believes
+ * something is handled here.
+ *
+ * The host's spacing itself is left alone, measured rather than assumed: with a
+ * real body (1877 characters) in this pane the document renders 2354px tall in a
+ * 377px column, 560px of which — 22% — is block margin, headings accounting for
+ * 256px of it at the host's 32px-above/16px-below pitch. That pitch is the
+ * markdown sheet's own baseline, the one this same markdown gets in chat. A
+ * plugin-local override would make one body render one way here and another way
+ * everywhere else in the host, to reclaim about a tenth of a scroll length that
+ * reads fine at that length. It is not broken, so it is not touched. */
+.doc {
+  min-width: 0;
+}
+
+/* A long description folds. The line between the two states is drawn at 120
+   characters because that is where the data divides, not because it is a round
+   number: of the thirteen skills this plugin ships, seven are 101 characters or
+   fewer and six are 182 or more, with nothing in between. So the threshold's
+   exact value does not matter — any number in that empty band separates the same
+   two groups. Measured at this pane's width, 120 characters is about four lines,
+   which is also where the clamp cuts.
+ *
+ * It is a character count rather than a `scrollHeight > clientHeight` probe
+ * because the preview harness runs in jsdom, where every element reports
+ * scrollHeight 0: a measured test would silently never render the control there,
+ * and the screenshots are this repo's review artifact. */
+.clamp {
+  display: block;
+}
+
+.clampOn {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
 }

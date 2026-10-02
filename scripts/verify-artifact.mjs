@@ -96,6 +96,22 @@ if (existsSync(join(root, catalogPath))) {
 }
 
 // ── the browser half: the loader's closure-factory artifact ──────────────────
+/**
+ * Characters of the browser half's own sources — the files this bundle is made
+ * of, and therefore the only size it can honestly be held against.
+ *
+ * Counted as a string rather than as bytes, because that is the unit the
+ * artifact is measured in below; the sources carry Chinese copy, and counting
+ * those in bytes on one side and characters on the other would inflate the
+ * bound by whatever share of the bundle is not ASCII.
+ */
+const clientSourceDir = join(root, 'src', 'client')
+const clientSourceLength = existsSync(clientSourceDir)
+  ? readdirSync(clientSourceDir, { recursive: true })
+    .filter(name => /\.(?:ts|tsx|css)$/.test(name))
+    .reduce((total, name) => total + readFileSync(join(clientSourceDir, name), 'utf8').length, 0)
+  : 0
+
 const clientPath = 'lib/client.js'
 check(existsSync(join(root, clientPath)), 'lib/client.js is missing')
 if (existsSync(join(root, clientPath))) {
@@ -124,7 +140,32 @@ if (existsSync(join(root, clientPath))) {
   check(!client.includes('jsx-runtime.production'), 'lib/client.js: React appears to be bundled in')
   check(client.includes('data-plugin-css'), 'lib/client.js: plugin-owned style injection is missing')
   check(client.includes('--dsw-'), 'lib/client.js: the injected styles carry no theme token (CSS not compiled?)')
-  check(client.length < 200_000, `lib/client.js looks too large for this plugin (${client.length} bytes)`)
+  // A net for code inlined from outside this tree — not a budget for how big
+  // the UI is allowed to get. It is a multiple of the source the bundle is built
+  // from rather than a fixed ceiling, so adding a surface raises the source and
+  // the bound together: the previous fixed 200000 was reached by the fifth
+  // panel, which is to say it went red for the plugin having grown rather than
+  // for anything being wrong, and a gate that fires for the wrong reason gets
+  // its number raised without being read.
+  //
+  // Measured 2026-09-29 at five panels: 242208 from 254540 (0.95x) — minification
+  // puts the artifact just under the source it came from. React and
+  // ui-primitives stay external by name above; this only has to catch a
+  // stranger, so the multiple leaves room for the ratio drifting with the mix of
+  // markup and styles rather than pinning it to today's figure.
+  const SOURCE_MULTIPLE = 2
+  check(
+    clientSourceLength > 0,
+    'src/client: no sources found, so the client bundle has no bound to be checked against',
+  )
+  if (clientSourceLength > 0) {
+    const ratio = client.length / clientSourceLength
+    check(
+      ratio < SOURCE_MULTIPLE,
+      `lib/client.js is ${client.length} chars for ${clientSourceLength} chars of source `
+      + `(${ratio.toFixed(2)}x, bound ${SOURCE_MULTIPLE}x) — something outside src/client may be inlined`,
+    )
+  }
 }
 
 // ── the declared types ───────────────────────────────────────────────────────

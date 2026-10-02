@@ -19,5 +19,11 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src", "tests"]
+  // `preview` is here, not in tsconfig.lib.json: it is the render harness, it is
+  // never emitted, and it is the surface most likely to rot silently — five panels'
+  // worth of fixtures and mock signatures that nothing else imports. Leaving it
+  // outside the gate meant ~90 KB of new code that only a human could notice going
+  // wrong; measured at the time of adding it, the whole preview tree was already
+  // clean, so this costs nothing today.
+  "include": ["src", "tests", "preview", "preview.config.ts"]
 }

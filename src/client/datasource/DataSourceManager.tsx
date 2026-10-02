@@ -536,6 +536,19 @@ export function DataSourceManager({ t, onClose, ...api }: DataSourceManagerProps
                     <p className={cn(base.note)}>{t('datasource.probeUnavailable')}</p>
                   )}
 
+                  {/* The question sits on its own line, above the buttons it is
+                      asking about. It used to be a third item inside the row
+                      below, where it took the width the two answers needed: the
+                      note does not shrink — as a flex item its base size is its
+                      max-content width — so 取消 was pushed onto a line of its
+                      own, under 测试连接, as far as it could get from the button
+                      it cancels. Here the row keeps only its three verbs. */}
+                  {confirmingRemove && (
+                    <p className={cn(base.note)}>
+                      {t('datasource.removeConfirm', { key: current.key })}
+                    </p>
+                  )}
+
                   <div className={cn(base.detailActions)}>
                     <Button
                       size="sm"
@@ -558,9 +571,6 @@ export function DataSourceManager({ t, onClose, ...api }: DataSourceManagerProps
                     {confirmingRemove
                       ? (
                         <>
-                          <span className={cn(base.note)}>
-                            {t('datasource.removeConfirm', { key: current.key })}
-                          </span>
                           <Button
                             size="sm"
                             variant="outline"

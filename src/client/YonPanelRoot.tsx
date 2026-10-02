@@ -1,13 +1,13 @@
 /** The Yon sidebar-foot action and the panel it opens above itself. */
 
-import { useEffect, useRef, type CSSProperties } from 'react'
+import { Fragment, useEffect, useRef, type CSSProperties } from 'react'
 import {
   Tooltip, useAnchoredPosition, useDismissOnOutsidePointer,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime,
 } from '@deepseek-ai/dsh-client-ui-slots'
-import type { YonPanelRootFace, YonPanelSnapshot } from './slots.ts'
+import type { YonPanelItemRow, YonPanelRootFace, YonPanelSnapshot } from './slots.ts'
 import css from './YonPanelRoot.module.css'
 
 /** Composed props of the sidebar footer-action entry: all four shares, all derived. */
@@ -45,11 +45,21 @@ function YonMark() {
  * @param props - composed slot props.
  * @returns the trigger plus the open panel.
  */
-export function YonPanelRoot({ usePanel, onToggle, onSetOpen, renderSlot, t }: YonPanelRootProps) {
+export function YonPanelRoot({
+  usePanel, useItems, onToggle, onSetOpen, renderSlot, t,
+}: YonPanelRootProps) {
   // The selector parameter is annotated so the hook's type stays readable no
   // matter how a given harness release types the injected `hooks` compartment.
   const open = usePanel((snapshot: YonPanelSnapshot) => snapshot.open)
   const overlayDepth = usePanel((snapshot: YonPanelSnapshot) => snapshot.overlayDepth)
+  // The panel's rows: one per entry registered against its seat, in seat order.
+  // The source hands back the same array until the registration or the language
+  // moves, so reading it here costs no re-renders of its own. Annotated like the
+  // selector above, and for the same reason — the row type is proved at the
+  // inject site (the source this face carries is a `PanelSource<readonly
+  // YonPanelItemRow[]>`, and the face's declaration is what the registration
+  // checks), not re-derived from whatever the hook is typed as here.
+  const items: readonly YonPanelItemRow[] = useItems((rows: readonly YonPanelItemRow[]) => rows)
   const root = useRef<HTMLDivElement | null>(null)
   const panel = useRef<HTMLElement | null>(null)
   const anchor = useAnchoredPosition({
@@ -95,7 +105,17 @@ export function YonPanelRoot({ usePanel, onToggle, onSetOpen, renderSlot, t }: Y
               trigger itself close the panel; the accessible name above keeps it
               announceable. */}
           <div className={css.body}>
-            {renderSlot('yon.panel.item', { open })}
+            {/* One row per entry, each dispatched by its own registration id.
+                The panel drives the row list from the seat instead of asking the
+                seat to render itself: it knows which entries it hosts, in which
+                order, under which names — and hands each entry its own name. The
+                row still renders through the entry, because only the entry knows
+                its glyph and the surface that glyph opens. */}
+            {items.map(item => (
+              <Fragment key={item.id}>
+                {renderSlot('yon.panel.item', { open, label: item.label }, { only: item.id })}
+              </Fragment>
+            ))}
           </div>
         </section>
       )}

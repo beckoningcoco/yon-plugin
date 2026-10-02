@@ -34,7 +34,12 @@
 
 /* The yon mark: a single Y monogram in an outlined block. The hairline uses the
    strongest foreground alias, so it reads as a black line in the light theme
-   and flips with the theme instead of vanishing in the dark. */
+   and flips with the theme instead of vanishing in the dark.
+   The radius is the box rule (8px), not a value of its own: it sat at 7px, a
+   hair off the `.trigger` it lives in for no reason a reader could recover. The
+   concentric rule — inner radius = outer − the gap — does not apply here, since
+   the trigger is 32px at `padding: 0` and the mark floats 4px clear of it with
+   no shared corner to be concentric with. */
 .mark {
   display: inline-flex;
   align-items: center;
@@ -42,7 +47,7 @@
   width: 24px;
   height: 24px;
   border: 0.5px solid var(--dsw-alias-label-primary);
-  border-radius: 7px;
+  border-radius: 8px;
   color: var(--dsw-alias-label-primary);
   font-size: 12px;
   font-weight: 700;
@@ -71,16 +76,23 @@
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
-/* Entry cells only: each contributor owns its own button, so the body lays the
-   grid out and leaves the chrome to the entry. With no header row, this is the
-   panel's whole surface, so it carries the breathing room on all four sides. */
+/* The panel's rows, one entry per line.
+ *
+ * One per line rather than a wrapped grid of icon cells: the panel now names each
+ * entry in the row itself, and a name only reads as a name when it is not wrapped
+ * under a glyph in a quarter-width tile. It also takes the ragged last row out of
+ * the layout — five cells wrap 3+2 at this width, which read as a two-row grid
+ * with a hole in it rather than as five peers.
+ *
+ * The body stays a column and stretches each row to the full width, so the row's
+ * own hit target is the whole line: the panel owns the column, the entry owns the
+ * row it draws inside it. */
 .body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   display: flex;
-  flex-wrap: wrap;
-  align-content: flex-start;
-  gap: 4px;
-  padding: 8px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
 }

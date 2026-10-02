@@ -26,6 +26,15 @@
  *   POST   /yon/api/datasources/<key>/probe  run SELECT 1 through the bundled script
  *   PUT    /yon/api/datasources/<key>/binding bind the connection group to a project
  *
+ *   GET    /yon/api/homes                    list, each with its last probe
+ *   POST   /yon/api/homes                    register one installation directory
+ *   PUT    /yon/api/homes/<id>               edit one registration (id is immutable)
+ *   DELETE /yon/api/homes/<id>               drop one registration
+ *   POST   /yon/api/homes/<id>/probe         re-read the directory and store the result
+ *   PUT    /yon/api/homes/<id>/default       make this the Home a bare version means
+ *
+ *   POST   /yon/api/pick-directory          open the host's own folder chooser
+ *
  * A datasource key is `<configKey>::<env>` and carries non-ASCII text, so every
  * route segment below is decoded (by {@link segmentsOf}) and every client call
  * encodes it. The key is opaque to this layer: it is split only where the
@@ -38,14 +47,16 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import {
-  API_PREFIX, PROJECT_STATUSES, type ApiError, type JsonValue, type SetFieldInput,
-  type UpdateProjectInput,
+  API_PREFIX, PROJECT_STATUSES, type ApiError, type DirectoryPickResult, type JsonValue,
+  type SaveHomeInput, type SetFieldInput, type UpdateProjectInput,
 } from '../shared/types.ts'
 import { ProjectError, type YonProjectsService } from './service.ts'
 import { SkillError, type YonSkillsService } from './skill-registry.ts'
 import { DataSourceError, type YonDataSourcesService } from './datasource-service.ts'
 import { WikiError, type YonWikiService } from './wiki-service.ts'
 import { digestLogPath, type DigestLog } from './digest-log.ts'
+import { HomeError, type YonHomesService } from './home-service.ts'
+import type { YonMetaService } from './meta-service.ts'
 
 /** Largest request body accepted, in bytes. */
 const MAX_BODY_BYTES = 1_000_000
@@ -235,6 +246,212 @@ async function handleDataSources(
   }
 
   sendFailure(res, 404, 'not-found', `no route for ${method} /yon/api/datasources/...`)
+}
+
+/**
+ * Read a Home registration body into the service's input shape.
+ *
+ * A caller that still sends a `label` gets it ignored rather than rejected: the name
+ * is derived from the product line and the version (`homeLabelOf`), so there is
+ * nothing for a body to say about it.
+ */
+function homeInputOf(body: Record<string, unknown>): SaveHomeInput {
+  return {
+    path: typeof body.path === 'string' ? body.path : '',
+    product: body.product === 'bip' ? 'bip' : 'ncc',
+    version: typeof body.version === 'string' ? body.version : '',
+    ...body.isDefault === undefined ? {} : { isDefault: Boolean(body.isDefault) },
+  }
+}
+
+/**
+ * Serve the `/yon/api/homes` branch.
+ *
+ * A registration is identified by its generated id, and the id is not editable —
+ * the same convention the datasource panel uses for a connection's key and
+ * environment. Editing changes what an entry describes, never which entry it is,
+ * so anything a conversation already referred to keeps meaning the same Home.
+ *
+ * @param req - the request; read for the body on writes.
+ * @param res - the response.
+ * @param method - HTTP method.
+ * @param segments - the decoded path segments after the API prefix.
+ * @param homes - the Home service.
+ * @param meta - the metadata index over those Homes.
+ * @param search - the request's query string, for the one route that has a flag.
+ */
+async function handleHomes(
+  req: IncomingMessage,
+  res: ServerResponse,
+  method: string,
+  segments: readonly string[],
+  homes: YonHomesService,
+  meta: YonMetaService,
+  search: URLSearchParams,
+): Promise<void> {
+  const id = segments[1]
+  const tail = segments[2]
+
+  // /yon/api/homes
+  if (id === undefined) {
+    if (method === 'GET') {
+      sendJson(res, 200, await homes.list())
+      return
+    }
+    if (method === 'POST') {
+      const home = await homes.save(homeInputOf(await objectBody(req)))
+      sendJson(res, 201, { home })
+      return
+    }
+    sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+    return
+  }
+
+  // /yon/api/homes/<id>
+  if (tail === undefined) {
+    if (method === 'PUT') {
+      const home = await homes.save(homeInputOf(await objectBody(req)), id)
+      sendJson(res, 200, { home })
+      return
+    }
+    if (method === 'DELETE') {
+      await homes.remove(id)
+      sendJson(res, 200, { removed: id })
+      return
+    }
+    sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+    return
+  }
+
+  // /yon/api/homes/<id>/probe
+  if (tail === 'probe' && method === 'POST') {
+    sendJson(res, 200, { home: await homes.probe(id) })
+    return
+  }
+
+  // /yon/api/homes/<id>/default
+  if (tail === 'default' && method === 'PUT') {
+    sendJson(res, 200, { home: await homes.setDefault(id) })
+    return
+  }
+
+  // /yon/api/homes/<id>/meta-index
+  //
+  // GET is the status, and `fresh=0` skips the fingerprint comparison — a walk plus a
+  // stat per file, measured at 0.61 s. A panel polling a running build wants the progress
+  // and not a disk scan per second, so it asks for the cheap answer and takes the full
+  // one when it opens and when the build finishes.
+  if (tail === 'meta-index') {
+    if (method === 'GET') {
+      const status = await meta.status(id, search.get('fresh') !== '0')
+      sendJson(res, 200, { home: id, status })
+      return
+    }
+    if (method === 'POST') {
+      // Returns as soon as the build is queued rather than when it finishes: the panel
+      // polls GET for progress, and a request that blocks for minutes is one a proxy
+      // will cut. `started: false` means one was already running for this version.
+      const handle = await meta.startBuild(id)
+      sendJson(res, 202, { home: id, ...handle })
+      return
+    }
+    sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+    return
+  }
+
+  sendFailure(res, 404, 'not-found', `no route for ${method} /yon/api/homes/...`)
+}
+
+/**
+ * The slice of the harness's directory-picker service this module drives.
+ *
+ * Declared structurally instead of imported: this plugin is installed as a
+ * package outside the harness repository, so it may not depend on a host
+ * package — and a host that mounts no picker at all has to degrade to "type the
+ * path yourself" rather than fail to load. That is the same seam `webServer`
+ * above uses, for the same reason.
+ *
+ * `kind` is deliberately a plain string. The harness composes one backend per
+ * environment (a native chooser on a local desktop, a browser-side listing over
+ * SSH or a LAN address) and owns that vocabulary, so a closed union here would be
+ * this plugin claiming to know a list it does not. `native` is the one this side
+ * implements; every other kind is reported back to the panel as-is and read there
+ * as "no chooser to show", which is the rule the harness documents for a shape a
+ * consumer does not implement: hide the picking affordance, do not fail.
+ */
+interface DirectoryPickerLike {
+  capability(): {
+    readonly kind: string
+    pick?(signal: AbortSignal): Promise<string | null>
+  }
+}
+
+/**
+ * Serve `POST /yon/api/pick-directory`: ask the host to open its folder chooser.
+ *
+ * This has to live on the host because the answer is an absolute path and the
+ * browser cannot produce one. `showDirectoryPicker()` returns a handle, and an
+ * `<input webkitdirectory>` returns names relative to the picked root; neither
+ * yields `E:/NCProject/NCC/jixieyuan/home`. The host's native chooser does, and
+ * the operator is sitting at the host — this is a desktop app, so "open a dialog
+ * on the server" and "open a dialog in front of me" are the same sentence.
+ *
+ * An empty `path` means the operator cancelled. That is a normal answer, not an
+ * error: the caller leaves the field as it was.
+ *
+ * @param res - the response.
+ * @param method - the HTTP method.
+ * @param ctx - the host context, for the picker service.
+ */
+async function handlePickDirectory(
+  res: ServerResponse,
+  method: string,
+  ctx: Context,
+): Promise<void> {
+  if (method !== 'POST') {
+    sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+    return
+  }
+
+  const picker = ctx.get('directoryPicker') as DirectoryPickerLike | undefined
+  const capability = picker?.capability()
+  // Only `native` is driven here, and that is checked before `pick` is trusted. The
+  // harness's other backend lists a directory in the browser instead of opening a
+  // dialog, and a `pick` appearing on some future kind promises nothing about what
+  // it returns — while this field has to hold an absolute path. Anything else is
+  // left alone rather than guessed at, which is the harness's own rule for a shape
+  // a consumer does not implement: hide the affordance, do not fail.
+  const native = capability?.kind === 'native' ? capability : undefined
+  const pick = typeof native?.pick === 'function' ? native.pick.bind(native) : undefined
+  if (pick === undefined) {
+    // Never echo `native` back without a usable `pick`: the panel shows its button
+    // on that one word, so saying it here would offer a control that can never
+    // answer. Any other kind is passed through as-is — it is the host's vocabulary,
+    // and the panel reads everything but `native` as "type the path".
+    //
+    // 200 rather than an error status either way: "this host has no chooser" is an
+    // answer the form acts on, not a failure it should render as one.
+    const kind = capability === undefined || capability.kind === 'native'
+      ? 'unavailable'
+      : capability.kind
+    sendJson(res, 200, { kind } satisfies DirectoryPickResult)
+    return
+  }
+
+  // A native dialog outlives the request that opened it. If the operator closes
+  // the panel while it is up, nothing is left waiting on the answer, so abort the
+  // pick instead of leaving an orphaned OS window with no one to receive it.
+  const abort = new AbortController()
+  const onClose = (): void => { abort.abort() }
+  res.on('close', onClose)
+  try {
+    const path = await pick(abort.signal)
+    // `native` literally rather than `native.kind`: reaching here is what makes it
+    // native, and a kind that is not is not routed here at all.
+    sendJson(res, 200, { kind: 'native', path } satisfies DirectoryPickResult)
+  } finally {
+    res.off('close', onClose)
+  }
 }
 
 /**
@@ -492,6 +709,8 @@ export function registerYonApi(
   sources: YonDataSourcesService,
   wiki: YonWikiService,
   digestLog: DigestLog,
+  homes: YonHomesService,
+  meta: YonMetaService,
 ): () => void {
   const carrier = ctx.get('webServer') as RouteRegistrar | undefined
   if (carrier === undefined) {
@@ -524,6 +743,17 @@ export function registerYonApi(
         }
         if (segments[0] === 'digest') {
           await handleDigest(res, method, segments, url, digestLog)
+          return
+        }
+        if (segments[0] === 'homes') {
+          await handleHomes(req, res, method, segments, homes, meta, url.searchParams)
+          return
+        }
+        // A segment of its own, not `/homes/pick-directory`: `handleHomes` reads
+        // `segments[1]` as an id, so that spelling would be a "no Home named
+        // pick-directory" 404 long before any picker ran.
+        if (segments[0] === 'pick-directory') {
+          await handlePickDirectory(res, method, ctx)
           return
         }
         if (segments[0] !== 'projects') {
@@ -632,6 +862,7 @@ export function registerYonApi(
             || error instanceof SkillError
             || error instanceof DataSourceError
             || error instanceof WikiError
+            || error instanceof HomeError
           ) {
             sendFailure(res, error.code === 'not-found' ? 404 : 400, error.code, error.message)
           } else {

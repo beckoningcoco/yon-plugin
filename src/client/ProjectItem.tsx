@@ -1,14 +1,19 @@
 /**
- * The panel's built-in entry: one icon cell that opens the project surface.
+ * The panel's built-in entry: one row that opens the project surface.
+ *
+ * The row is the panel's — it decides which entries exist, in what order, and
+ * under what names — and this entry supplies the two things only it knows: the
+ * glyph, and the surface the glyph opens. So the name arrives as an owner prop
+ * instead of being read from this package's dictionary, and what stays here is
+ * the open state of this one surface.
  *
  * The surface is a dialog rather than a region of the panel body — a 280px strip
  * cannot hold a list beside a field table — and this entry owns it, so opening it
  * needs no cross-seat coordination. While the surface is up the entry also tells
  * the panel to stand down, and when it closes the entry hands focus back to the
- * cell that opened it.
+ * row that opened it.
  */
 import { useEffect, useRef, useState } from 'react'
-import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   InjectFace, PropsLocale, PropsRuntime,
 } from '@deepseek-ai/dsh-client-ui-slots'
@@ -18,8 +23,8 @@ import css from './panel-item.module.css'
 
 /**
  * Composed props of this panel button seat: the owner share carries the panel's
- * live open state, and the inject face carries the project operations plus the
- * overlay announcement.
+ * live open state and this entry's name, and the inject face carries the project
+ * operations plus the overlay announcement.
  */
 export type ProjectItemProps =
   PropsRuntime<'yon.panel.item'>
@@ -55,11 +60,11 @@ function FolderMark() {
 }
 
 /**
- * Render the entry cell and, while open, the project surface.
+ * Render the entry row and, while open, the project surface.
  * @param props - composed slot props.
- * @returns the cell, plus the dialog when it is showing.
+ * @returns the row, plus the dialog when it is showing.
  */
-export function ProjectItem({ t, pushOverlay, ...api }: ProjectItemProps) {
+export function ProjectItem({ t, label, pushOverlay, ...api }: ProjectItemProps) {
   const [open, setOpen] = useState(false)
   const trigger = useRef<HTMLButtonElement | null>(null)
   // The face may be rebuilt by the host between renders; the announcement must
@@ -83,22 +88,22 @@ export function ProjectItem({ t, pushOverlay, ...api }: ProjectItemProps) {
 
   return (
     <>
-      <Tooltip label={t('item.project')} side="bottom" delayMs={300}>
-        <span className={css.cell}>
-          <button
-            ref={trigger}
-            type="button"
-            className={css.item}
-            data-active={open ? '' : undefined}
-            aria-label={t('item.project')}
-            aria-expanded={open}
-            aria-haspopup="dialog"
-            onClick={() => { setOpen(value => !value) }}
-          >
-            <FolderMark />
-          </button>
-        </span>
-      </Tooltip>
+      {/* The name is visible text, so the button takes its accessible name from
+          its own content: no `aria-label` restating what the row already shows,
+          and no tooltip repeating the line the pointer is already on. The glyph
+          is hidden from the accessibility tree — it is the anchor, not the name. */}
+      <button
+        ref={trigger}
+        type="button"
+        className={css.item}
+        data-active={open ? '' : undefined}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={() => { setOpen(value => !value) }}
+      >
+        <FolderMark />
+        <span className={css.label}>{label}</span>
+      </button>
       {open && <ProjectManager t={t} onClose={() => { setOpen(false) }} {...api} />}
     </>
   )

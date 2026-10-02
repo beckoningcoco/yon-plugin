@@ -1,6 +1,7 @@
 /**
  * Yon panel, host half: opens the project, skill-switch and datasource domains,
- * publishes them as `ctx.yonProjects`, `ctx.yonSkills` and `ctx.yonDataSources`,
+ * publishes them as `ctx.yonProjects`, `ctx.yonSkills`, `ctx.yonDataSources`,
+ * `ctx.yonWiki` and `ctx.yonHomes`,
  * offers the projects and the data sources to the agent as tools, contributes
  * this plugin's own skills to the skill registry, and — where a web server
  * exists — serves all three over `/yon/api`.
@@ -20,6 +21,8 @@ import { type YonProjectsService } from './host/service.ts';
 import { type YonSkillsService } from './host/skill-registry.ts';
 import { type YonDataSourcesService } from './host/datasource-service.ts';
 import { type YonWikiService } from './host/wiki-service.ts';
+import { type YonHomesService } from './host/home-service.ts';
+import { type YonMetaService } from './host/meta-service.ts';
 export { DOMAIN_NAME, YON_DOMAIN } from './host/domain.ts';
 export { SKILL_DOMAIN_NAME, YON_SKILL_DOMAIN } from './host/skill-domain.ts';
 export { SkillError, YON_SKILL_SOURCE } from './host/skill-registry.ts';
@@ -56,6 +59,22 @@ export { guessVaults } from './host/wiki-index.ts';
 export type { WikiHit, WikiLookupResult, WikiMatch, WikiPageContent, WikiVaultView, YonWikiService, } from './host/wiki-service.ts';
 export type { WikiIndex, WikiPage, WikiVault } from './host/wiki-index.ts';
 export { defaultStorePath } from './host/datasource-store.ts';
+export { createHomeStore, defaultHomeStorePath } from './host/home-store.ts';
+export type { HomeStore, StoredHome } from './host/home-store.ts';
+export { createYonHomesService, HomeError } from './host/home-service.ts';
+export type { YonHomesService, HomeFindQuery } from './host/home-service.ts';
+export { probeHome } from './host/home-probe.ts';
+export { mirrorHomes, mirrorPathOf } from './host/home-mirror.ts';
+export { HOME_TOOL_NAMES } from './host/home-tools.ts';
+export { decodeText, declaredEncoding, isBinary, redactSecrets, resolveInside } from './host/home-files.ts';
+export { META_TOOL_NAMES } from './host/meta-tools.ts';
+export { buildMetaIndex, readMetaIndex, writeMetaIndex, metaIndexPath, metaIndexDir } from './host/meta-index.ts';
+export { createYonMetaService } from './host/meta-service.ts';
+export type { YonMetaService, MetaQueryAnswer, MetaDetailAnswer } from './host/meta-service.ts';
+export { parseBmf } from './host/meta-bmf.ts';
+export type { BmfComponent, BmfEntity, BmfEnum, BmfField } from './host/meta-bmf.ts';
+export type { HomeFileView, HomeFindPayload, HomeIndexView, HomeKeyView, HomeListPayload, HomeMetaIndexView, HomeProduct, HomeProfileView, HomeReadPayload, HomeShape, HomeView, MetaBuildView, MetaCountsView, MetaFreshnessView, MetaIndexPayload, MetaIndexStatusView, SaveHomeInput, } from './shared/types.ts';
+export { HOME_PRODUCTS } from './shared/types.ts';
 export type { CreateProjectInput, DataSourceBinding, DataSourceListPayload, DataSourceProbeResult, DataSourceView, JsonValue, ProjectDetail, ProjectSummary, ProjectStatus, SaveDataSourceInput, SkillDetail, SkillView, UpdateProjectInput, } from './shared/types.ts';
 declare module '@deepseek-ai/cordis' {
     interface Context {
@@ -67,6 +86,10 @@ declare module '@deepseek-ai/cordis' {
         yonDataSources: YonDataSourcesService;
         /** The operator's Obsidian knowledge base, read through its own tools. */
         yonWiki: YonWikiService;
+        /** The NCC/BIP installation directories the operator registered. */
+        yonHomes: YonHomesService;
+        /** The metadata index over those installations' `.bmf` files. */
+        yonMeta: YonMetaService;
     }
 }
 /**

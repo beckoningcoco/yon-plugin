@@ -9,6 +9,15 @@
  * reading `13800138000` as a number would quietly round a phone number, so plain
  * text stays text.
  *
+ * A value is read as text and becomes an input only once it is clicked. A value
+ * can be long - a whole 联调记录, a whole connection string - and a box that is
+ * always an input hides the tail of it behind the cursor; read as text it wraps
+ * and shows itself. Structured values (an object, an array, or a JSON *string*,
+ * which is how the real stores hold a datasource config) are read as a key-value
+ * list rather than a blob of JSON; only a container nested deeper than one level
+ * falls back to indented JSON. Editing always starts from the text that is
+ * stored, so an edit that changes nothing writes nothing.
+ *
  * Removing a field asks first, in the same small dialog the rest of the product
  * uses for a destructive act; the row's own cross only opens it.
  */
@@ -95,6 +104,100 @@ function parseValue(text: string): JsonValue {
   }
 }
 
+/** How one stored value reads. */
+type FieldRead =
+  | { readonly kind: 'text'; readonly text: string }
+  | { readonly kind: 'pairs'; readonly rows: readonly FieldPair[] }
+  | { readonly kind: 'json'; readonly text: string }
+
+/** One line of the key-value list. */
+interface FieldPair {
+  /** The key: an object's own key, or {@link FIELD_ITEM_MARK} for an array entry. */
+  readonly key: string
+  /** The value as a scalar: a string verbatim, anything else as JSON spells it. */
+  readonly value: string
+}
+
+/**
+ * What an array entry shows in the key column. Not an index: `0` and `1` read
+ * like data, while this mark only says "here is one of them".
+ */
+const FIELD_ITEM_MARK = '·'
+
+/**
+ * Read a value as a container, or `undefined` when it is not one.
+ *
+ * Two sources, and the second is the one that matters in practice: the value is
+ * an object or an array, or the value is a *string* that looks like JSON. The
+ * panel stores JSON when it can parse it, but a value typed by hand into the
+ * store - a datasource config, a password vault entry - arrives as one long
+ * string, and dumping that string into a row is exactly the report this fixes.
+ * @param value - stored value.
+ * @returns the container, or `undefined` for anything read as plain text.
+ */
+function asContainer(value: JsonValue): Record<string, JsonValue> | JsonValue[] | undefined {
+  if (value !== null && typeof value === 'object') return value
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return undefined
+  try {
+    const parsed: unknown = JSON.parse(trimmed)
+    return parsed !== null && typeof parsed === 'object'
+      ? parsed as Record<string, JsonValue> | JsonValue[]
+      : undefined
+  } catch {
+    // Half-written JSON stays itself: showing the text as typed beats an error
+    // and beats an empty row.
+    return undefined
+  }
+}
+
+/**
+ * The key-value pairs of a flat container, or `undefined` once it nests.
+ *
+ * A nest deeper than one level falls back to JSON rather than indenting: this
+ * grid is where a value is glanced at, and an indented key-value list two levels
+ * down is harder to read than the JSON it came from. Whoever wants structure has
+ * the knowledge panel's tree.
+ * @param container - the value read as a container.
+ * @returns one row per entry, or `undefined` when any entry is itself a container.
+ */
+function flatPairs(container: Record<string, JsonValue> | JsonValue[]): readonly FieldPair[] | undefined {
+  const items: readonly (readonly [string, JsonValue])[] = Array.isArray(container)
+    ? container.map((item, index): readonly [string, JsonValue] => [String(index), item])
+    : Object.entries(container)
+  const rows: FieldPair[] = []
+  for (const [key, item] of items) {
+    if (item !== null && typeof item === 'object') return undefined
+    rows.push({ key: Array.isArray(container) ? FIELD_ITEM_MARK : key, value: scalarText(item) })
+  }
+  // An empty container has no rows to list; let it take the JSON path, where at
+  // least the `{}` or `[]` that is stored can be seen.
+  return rows.length === 0 ? undefined : rows
+}
+
+/**
+ * Render a scalar as JSON spells it, except a string, which is itself.
+ * @param value - a non-container value.
+ * @returns its display text.
+ */
+function scalarText(value: JsonValue): string {
+  return typeof value === 'string' ? value : JSON.stringify(value)
+}
+
+/**
+ * Decide how one stored value reads.
+ * @param value - stored value.
+ * @returns the text, the key-value list, or indented JSON.
+ */
+function readValue(value: JsonValue): FieldRead {
+  const container = asContainer(value)
+  if (container === undefined) return { kind: 'text', text: formatValue(value) }
+  const rows = flatPairs(container)
+  if (rows === undefined) return { kind: 'json', text: JSON.stringify(container, null, 2) }
+  return { kind: 'pairs', rows }
+}
+
 /** Props of one field row. */
 interface FieldRowProps {
   fieldKey: string
@@ -113,6 +216,8 @@ interface FieldRowProps {
  */
 function FieldRow({ fieldKey, value, state, t, onSave, onRetry, onAskRemove }: FieldRowProps) {
   const [text, setText] = useState(() => formatValue(value))
+  // A value is read as text until it is clicked: see the file header.
+  const [editing, setEditing] = useState(false)
   // The copy result belongs to this row's button; nothing else needs to know.
   const [copy, setCopy] = useState<'copied' | 'failed'>()
   const copyTimer = useRef<ReturnType<typeof setTimeout>>()
@@ -121,9 +226,23 @@ function FieldRow({ fieldKey, value, state, t, onSave, onRetry, onAskRemove }: F
   // untouched, so the operator's text survives to be retried.
   useEffect(() => { setText(formatValue(value)) }, [value])
 
+  // The row state closes the editor: a save that landed puts the value back to
+  // being read, and a save that failed reopens it with the text still in it,
+  // which is what makes the retry on that row mean "this text again".
+  useEffect(() => {
+    if (state === undefined) return
+    setEditing(state === 'failed')
+  }, [state])
+
   useEffect(() => () => {
     if (copyTimer.current !== undefined) clearTimeout(copyTimer.current)
   }, [])
+
+  const read = readValue(value)
+  // Reading a key-value list still copies the value as stored - one JSON blob -
+  // because that is the form it is pasted into anything else as.
+  const copyText = editing ? text : formatValue(value)
+  const valueLabel = `${fieldKey} · ${t('project.fieldValue')}`
 
   /** Put the row's current text on the clipboard and say what happened. */
   const copyValue = (): void => {
@@ -133,64 +252,119 @@ function FieldRow({ fieldKey, value, state, t, onSave, onRetry, onAskRemove }: F
       copyTimer.current = setTimeout(() => { setCopy(undefined) }, COPY_LINGER_MS)
     }
     // What is on screen is what leaves: an edit that is not saved yet still copies.
-    void writeClipboard(text).then(
+    void writeClipboard(copyText).then(
       accepted => { settleCopy(accepted ? 'copied' : 'failed') },
       () => { settleCopy('failed') },
     )
   }
 
+  /** Leave the editor: an edit that changed nothing is not a write. */
+  const commit = (): void => {
+    setEditing(false)
+    if (text === formatValue(value)) return
+    onSave(text)
+  }
+
   return (
-    <div className={cn(css.fieldRow)}>
+    // An editor is always the row's second line, whatever the value reads like;
+    // a read key-value list is one too. Only read text keeps the value column.
+    <div className={cn(css.fieldRow, (editing || read.kind !== 'text') && css.fieldRowWide)}>
       <span className={cn(css.fieldKey)} title={fieldKey}>{fieldKey}</span>
-      <Input
-        className={cn(css.inputFill)}
-        aria-label={`${fieldKey} · ${t('project.fieldValue')}`}
-        aria-invalid={state === 'failed'}
-        value={text}
-        onChange={(event) => { setText(event.target.value) }}
-        onBlur={() => { if (text !== formatValue(value)) onSave(text) }}
-        onKeyDown={(event) => {
-          if (event.key !== 'Enter') return
-          event.preventDefault()
-          event.currentTarget.blur()
-        }}
-      />
-      {state === 'failed'
+      {editing
         ? (
-          <button type="button" className={cn(css.rowFailed)} onClick={() => { onRetry(text) }}>
-            {t('project.fieldFailed')}
-          </button>
+          <textarea
+            className={cn(css.valueEditor)}
+            aria-label={valueLabel}
+            aria-invalid={state === 'failed'}
+            rows={1}
+            value={text}
+            autoFocus
+            onChange={(event) => { setText(event.target.value) }}
+            onBlur={commit}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                event.preventDefault()
+                setText(formatValue(value))
+                setEditing(false)
+                return
+              }
+              if (event.key !== 'Enter') return
+              event.preventDefault()
+              event.currentTarget.blur()
+            }}
+          />
         )
         : (
-          <span className={cn(css.rowState)} role="status">
-            {state === 'saving' ? t('project.fieldSaving') : state === 'saved' ? t('project.fieldSaved') : ''}
-          </span>
+          <button
+            type="button"
+            className={cn(
+              css.inlineText,
+              css.inlineValue,
+              css.fieldValueRead,
+              read.kind === 'text' && read.text === '' && css.inlineEmpty,
+            )}
+            aria-label={valueLabel}
+            title={read.kind === 'text' ? (read.text === '' ? t('project.fieldValuePlaceholder') : read.text) : formatValue(value)}
+            onClick={() => { setEditing(true) }}
+          >
+            {read.kind === 'text' && (read.text === '' ? t('project.fieldValuePlaceholder') : read.text)}
+            {read.kind === 'pairs' && (
+              <span className={cn(css.valueGrid)}>
+                {read.rows.flatMap((row, index) => [
+                  <span key={`key-${index}`} className={cn(css.valueGridKey)}>{row.key}</span>,
+                  <span key={`value-${index}`} className={cn(css.valueGridValue)}>{row.value}</span>,
+                ])}
+              </span>
+            )}
+            {read.kind === 'json' && <span className={cn(css.valueJson)}>{read.text}</span>}
+          </button>
         )}
-      <button
-        type="button"
-        className={cn(
-          css.rowIcon,
-          copy === 'copied' ? css.rowCopied : undefined,
-          copy === 'failed' ? css.rowCopyFailed : undefined,
+      {state === 'failed' && (
+        <button type="button" className={cn(css.rowFailed)} onClick={() => { onRetry(text) }}>
+          {t('project.fieldFailed')}
+        </button>
+      )}
+      {/* The row's trailing slot: the save state and the two actions share one
+          width, so a save never reflows the value beside them. While the state
+          is up the actions step aside — a word and two glyphs at once is 116px
+          of a 377px row. The state's own span stays mounted either way, because
+          a live region has to be in the document before its text arrives for a
+          screen reader to read that text out. */}
+      <span className={cn(css.rowTrail)}>
+        <span className={cn(css.rowState)} role="status">
+          {state === 'saving' ? t('project.fieldSaving') : state === 'saved' ? t('project.fieldSaved') : ''}
+        </span>
+        {state === undefined && (
+          <>
+            <button
+              type="button"
+              className={cn(
+                css.rowIcon,
+                css.rowAction,
+                copy === 'copied' ? css.rowCopied : undefined,
+                copy === 'failed' ? css.rowCopyFailed : undefined,
+              )}
+              aria-label={copy === 'copied'
+                ? t('project.copied')
+                : copy === 'failed' ? t('project.copyFailed') : t('project.copyValueLabel', { name: fieldKey })}
+              title={t('project.copyValue')}
+              disabled={copyText === ''}
+              onClick={copyValue}
+            >
+              {copy === 'copied' ? <CheckMark /> : <CopyMark />}
+            </button>
+            <button
+              type="button"
+              className={cn(css.rowIcon, css.rowAction, css.rowRemove)}
+              aria-label={`${t('project.fieldRemove')}: ${fieldKey}`}
+              title={t('project.fieldRemove')}
+              onClick={onAskRemove}
+            >
+              ×
+            </button>
+          </>
         )}
-        aria-label={copy === 'copied'
-          ? t('project.copied')
-          : copy === 'failed' ? t('project.copyFailed') : t('project.copyValueLabel', { name: fieldKey })}
-        title={t('project.copyValue')}
-        disabled={text === ''}
-        onClick={copyValue}
-      >
-        {copy === 'copied' ? <CheckMark /> : <CopyMark />}
-      </button>
-      <button
-        type="button"
-        className={cn(css.rowIcon, css.rowRemove)}
-        aria-label={`${t('project.fieldRemove')}: ${fieldKey}`}
-        title={t('project.fieldRemove')}
-        onClick={onAskRemove}
-      >
-        ×
-      </button>
+      </span>
     </div>
   )
 }

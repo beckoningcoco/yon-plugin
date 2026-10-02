@@ -1,0 +1,180 @@
+/* Installation-surface pieces the shared dialog chrome does not cover: the detail
+   title, the path with its copy affordance, the dimming of a registration whose
+   directory has moved, the product picker, and the standard-path table. Everything
+   structural — the pane split, the list, the property grid, the form rows, the
+   action row, the empty state, the error strip — comes from the shared stylesheet,
+   so this surface and its five siblings stay one family.
+
+   Every colour here is a theme alias. Two rules are declared here that a sibling
+   surface also declares (`.select` in `datasource/panel.module.css`, `.subTitle` in
+   `wiki/panel.module.css`): the collision guard in `preview/render.spec.tsx` checks
+   the sheets *of one panel* against the shared one, and these two are not in the
+   shared sheet, so neither is a clash. They are restated rather than promoted to
+   the shared sheet because promoting a rule four surfaces already read is a change
+   to all four, and the declarations are five lines each. */
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* A section heading inside the detail column. Same rung as the wiki surface's:
+   12px semibold secondary, and 18px of air above it because it is separating two
+   blocks rather than starting the column. */
+.subTitle {
+  margin: 18px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* A registration whose directory no longer reads as a Home. Dimmed rather than
+   hidden: the row is still a real registration the operator may be about to fix,
+   and dropping it from the list would only hide the problem. */
+.rowNotReady {
+  opacity: 0.55;
+}
+
+/* A Home path is read character by character — drive letter, separators, mixed
+   case, sometimes Chinese — so it gets the monospaced face and wraps rather than
+   pushing the property grid out of shape. */
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  word-break: break-all;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* ---- the path, which people copy ---- */
+
+.pathRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+/* The copy button in this row is an icon and cannot wrap; a *text* button can, and one
+   did: 「重建元数据索引」 broke into three lines, pushed the counts it sits beside into
+   a five-line block, and still came out clipped (`preview/panel-home-meta-fresh.png`).
+   So the row says it outright — a control keeps its size, the text beside it takes what
+   is left, and the `word-break: break-all` above stays applied to the paths it was for. */
+.pathRow > button {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* The field beside the "choose a folder" button. The shared `.inputFill` gives it
+   `width: 100%`, which in a flex row is a *base* size rather than a final one; this
+   says outright that it takes the room left over by the button. */
+.pathField {
+  flex: 1;
+}
+
+.copyBtn {
+  flex: none;
+  padding: 2px;
+  border: none;
+  background: none;
+  line-height: 0;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+.copyBtn:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.copyOk {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.copyBad {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+/* ---- the product picker ---- */
+
+/* The native picker, meant to pass as one of the host's controls, and identical
+   to the datasource surface's `.select` — that rule carries the full derivation
+   of the 8px radius, the `border-l4` hairline and the 28px/12px compact step, and
+   is not repeated here. Appearance is left alone so the platform's own dropdown
+   renders; there are two options and no free-text fallback, because the product
+   line decides which skills-side file the mirror writes. */
+.select {
+  width: 100%;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 6px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---- the standard paths ---- */
+
+/* Three columns: what the path is for, the path itself, and whether this Home has
+   it. A grid rather than the property grid, because eleven rows of label/value
+   would spend the width twice on a value that is nearly always two words long. */
+.keys {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: baseline;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.keyRole {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.keyRel {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  word-break: break-all;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* The path is present. Green is the theme's "this one works" tone, which is the
+   same claim the level bars in the wiki surface make with it. */
+.keyState {
+  white-space: nowrap;
+  color: var(--dsw-alias-state-success-primary);
+}
+
+/* Absent. Dimmed rather than red: a Home that has no `nclogs/` yet is not a
+   fault, and eleven red marks would read as a broken installation. */
+.keyStateNo {
+  white-space: nowrap;
+  color: var(--dsw-alias-label-dimmed);
+}
+
+/* ---- probe notes ---- */
+
+/* Each of these is a sentence the probe wrote, and none of them is a rejection:
+   the list is a footnote to the table above it, so it is a plain bulleted list at
+   the same rung as the shared `.note`. */
+.warnList {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}

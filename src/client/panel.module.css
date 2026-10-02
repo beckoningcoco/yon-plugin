@@ -9,6 +9,20 @@
  *
  * Elevation is declared once, by the dialog card's own shadow: nothing in here
  * adds a second border or shadow on top of it.
+ *
+ * Strokes, the four rungs of the alias scale, and which is for what:
+ *   l1  a line *inside* something — a row divider, a tab underline, a chip's own
+ *       inner border. It is 4% and is not meant to be seen as an edge.
+ *   l2  the plugin's *containers* — cards, help blocks, the filter capsules, the
+ *       segmented track. 10%.
+ *   l4  *controls and small objects*: the picker (which has to pass as an Input,
+ *       whose wrap uses l4), and the tag, whose outline is the whole of its shape
+ *       and has to survive landing on a tinted row. 16%.
+ *   l3  unused, on purpose. It is the host's outline-Button rung, and at 12% it
+ *       sits 2 points of alpha above l2 — far too close to read as a distinction.
+ *       Importing it would re-introduce an invisible difference in the same pass
+ *       that collapsed eleven radii down to three. A scale is worth having only if
+ *       its rungs can be told apart.
  */
 
 /* The dialog card is the atoms' `min(380px, 100%)`; a list beside a detail pane
@@ -67,9 +81,11 @@
   min-height: 28px;
 }
 
+/* The list's own group header, at the weight `.sectionTitle` carries. */
 .listTitle {
   color: var(--dsw-alias-label-secondary);
   font-size: 12px;
+  font-weight: 600;
   line-height: 18px;
 }
 
@@ -145,14 +161,184 @@
   font-variant-numeric: tabular-nums;
 }
 
-.projectArchived {
+/* ── the tag ─────────────────────────────────────────────────────────────────
+   One or two words in an outlined capsule, saying what state something is in or
+   what a reading was. Four of these were hand-rolled in three files and no two
+   agreed:
+
+     .projectArchived  panel    0.5px border-l2      label-tertiary   padding 0 6px
+     .logOutcome       digest    0.5px border-l2      label-secondary  padding 0 6px
+     .metricChip       digest    0.5px border-l1      label-secondary  padding 1 6px
+     .badge            wiki      1px   success-pri    success-pri      padding 0 6px
+
+   — a hairline apart here, a step of colour there, and one of them carrying the
+   full-strength state colour on *both* its word and its outline. They are the
+   same object, so they are one rule now, and the tones are modifiers on it.
+   `.tagPass`/`.tagFail`/`.tagMuted` are single classes listed after `.tag`, so
+   they override it on source order alone. The badge in the digest panel used to
+   need a compound selector (`.logOutcome.tonePass`) to win that fight — and the
+   comment recorded what happened when it did not: the colour was applied to
+   nothing and the badge stayed grey. One file, one place, one order.
+
+   The host publishes a `Tag` atom of its own, so this rule was checked against it
+   rather than assumed to be the only option. It is not adoptable here, for two
+   independent reasons — so this stays plugin-local, deliberately.
+
+     1. The host this plugin runs inside does not have it. Primitives are a
+        devDependency the host supplies at runtime (`package.json:74`, kept
+        external in `tsdown.config.ts:42`), and the host's own
+        `ui-primitives/src/index.ts` exports no `Tag`: the atom is newer than the
+        host that would have to resolve it (published 0.1.7-rc.2, host 0.1.2-rc.1).
+        Importing it resolves to `undefined` and takes the panel down at render.
+
+     2. Its palette would be worse in light mode. Its state tones paint a 10–12%
+        tint of the state colour as the fill and set that same colour as the text;
+        measured against the dialog, six of its eight tones miss the 4.5:1 their
+        own words need — success 2.09, danger 3.80, info 3.74, warning 1.96, its
+        outline 3.71 (only `solid` 18.90 and `neutral` 5.36 clear it). In dark all
+        eight clear, 4.94 and up, so the atom is tuned for dark surfaces. A tint of
+        the text colour can only lower the ratio, never raise it — which is why this
+        rule outlines instead of filling. Same shape as the light-mode green
+        recorded in the digest file: the platform's state palette is built for dark.
+
+   The geometry below is deliberately close to that atom's — a 999px capsule, the
+   same 1px vertical inset — so if the host ever ships `Tag` to this plugin the
+   migration is a swap of four render sites, not a redesign. It is not identical:
+   this is 12px/16px with 6px side padding, where the atom fixes 11px/17px at
+   weight 500 with 8px, because 11px was removed from this plugin's scale in the
+   same pass that collapsed six sizes to four. */
+/* The outline is `border-l4`, the strongest hairline, not the `border-l2` this
+   started on. Two reasons, both measured:
+ *
+ *   - a tag is small, and a hairline is the whole of its shape, so the line has to
+ *     carry the object on its own. `l2` is what this plugin draws its *containers*
+ *     with — a 300px card can afford a 10% line, a 19px capsule cannot;
+ *   - the archive tag lands inside a *selected* list row, whose fill is
+ *     rgba(38,49,72,0.1). Composited there, `l2` reads 1.25:1 against its own
+ *     backdrop and the capsule disappears — visible in the preview, where the same
+ *     tag shows a clean outline in an unselected row and none at all in the row
+ *     above it. `l4` reads 1.44:1 there, and it is the token the host's own Tag
+ *     atom uses for its outline tone.
+ *
+ * Neither hairline clears the 3:1 non-text bar, so the honest statement is that
+ * the neutral capsule is faint on a tinted row by construction of the token set:
+ * the fix for that is a stronger outline alias on the host side, not a colour
+ * invented here. The tone modifiers below override this border colour with an
+ * opaque state alias and are unaffected either way. */
+.tag {
+  display: inline-block;
   flex: none;
-  padding: 0 4px;
-  border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: 4px;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 11px;
-  line-height: 14px;
+  padding: 1px 6px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 999px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tagPass {
+  color: var(--dsw-alias-state-success-primary);
+  border-color: var(--dsw-alias-state-success-primary);
+}
+
+.tagFail {
+  color: var(--dsw-alias-state-error-primary);
+  border-color: var(--dsw-alias-state-error-primary);
+}
+
+.tagMuted {
+  color: var(--dsw-alias-label-dimmed);
+  border-color: var(--dsw-alias-label-dimmed);
+}
+
+/* The control that unfolds a value too long for its row: the skill panel's
+   description and the wiki panel's evidence gaps. Both callers read this rule;
+   the wiki panel used to carry a private copy named `.gapToggle`.
+
+   Merging that copy in was not tidiness, and the difference was measured rather
+   than assumed. The two rules looked identical and were not: the copy had no
+   `font-family`, and a `<button>` does not inherit one — the browser's own sheet
+   gives it `font: 400 13.333px Arial`, and nothing in the host's six theme
+   sheets resets that on a button. So the wiki panel's 展开引用 rendered in
+   **Arial at `line-height: normal`** while the span beside it, and this rule,
+   render in the app's system-ui stack at 12/16. One control, two typefaces,
+   depending on which panel it was in. `line-height` mattered too: `normal` is
+   not 16px, so the two panels' identical control did not even agree on the row
+   height it needed.
+
+   `state-business-primary` for the text, which is what both the wiki panel and
+   the app's own link styling use for a verb that is not a button. It is not
+   `.errorAction`, which is the retry verb inside an error strip and is drawn
+   with `color: inherit` and an underline because it must not out-shout the
+   message it sits in. */
+.foldToggle {
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-state-business-primary);
+  cursor: pointer;
+}
+
+.foldToggle:hover {
+  text-decoration: underline;
+}
+
+/* ── the project list's two-line rows ────────────────────────────────────────
+   The shared row above is one line, and it is what the datasource, skill and
+   wiki lists use: a mark, a name, and one meta cell. The project list is the
+   one that carries *three* cells into that column, and it showed — measured
+   against the twelve sample projects, all ten visible rows ellipsised their
+   name, the longest at two characters (中石化易派客 BIP 采购协同（二期） had 37px
+   of a 210px name). The name is the only cell in the row that identifies
+   anything, so here it gets a line of its own and the code and the field count
+   move beneath it. The name then has 174px instead of 37–119px.
+
+   Scoped to a modifier rather than folded into `.projectRow` on purpose: the
+   three sibling lists share that class, and a two-line stack would reflow them
+   too. The override wins on source order — same specificity, later in the file. */
+.projectRowStack {
+  align-items: flex-start;
+}
+
+/* The mark rides the first line, not the middle of the two-line block. */
+.projectRowStack .projectMark {
+  margin-top: 2px;
+}
+
+/* The name's line, then the metadata's. */
+.projectStack {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* The code, the archived pill, and — pushed to the right edge by the shared
+   `.projectMeta`'s own auto margin — the field count. */
+.projectSub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* The code is the only cell on this line that can run long, so it is the one
+   that gives way when the row cannot hold it, the archived pill and the count
+   at once — `HK-2024-LEGACY` plus both is 209px of a 174px line. `nowrap` is
+   what makes it an ellipsis instead of a second line: without it the code
+   wraps, and one wrapped row is taller than every other row in the list. */
+.projectSub .projectCode {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .archivedToggle {
@@ -185,6 +371,15 @@
   flex-direction: column;
   gap: 10px;
   padding-right: 2px;
+  /* One label column for the whole pane: the properties block, the field rows
+     and the key-value grid inside a structured value all read from it. Measured
+     before this, one screen carried three value columns — the properties' values
+     started 65px in, a field row's 111px, a nested pair's 70px. The inset is
+     `.inlineText`'s own 6px padding plus its 0.5px border, carried by the labels
+     so that their *glyphs* land where an inline value's glyphs do while still
+     hanging the box on the column's edge. */
+  --label-col: 96px;
+  --text-inset: 6.5px;
 }
 
 .empty {
@@ -233,7 +428,7 @@
   margin: 0;
   padding: 2px 6px;
   border: 0.5px solid transparent;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
   font-family: inherit;
   text-align: left;
@@ -271,29 +466,93 @@
   min-width: 0;
 }
 
+/* The same two columns as a field row below it: label, then value. The 8px
+   column gap is the one `.fieldRow` puts between them — the two grids coming
+   out at the same width is the whole point of `--label-col`.
+   Top-aligned for the same reason the field rows are: centred, a label next to
+   a value that wraps to nine lines drops to the middle of that paragraph —
+   measured 90px away from the first line it names, on the skill panel's own
+   `描述`. On a one-line row the two rules differ by 1px. */
 .props {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
-  align-items: center;
-  gap: 6px 10px;
+  grid-template-columns: var(--label-col) minmax(0, 1fr);
+  align-items: start;
+  gap: 6px 8px;
   margin: 0;
 }
 
 .propLabel {
+  padding-left: var(--text-inset);
   color: var(--dsw-alias-label-tertiary);
   font-size: 12px;
   line-height: 18px;
 }
 
+/* The value column, at the same rung as every other value in the plugin.
+ *
+ * `min-width: 0` and `margin: 0` are the grid's own needs — a `<dd>` arrives
+ * with a 40px inline-start margin and a flex/grid item refuses to shrink below
+ * its content. The other three declarations are the value rung, and they were
+ * missing. With nothing here to say otherwise, the browser's defaults reached the
+ * `<dd>`: measured wherever the value is plain text — the skill's `描述`, the
+ * wiki's `路径`, all six rows of the datasource's detail — it rendered at `16px`,
+ * `line-height: normal`, coloured by the UA. The label beside it is `12px/18px`
+ * tertiary on every surface this grid appears on, so the value outweighed its own
+ * label by a third and was the largest body text in the dialog.
+ *
+ * The project surface is the one place it did not show, and the reason is the
+ * proof of what the rung should be: its values are inline-editable, a
+ * `<button class="inlineText inlineValue">` sitting inside the `<dd>`, so
+ * `.inlineValue` supplied the type and the wrapper's missing declarations never
+ * reached a glyph. That role — the same role — is already `13px/18px`
+ * `label-secondary`, `.fieldKey`'s comment below already reasons about "the
+ * 13px/18px value beside it", and the field rows resolve to it too. The rung was
+ * written down twice; this column was the one place that never got it.
+ *
+ * The colour is worth one more sentence, because the obvious reading of the
+ * before-state is wrong. `16px/#000000` did not *look* broken in the preview's
+ * dark theme — but only because the preview is missing a line the real client
+ * has: the host's `ThemePresenter.apply()` sets `color-scheme` on the document
+ * element, which makes the UA's initial `canvastext` light in dark mode. So the
+ * fallback tracked the theme after all, off-palette by a few of 255 and legible
+ * either way. Nothing here was illegible. What was wrong is that a value's colour
+ * came from the browser rather than from the token set the rest of this file
+ * speaks; the size, unlike the colour, was wrong in every theme. */
 .propValue {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 18px;
   min-width: 0;
   margin: 0;
 }
 
+/* The status group is a segmented control — three options, one of them chosen —
+   and it now draws the track that says so. The track has to be a *stroke*, not a
+   fill: the theme's three background layers are all `neutral-bluish-00` in light
+   mode, so nothing separates by fill there. Measured, the dialog, the editor and
+   an unselected pill all compute to rgb(255,255,255) — which is exactly why the
+   two unselected pills have been invisible all along, the Pill atom's own fill
+   being the same token Modal paints the dialog with. In dark mode they *do*
+   differ (44,44,46 against 67,69,74), so a fill would have fixed this in one
+   theme and left the other alone. The theme says as much itself: "柔光几乎不可见，
+   由描边承担分离". `border-l2` is the rung the plugin's other outlined boxes
+   use.
+   The track is a capsule (`999px`), written as such rather than as the 14px it
+   used to be. 14px was derived — the pill's own 12px plus the 2px of padding —
+   and on a 30px-tall track it clamps to 15px, so the two spellings draw the same
+   pixels; but only one of them says the thing that matters, which is that this
+   is the same shape as the digest panel's filter group and the same shape as the
+   host's own Button and Pill atoms. Two segmented controls that looked like a
+   box in one panel and a capsule in the other now look like each other.
+   The selected pill keeps the atom's fill and its inset ring, so the choice
+   still reads inside the track. */
 .statusGroup {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 2px;
+  padding: 2px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
 }
 
 .statusGroup > button:disabled {
@@ -308,6 +567,54 @@
   gap: 8px;
 }
 
+/* The pane's verbs stay reachable while the pane scrolls.
+ *
+ * Measured on the datasource form (preview viewport 900x820): the pane is 450px
+ * tall and the form's content 552px, so 102px sat past the fold — the 保存/取消 row
+ * entire (28.5px of it) and the 74px of the 密码 field above. A form you could only
+ * submit after first scrolling far enough to learn that a submit existed. The row is
+ * the last thing in that pane, so nothing else was ever going to bring it into view.
+ * The wiki's pane has the same shape — content 654px in 450 — and its 重建索引/刷新
+ * row rested 160px below the fold. How tall the pane actually is belongs to the
+ * window, so this is not a number to pin: the defect exists whenever the pane is
+ * capped shorter than its content, and the rule below is deliberately indifferent to
+ * which of the two cases a given window is in.
+ *
+ * Sticky rather than a fixed footer because it needs no height budget and no
+ * measurement to be right: a bottom-stuck box engages only while its natural
+ * position is below the fold, and docks back into the flow once the scroll reaches
+ * the end of its containing block. Where the row is already in view it does not
+ * move at all — in the datasource detail states the content is 265px in a 450px
+ * pane, the row's bottom 185px clear of the pane's edge. And nothing the bar covers
+ * stays covered: at the end of the scroll it is back in its own place, with the
+ * content above it whole.
+ *
+ * The fill has to be opaque or the content scrolls through the buttons, and it is
+ * `--dsw-alias-bg-layer-2` because that is the dialog card's own fill — the host
+ * paints the card with it (`ui-primitives/Modal.module.css`) and `.detailPane`
+ * declares no background of its own, so the bar is the colour of the surface it
+ * sits on and stays invisible until something passes beneath it. Measured in both
+ * themes it resolves to rgb(255, 255, 255) and rgb(44, 44, 46), each the card's own
+ * colour. The hairline is this file's internal-divider rung, the one `.rule` below
+ * uses.
+ *
+ * `:last-child` states the precondition rather than decorating: stickiness can only
+ * help a row that ends the pane's content, which is why the project pane's row is
+ * out. That row is followed by an `<hr>` and the field table and rests 302px above
+ * the pane's bottom with its verbs on screen — scrolling 50px moves it up 50px, it
+ * never sticks — so all this rule would add there is a second hairline 10px from
+ * the `<hr>` below it, and a destructive verb parked over a scrolling table. Rows
+ * that do end their pane but happen to fit (the datasource detail states) gain the
+ * band and nothing else. */
+.detailActions:last-child {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding: 8px 0;
+  border-top: 0.5px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-2);
+}
+
 /* Destructive, so it carries the error colour and a matching hover fill. The
    outline form draws its border in the same colour, as the product's own
    delete confirmations do. */
@@ -320,6 +627,19 @@
   background: var(--dsw-alias-interactive-bg-hover-danger);
 }
 
+/* In the header the destructive verb is pushed to the far end of the row. It is
+   the brightest thing in the pane - the one saturated colour on the surface -
+   and it sat shoulder to shoulder with 归档, which reads as its peer; one of the
+   two archives a project and the other cannot be undone, and 8px of gap is not
+   enough to say so. Scoped to `.detailActions` because the same class is also
+   the confirm button in the remove-field dialog, where it belongs beside the
+   cancel it is paired with. (Note the ghost variant this button uses draws no
+   border, so the red `border-color` above is inert here - it is the outline form
+   in that dialog that gives it work to do.) */
+.detailActions .dangerButton {
+  margin-left: auto;
+}
+
 .rule {
   height: 0;
   margin: 2px 0;
@@ -329,10 +649,15 @@
 
 /* ── the field rows ──────────────────────────────────────────────────────── */
 
+/* The 6px of margin is the proximity rule: measured before this, the divider
+   above this section was 12px from the 字段 header and the header was 6px from
+   its first row, so the header sat nearer the thing above it than the thing it
+   names. Now it is 18 and 6. */
 .fields {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  margin-top: 6px;
 }
 
 .fieldsHead {
@@ -343,26 +668,58 @@
   min-height: 28px;
 }
 
+/* A group header, so it carries a weight of its own. Every heading and every
+   label in this pane was 12px/400 - the group headers and the field keys were
+   the same type, and the only thing separating them was their colour. The pane
+   now steps 14/500 for its title, 12/600 for a group header, 12/400 for the
+   label column and 13/400 for a value. */
 .sectionTitle {
+  /* The reset belongs on the class, not on the two callers: this is put on an
+     `<h4>` in the skill pane and on a `<span>` in the field table, so the margin
+     it carried depended on which tag the caller happened to pick. A span has
+     none; an h4 gets the browser's `1.33em` — measured at 15.96px above *and*
+     below, so the 技能正文 label sat in 16 + 10 + 16px of air while the pane's gap
+     between everything else is 10. Identical in the stylesheet, different on
+     screen. */
+  margin: 0;
   color: var(--dsw-alias-label-secondary);
   font-size: 12px;
+  font-weight: 600;
   line-height: 18px;
 }
 
+/* `flex-start`, not `center`: a value that wraps to three lines would otherwise
+   centre its label against the whole block. Measured before this, the label of a
+   nine-line 联调记录 sat 72px below the first line it names, so the label column
+   was ragged by exactly as much as the values were long. It is also what keeps
+   the copy and remove icons on the row's first line instead of floating beside
+   the middle of a paragraph. */
 .fieldRow {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   min-height: 32px;
 }
 
+/* `border-box` because the column is 96px wide in total: that is where a value
+   starts, so the inset has to come out of the label's own width. It leaves
+   89.5px of text before the ellipsis, which still clears the longest field name
+   the samples carry (数据库连接串, 72px). */
 .fieldKey {
   flex: none;
-  width: 96px;
+  box-sizing: border-box;
+  width: var(--label-col);
+  /* 4.5px lines this 12px/16px label up with the 13px/18px value beside it,
+     which carries 2.5px of border and padding above its own text: measured, both
+     glyph boxes then have the same centre (they are 15px and 16px tall), which
+     for two sizes of one face is the same thing as sharing a baseline. */
+  padding: 4.5px 0 0 var(--text-inset);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--dsw-alias-label-secondary);
+  /* Tertiary, the rung a property label and a nested key already use: the label
+     column is context and only the value is content. */
+  color: var(--dsw-alias-label-tertiary);
   font-size: 12px;
   line-height: 16px;
 }
@@ -378,10 +735,137 @@
   flex: 1;
 }
 
-/* The row state holds its own width so a save never reflows the row. */
-.rowState {
+/* ── a field value: read as text, edited on click ────────────────────────────
+   The value is the wide column of the row, and it wraps: a whole connection
+   string or a whole 联调记录 has to be readable where it is, not scrolled for
+   inside a one-line box. `anywhere` breaks an unbroken run (a URL with a token
+   in it) rather than letting it push the row wider than the panel. */
+
+.fieldValueRead {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* A structured value is a block, not a line: the name keeps the first line and
+   the list takes the whole width under it. The row reverses visually (the state
+   and the two icon buttons stay on the name's line, pushed right by the state's
+   auto margin) while the tab order stays the document's. */
+.fieldRowWide {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+.fieldRowWide .fieldValueRead {
+  flex: 1 1 100%;
+  order: 1;
+}
+
+.fieldRowWide .rowFailed,
+.fieldRowWide .rowTrail {
+  margin-left: auto;
+}
+
+/* One pair per line, on the pane's own columns rather than on a width of its
+   own: the same `--label-col` and the same 8px gutter, so a nested key sits
+   under the labels above it and a nested value under their values. The grid
+   starts where the values start — inside the button's own 6.5px inset — which
+   is why the two columns come out on the pane's axis without being told to.
+   The value column takes what is left and wraps inside it. */
+.valueGrid {
+  display: grid;
+  grid-template-columns: var(--label-col) minmax(0, 1fr);
+  gap: 1px 8px;
+  width: 100%;
+}
+
+.valueGridKey {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.valueGridValue {
+  min-width: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 18px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The fallback for a value nested deeper than key-value: indented JSON, in the
+   face the rest of the product reads machine text in. */
+.valueJson {
+  display: block;
+  color: var(--dsw-alias-label-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The editor takes the atom input's box - same 32px when it holds one line - and
+   grows from there. It is always the whole width of the row, never the value
+   column: that column is 149px, and a 110-character value wraps into eleven lines
+   inside it (measured). Reading stays inline, editing does not. */
+.valueEditor {
+  box-sizing: border-box;
+  flex: 1 1 100%;
+  order: 1;
+  min-width: 0;
+  min-height: 32px;
+  /* 长到这个高度以上才内部滚动。这一行原本写的是 140px，量出来的后果是：110 字的
+     联调记录在编辑框里 scrollH=250 > clientH=140，也就是"编辑的时候又被框遮住了"。
+     面板能滚，长值在页里滚比一个吞滚轮的嵌套滚动区好，所以上限只留一个护栏。 */
+  max-height: 45vh;
+  padding: 4px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  /* Follow the text down, then scroll. A browser without `field-sizing` keeps
+     the one-line box and scrolls - no worse than the input this replaced. */
+  field-sizing: content;
+  overflow-y: auto;
+  /* No drag handle: the height is this box's own business, and a manual drag
+     would be thrown away by the next keystroke anyway. */
+  resize: none;
+}
+
+.valueEditor:focus {
+  border-color: var(--dsw-alias-brand-primary);
+  outline: none;
+}
+
+/* The row's trailing slot. The save state and the row's two actions share one
+   fixed width, so the value beside them is the same width whether the row is
+   resting, saving or under the pointer. That width is the actions' own
+   footprint - 24 + 8 + 24 - plus the 8px the row's gap already puts in front of
+   it. The state used to hold 52px of its own *next to* those two icons, and the
+   three of them took 124px of a 377px row: a third of every value in the table,
+   permanently, for a word that is on screen for 1.6s after a save. They swap
+   instead, and the value column gains 60px. */
+.rowTrail {
   flex: none;
-  width: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 64px;
+}
+
+/* Inside the slot: the state takes whatever the slot has when it is the only
+   thing in it, and none of it when the actions are there. Right-aligned, so the
+   word ends on the row's edge — the same edge the remove icon ends on. */
+.rowState {
+  flex: 1;
+  min-width: 0;
   color: var(--dsw-alias-label-tertiary);
   font-size: 12px;
   line-height: 16px;
@@ -415,7 +899,7 @@
   height: 24px;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
   color: var(--dsw-alias-label-tertiary);
   font-family: inherit;
@@ -439,6 +923,27 @@
   color: var(--dsw-alias-state-error-primary);
 }
 
+/* The row's two actions are an affordance, not part of the reading: a table of
+   fifteen fields was painting thirty glyphs that every single row repeats, and
+   a column of ✕ down the right edge is what made the table look like it ended
+   in punctuation. Where a pointer can hover they are painted only while the row
+   is under it or holds focus — they keep their place in the slot throughout, so
+   revealing them moves nothing. `opacity` and not `visibility`: Tab still
+   reaches them and a screen reader still lists them. An action that cannot act
+   (nothing to copy, because the value is empty) stays dimmed rather than
+   hidden, since it is the row saying why it will not act.
+
+   Only where hovering exists: on a touch screen nothing would bring them back.
+   A row showing a failure needs no exemption from this — it is in its editor
+   with focus in it, so it is `:focus-within`, and once focus leaves the row the
+   retry button is the only thing worth painting there anyway. */
+@media (hover: hover) {
+  .fieldRow:not(:hover):not(:focus-within) .rowAction:not(:disabled) {
+    opacity: 0;
+    transition: opacity var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+  }
+}
+
 /* Copy feedback lives in the button that was pressed. */
 .rowCopied,
 .rowCopied:not(:disabled):hover {
@@ -450,14 +955,28 @@
   color: var(--dsw-alias-state-error-primary);
 }
 
-/* The new-field row keeps the name box the same width as the rows above it. */
+/* The new-field row keeps the name box on the label column, so the row that adds
+   a field reads as one more row of the same table rather than a form dropped
+   under it. */
 .draftKey.draftKey {
   flex: none;
-  width: 96px;
+  width: var(--label-col);
 }
 
 /* ── failure and the create form ─────────────────────────────────────────── */
 
+/* The failure strip five panels share.
+   Its fill borrows `interactive-bg-hover-danger`, a *hover* token, because the
+   theme has no wash for the error state to borrow instead: `success` and `warn`
+   each define a `-tertiary` (their wash), and `error` stops at `-secondary`. The
+   borrowed value is right — `interactive-bg-hover-danger` *is*
+   `color-mix(state-error-primary N%, transparent)`, 5% in light and 15% in dark —
+   so this is a naming problem, not a colour one. Deriving it here instead was
+   measured and rejected: one `color-mix` cannot be both 5% and 15%, and at the
+   10% that splits the difference the red text drops to 3.8:1 against its own
+   block, under the 4.5:1 it holds today. Keeping the token keeps both themes at
+   their current contrast; the real fix is a `--dsw-alias-state-error-tertiary`
+   on the host side. */
 .error {
   display: flex;
   align-items: center;

@@ -117,9 +117,17 @@ function mb(bytes: number): string {
 /**
  * Register the class index tools.
  * @param ctx - host context carrying the tool registry.
+ * @param defaultVersion - the version of the Home the operator marked as default,
+ *   consulted when a search names no version. This is the one place a registration
+ *   changes what an existing tool does: without it, "which index did you mean"
+ *   falls back to "the one built most recently", which is a property of the last
+ *   build rather than of the installation the operator is working on.
  * @returns the disposer that withdraws every registration.
  */
-export function registerYonClassTools(ctx: Context): () => void {
+export function registerYonClassTools(
+  ctx: Context,
+  defaultVersion?: () => Promise<string | undefined>,
+): () => void {
   const disposers: Array<() => void> = []
 
   /**
@@ -216,7 +224,9 @@ export function registerYonClassTools(ctx: Context): () => void {
         },
         version: {
           type: 'string',
-          description: 'Which index to search, for example "2111". The most recently built one when omitted.',
+          description: 'Which index to search, for example "2111". When omitted: the version of the Home '
+            + 'registered as default in the panel, if an index for it exists; otherwise the most recently '
+            + 'built one.',
         },
         limit: {
           type: 'number',
@@ -239,9 +249,15 @@ export function registerYonClassTools(ctx: Context): () => void {
         )
       }
 
-      const chosen: StoredIndex | undefined = requested === undefined
-        ? stored[0]
-        : stored.find(entry => entry.version === requested)
+      // The registered default first, the newest index second: a version the
+      // operator marked as theirs, when it has an index, is a better answer than
+      // whichever index happened to be built last. An index that does not exist
+      // falls through rather than failing, so an unindexed default does not make
+      // search unusable.
+      const registered = requested === undefined ? await defaultVersion?.() : undefined
+      const chosen: StoredIndex | undefined = requested !== undefined
+        ? stored.find(entry => entry.version === requested)
+        : (registered === undefined ? undefined : stored.find(entry => entry.version === registered)) ?? stored[0]
       if (chosen === undefined) {
         throw new ClassIndexError(
           'not-found',

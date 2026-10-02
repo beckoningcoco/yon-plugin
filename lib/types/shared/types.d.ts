@@ -219,6 +219,254 @@ export interface DataSourceProbeResult {
     /** What went wrong, carrying the query tool's own diagnostic text. */
     readonly error?: string;
 }
+/**
+ * Which product line an installation directory belongs to.
+ *
+ * The two share a `modules/` layout but not the paths around it, so the label is
+ * carried on the registration and decides which skills-side file the mirror
+ * writes — `ncc_home_path.json` or `bip_home_path.json`.
+ */
+export type HomeProduct = 'ncc' | 'bip';
+/** Every product, in display order (the client renders these as options). */
+export declare const HOME_PRODUCTS: readonly HomeProduct[];
+/**
+ * What the host's folder chooser answered.
+ *
+ * The path has to come from the host: a browser cannot produce one. `showDirectoryPicker()`
+ * hands back a handle and `<input webkitdirectory>` hands back names relative to the
+ * picked root, while the field this fills is `E:/NCProject/NCC/...`.
+ *
+ * `kind` is open rather than a closed union because it is the *host's* vocabulary, not
+ * this plugin's: the harness composes one directory-picker backend per environment and
+ * documents that a consumer meeting a shape it does not implement should hide the
+ * picking affordance rather than fail. `native` is the one this plugin drives; anything
+ * else means "this host has no chooser to show you", and the form goes back to typing.
+ */
+export interface DirectoryPickResult {
+    /** `native` when the host's own chooser was used; otherwise why it was not. */
+    readonly kind: string;
+    /** The chosen absolute path — `native` only — or null when the operator cancelled. */
+    readonly path?: string | null;
+}
+/** One entry of the version picker: what is stored, and what the operator reads. */
+export interface HomeVersionOption {
+    /** What goes into the registration and into the skills-side file's key. */
+    readonly value: string;
+    /** What the dropdown shows. */
+    readonly label: string;
+}
+/**
+ * The versions the operator can pick, per product line.
+ *
+ * **The value is the bare version** (`2111`), while the label carries the product
+ * family (`NCC2111`). That split is not cosmetic: the value is what the skills side
+ * keys on, and the files on disk settle it — `ncc_home_path.json`'s human-authored
+ * sibling `path_config.json` writes its keys as `NCC_Home_2111` / `BIP_Home_V5`, and
+ * the skill directory holds `class_index_2111.json`, `class_index_2312.json`,
+ * `class_index_BIP_V5.json`. A registration stored as `NCC2111` would make the
+ * mirror write `index_file: class_index_NCC2111.json` — a name that matches nothing,
+ * so the index it points at would read as never built.
+ *
+ * NCC's six are the versions the operator named; `NC65` is the older product line,
+ * which is why its label is not `NCC65`. BIP gets its own list because the products
+ * version differently — the BIP home on this machine is keyed `V5` (a
+ * `class_index_BIP_V5.json` exists beside it), and the NCC list has no way to say
+ * that. Neither list is closed: the form offers an "其他" escape so a version that
+ * ships later (or one this file has not heard of) is still registrable, and the
+ * service deliberately does not validate against this table — the mirror merges
+ * versions the panel never registered, so a whitelist there would be a lie about
+ * what the rest of the system tolerates.
+ */
+export declare const HOME_VERSIONS: Readonly<Record<HomeProduct, readonly HomeVersionOption[]>>;
+/**
+ * What a Home is called: its product line and its version, and nothing else.
+ *
+ * A name is not something to ask the operator for. Two NCC 2111 installations from
+ * two different projects are interchangeable for everything this registration is
+ * used for — the class index is keyed by version, and `ncc_home_find`/`ncc_home_read`
+ * go where the registration points. A hand-typed name therefore only ever adds a
+ * field to fill in and a way for two rows to look different while describing the
+ * same thing. The service refuses a second registration of a version under the same
+ * product line (see `home-service.ts`), so `(product, version)` is already the
+ * identity of a row; the name is just that identity, spelled for a person.
+ *
+ * The spelling comes from the same table the version dropdown is drawn from, so the
+ * name and the entry the operator picked there can never disagree. A version outside the
+ * table — registered through the form's 「其他」 escape — is named the obvious way
+ * (`NCC2405`), because a version that ships after this file was written must still
+ * get a name.
+ *
+ * @param product - which product line.
+ * @param version - the bare version, as stored (`2111`, `V5`).
+ * @returns the display name.
+ */
+export declare function homeLabelOf(product: HomeProduct, version: string): string;
+/**
+ * What a probe concluded about a directory.
+ *
+ * `jar-collection` is the honest middle case rather than a failure: a directory
+ * that holds jars but is not an installation. It can be indexed by version, but
+ * it has no `modules/`, so `.bmf` and module config are not there to read. The
+ * surface says so instead of showing a home-shaped empty result.
+ */
+export type HomeShape = 'ncc-home' | 'bip-home' | 'jar-collection' | 'not-found';
+/** One canonical path a Home is expected to have, and whether this one does. */
+export interface HomeKeyView {
+    readonly role: string;
+    /** Relative path, with `*` where a module's own directory name goes. */
+    readonly rel: string;
+    readonly exists: boolean;
+}
+/** One probe of a Home directory, as both halves read it. */
+export interface HomeProfileView {
+    readonly probedAt: string;
+    readonly shape: HomeShape;
+    /** The canonical directories this Home actually has. */
+    readonly present: readonly string[];
+    /** Subdirectories under `modules/`; 0 when there is no `modules/`. */
+    readonly modules: number;
+    /** `.jar` files anywhere under the root, `ufjdk/` excluded. */
+    readonly jars: number;
+    /** True when the walk hit its cap, so both counts are lower bounds. */
+    readonly capped: boolean;
+    readonly keys: readonly HomeKeyView[];
+    readonly warnings: readonly string[];
+}
+/** The class index built for a Home's version, when one exists. */
+export interface HomeIndexView {
+    readonly builtAt: string;
+    readonly totalClasses: number;
+    readonly bytes: number;
+}
+/** One registered Home, as the panel and the model read it. */
+export interface HomeView {
+    /** Stable id, generated at registration and immutable on edit. */
+    readonly id: string;
+    /** The display name, which is {@link homeLabelOf} of the two fields below. */
+    readonly label: string;
+    /** Forward-slash form; both separators are accepted on input. */
+    readonly path: string;
+    readonly product: HomeProduct;
+    readonly version: string;
+    readonly isDefault: boolean;
+    /** False when the directory no longer reads as a Home; the row is still shown. */
+    readonly ready: boolean;
+    readonly profile?: HomeProfileView;
+    readonly index?: HomeIndexView;
+    readonly meta?: HomeMetaIndexView;
+}
+/** `GET /yon/api/homes` payload. */
+export interface HomeListPayload {
+    readonly homes: readonly HomeView[];
+    /** Absolute path of the panel's own document, so the surface can name it. */
+    readonly configPath: string;
+    /** False when the document exists but could not be parsed. */
+    readonly complete: boolean;
+    readonly error?: string;
+    /** Where the skills-side mirror lives, when a product line is registered. */
+    readonly mirrorPath?: string;
+    /** Why the last mirror was skipped or failed, when it was. */
+    readonly mirrorWarning?: string;
+}
+/**
+ * Body of `POST /yon/api/homes` and `PUT /yon/api/homes/<id>`.
+ *
+ * No `label`: the name is {@link homeLabelOf} of the two fields that are here, so
+ * the panel has nothing to ask for and the service has nothing to trust.
+ */
+export interface SaveHomeInput {
+    readonly path: string;
+    readonly product: HomeProduct;
+    readonly version: string;
+    readonly isDefault?: boolean;
+}
+/** One file `ncc_home_find` matched, relative to the Home root. */
+export interface HomeFileView {
+    readonly rel: string;
+    readonly size: number;
+}
+/** `ncc_home_find`'s answer. */
+export interface HomeFindPayload {
+    readonly home: string;
+    readonly matches: readonly HomeFileView[];
+    /** Directory entries visited; a capped walk reports a lower bound on matches. */
+    readonly scanned: number;
+    readonly capped: boolean;
+}
+/** `ncc_home_read`'s answer. */
+export interface HomeReadPayload {
+    readonly home: string;
+    readonly rel: string;
+    /** The encoding the text was actually decoded with. */
+    readonly encoding: string;
+    readonly bytes: number;
+    readonly totalLines: number;
+    /** 1-based, inclusive; what the returned text covers. */
+    readonly from: number;
+    readonly to: number;
+    readonly truncated: boolean;
+    /** Key names whose values were masked, so the answer can say it did. */
+    readonly masked: readonly string[];
+    readonly text: string;
+}
+/** How much of a Home's metadata tree an index covers. */
+export interface MetaCountsView {
+    readonly files: number;
+    readonly entities: number;
+    readonly enums: number;
+    readonly fields: number;
+    readonly enumItems: number;
+}
+/** What comparing an index against the installation concluded. */
+export interface MetaFreshnessView {
+    /** `fresh` — the index still describes the tree; `stale` — it does not; `unknown` — nothing built. */
+    readonly state: 'fresh' | 'stale' | 'unknown';
+    readonly changed: number;
+    readonly added: number;
+    readonly removed: number;
+}
+/** A build that is running, so the panel can show where it is. */
+export interface MetaBuildView {
+    readonly running: boolean;
+    readonly parsed: number;
+    readonly total: number;
+    readonly files: number;
+    readonly current: string;
+    readonly startedAt: string;
+    /** Why the last build failed, if it did. */
+    readonly error?: string;
+}
+/** The metadata index built for a Home's version, when one exists. */
+export interface MetaIndexStatusView {
+    /** False when nothing is stored for this version yet. */
+    readonly indexed: boolean;
+    readonly version: string;
+    readonly builtAt?: string;
+    readonly counts?: MetaCountsView;
+    /** Size of the stored file, in bytes. */
+    readonly bytes?: number;
+    /** The Homes whose files went into it. */
+    readonly sourceHomes?: readonly string[];
+    readonly freshness?: MetaFreshnessView;
+    readonly build?: MetaBuildView;
+}
+/** `GET /yon/api/homes/<id>/meta-index` payload. */
+export interface MetaIndexPayload {
+    readonly home: string;
+    readonly status: MetaIndexStatusView;
+}
+/**
+ * `GET /yon/api/homes` gains this when a Home's version has a metadata index.
+ *
+ * Carried on {@link HomeView} rather than as a separate call, for the same reason the
+ * class index is: the list is what the panel already refreshes, and a second request
+ * would mean the row and its index could disagree about which version they describe.
+ */
+export interface HomeMetaIndexView {
+    readonly builtAt: string;
+    readonly counts: MetaCountsView;
+    readonly bytes: number;
+}
 /** One Obsidian vault the operator registered as a knowledge base. */
 export interface WikiVaultView {
     /** Stable short id, used to address the vault in calls. */

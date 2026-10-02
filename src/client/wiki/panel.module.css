@@ -8,16 +8,16 @@
 
    Every colour here is a theme alias. The previous revision of this file drew its
    own backdrop, dialog, card and buttons; that is what made the surface look like
-   a visitor rather than one of the four. Badges are outlined rather than filled
-   for the same reason: a filled chip needs a contrasting text colour, and this
-   file may not hard-code one. */
+   a visitor rather than one of the four. The level badge is the shared `.tag` —
+   outlined rather than filled, for the measured reason recorded beside that rule
+   in the shared stylesheet, not restated here. */
 
 .title {
   display: flex;
   align-items: center;
   gap: 8px;
   margin: 0 0 6px;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--dsw-alias-label-primary);
 }
@@ -78,6 +78,24 @@
   border-bottom: 0.5px solid var(--dsw-alias-border-l1);
 }
 
+/* 页签、citer 链接、卡片上的「收起」这三个 `<button>` 都没有写 `font-family`，
+   而按钮不继承字体——拿到的是浏览器 UA 给表单控件的默认值（实测 Chrome/Windows
+   下 Arial 13.3333px；换台机器就是另一个字体）。它们是用文字画的控件、和面板
+   文字并排，所以跟面板走：面板里别的地方早就是这样（列表行的按钮是 system-ui
+   13px，共享的 `.foldToggle` 是 `font-family: inherit`）。
+
+   宿主的 `.pb-button`（刷新、重建索引）与 `.pb-input`（搜索框）不在此列：那是
+   带盒子的宿主组件，宿主以后自己补上 `font-family` 时，我们这几条会变成应用里
+   唯一的例外。
+
+   代价几乎为零：Arial 里没有汉字，纯中文串两种写法落到同一个中文回退字体，
+   实测墨迹完全相同（「概览」12px 下都是 24px，「看谁引用它」都是 60px）。真正
+   会变的是拉丁与数字（同字号窄 4~6%），以及 `.citerLink` 那个尺寸 bug。
+
+   字号同时从 13px 收到 12px：进详细栏的第一排「选择」在 digest 面板是 12px 的
+   筛选、在宿主的紧凑控件档（`Button.sm` / `Pill`）也是 12px，只有这里是 13px。
+   13px 是插件的自制中间档（宿主整套原子只有 12 与 14），而 13px 那一层留着的是
+   **内容**（列表行名、属性值），不是控件——控件都归 12px。 */
 .tab {
   appearance: none;
   display: inline-flex;
@@ -87,7 +105,8 @@
   border: none;
   border-bottom: 2px solid transparent;
   background: none;
-  font-size: 13px;
+  font-family: inherit;
+  font-size: 12px;
   color: var(--dsw-alias-label-secondary);
   cursor: pointer;
 }
@@ -102,8 +121,10 @@
   font-weight: 600;
 }
 
+/* 页签本批降到 12px 后，这一条与页签同号了。仍然显式写出来是为了**钉住**：计数是
+   页签的附属信息，页签将来若再调档，它不该跟着动。 */
 .tabCount {
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: var(--dsw-alias-label-tertiary);
 }
@@ -130,26 +151,47 @@
   gap: 6px;
 }
 
-.stat {
+/* 概览的连通度统计：五行共用一张网格，值列才对得齐。每行各成网格时
+   max-content 是按各自那行算的，五行的值列会各宽各的，后面的分母跟着抖。 */
+.statBlock {
   display: grid;
-  grid-template-columns: 132px 72px minmax(0, 1fr);
-  gap: 8px;
+  /* 值列按内容定宽，再由 .statValue 右对齐：写死 72px 时最宽的值也只有
+     37.01px 墨迹，值和它后面的「/ 5374」之间会平白空出 50.4px。 */
+  grid-template-columns: 132px max-content minmax(0, 1fr);
+  column-gap: 8px;
+  row-gap: 6px;
   align-items: baseline;
   font-size: 12px;
 }
 
+/* 行自己不画盒子，三个格子直接落进 .statBlock 的网格。 */
+.stat {
+  display: contents;
+}
+
+/* 跨满三列的一行注脚：它讲的是上面那一行的值，不能当成一个格子排进去。 */
+.statFootnote {
+  grid-column: 1 / -1;
+}
+
 .statLabel {
+  /* 每行的标签都从第 1 列起，行与行才分得开：没有分母的那两行会在第 3 列留个
+     空位，自动排布会把下一行的标签填进去，两行就挤到同一行上了。 */
+  grid-column: 1;
   color: var(--dsw-alias-label-secondary);
 }
 
 .statValue {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  text-align: right;
   color: var(--dsw-alias-label-primary);
 }
 
 .statNote {
-  font-size: 11px;
+  font-size: 12px;
+  /* 与值同宽字体：分母 / 5374 在每行都要对齐。 */
+  font-variant-numeric: tabular-nums;
   color: var(--dsw-alias-label-tertiary);
 }
 
@@ -175,7 +217,7 @@
 
 .levelBar {
   height: 7px;
-  border-radius: 4px;
+  border-radius: 999px;
   background: var(--dsw-alias-border-l1);
   overflow: hidden;
 }
@@ -185,7 +227,7 @@
 .levelFill {
   display: block;
   height: 100%;
-  border-radius: 4px;
+  border-radius: 999px;
   background: var(--dsw-alias-state-success-primary);
 }
 
@@ -205,7 +247,7 @@
 
 .levelShare {
   text-align: right;
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: var(--dsw-alias-label-tertiary);
 }
@@ -214,7 +256,11 @@
 
 .gapList {
   list-style: none;
-  margin: 0;
+  /* 清单上面那一段 `wiki.gapNote` 是从清单**下面**搬上来的：放在下面时它的顶边
+     在 pane 顶下方 460px、本身 48px 高，而 pane 只有 450px——一个字都看不见。
+     留给它的这 8px 写在这里，而不是给 `.note` 加外边距：那会和 `.note` 的
+     `margin: 0` 抢同一条声明，胜负取决于两张样式表的加载顺序。 */
+  margin: 8px 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -246,21 +292,35 @@
 
 .gapCited {
   white-space: nowrap;
+  /* 同一张表里 `.tabCount` / `.statValue` / `.levelCount` / `.levelShare` /
+     `.gapRank` / `.relCount` / `.termCount` / `.logDate` 都带着等宽数字，只有它
+     （和 `.statNote`，本批一起补）漏了。带上它，被引用次数才从右往左一位一位对齐。 */
+  font-variant-numeric: tabular-nums;
   color: var(--dsw-alias-label-secondary);
 }
 
+/* 这一格是 `20px minmax(0,1fr) auto auto` 的倒数第二列：它的**右沿**等于
+   「行右沿 − 展开键的宽 − 8px」。展开键的标签一换（看谁引用它 → 收起），这个
+   右沿就跟着动——实测同一页上展开那一行的被引次数比其余九行靠右 36px
+   （688 → 724）。所以把两个标签叠在同一格里、只让隐形的那个占宽：按钮宽度
+   就此与展开态无关，十行的被引次数落回同一条右沿。 */
 .gapToggle {
-  padding: 0;
-  border: none;
-  background: none;
-  font-size: 11px;
-  color: var(--dsw-alias-state-business-primary);
-  cursor: pointer;
+  display: inline-grid;
 }
 
-.gapToggle:hover {
-  text-decoration: underline;
+.gapToggle > * {
+  grid-area: 1 / 1;
 }
+
+.gapToggleGhost {
+  visibility: hidden;
+}
+
+/* The 展开引用 / 收起 toggle is the shared `.foldToggle`; this file used to carry
+   a near-copy of it. What the copy was missing was `font-family: inherit`, which
+   a `<button>` needs and does not get — so this panel's toggle rendered in Arial
+   while the skill panel's rendered in the app's face, both at 12px. See the
+   shared rule for the measurements. */
 
 .citers {
   padding: 0 0 8px 28px;
@@ -275,14 +335,19 @@
   gap: 4px 10px;
   max-height: 124px;
   overflow-y: auto;
-  font-size: 11px;
+  font-size: 12px;
 }
 
+/* 同 `.tab`。这里还多一条：按钮连 `font-size` 也不继承，于是 `.citerList`
+   声明的 12px 一直没生效——实测这个链接渲染成 13.3333px，同一串引用者名
+   「报价历史表头自定义项-lawbid_…」宽 441.56px 而不是 421.16px（宽 4.8%）。 */
 .citerLink {
   padding: 0;
   border: none;
   background: none;
   text-align: left;
+  font-family: inherit;
+  font-size: inherit;
   color: var(--dsw-alias-label-secondary);
   cursor: pointer;
 }
@@ -324,7 +389,7 @@
   gap: 2px;
   padding: 6px 8px;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   background: none;
   text-align: left;
   cursor: pointer;
@@ -349,7 +414,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--dsw-alias-label-tertiary);
 }
 
@@ -378,12 +443,14 @@
   color: var(--dsw-alias-label-primary);
 }
 
+/* 同 `.tab`：`font-size` 本来就是自己写的，只补字体。 */
 .cardClose {
   margin-left: auto;
   padding: 0;
   border: none;
   background: none;
-  font-size: 11px;
+  font-family: inherit;
+  font-size: 12px;
   color: var(--dsw-alias-label-tertiary);
   cursor: pointer;
 }
@@ -406,24 +473,16 @@
 
 .cardSub {
   margin: 4px 0 0;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--dsw-alias-label-tertiary);
 }
 
-.badge {
-  display: inline-block;
-  padding: 0 6px;
-  border: 1px solid var(--dsw-alias-state-success-primary);
-  border-radius: 10px;
-  font-size: 11px;
-  color: var(--dsw-alias-state-success-primary);
-}
-
-.badgeLow {
-  border-color: var(--dsw-alias-label-dimmed);
-  color: var(--dsw-alias-label-dimmed);
-}
+/* The level badge is `.tag` in the shared stylesheet, with `.tagMuted` for the
+   concept level. It was the loudest of the four hand-rolled versions — a 1px
+   outline in the full success colour on a word already in that colour — and it
+   is now the same hairline-backed capsule as the archive tag in the project list
+   and the outcome badge in the digest list. */
 
 .lacks {
   display: flex;
@@ -431,7 +490,7 @@
   gap: 2px;
   margin: 0;
   padding-left: 18px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--dsw-alias-label-tertiary);
 }
 
@@ -442,7 +501,7 @@
   grid-template-columns: 92px 40px minmax(0, 1fr);
   gap: 8px;
   align-items: baseline;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .relKind {

@@ -33,8 +33,13 @@ declare function mb(bytes: number): string;
 /**
  * Register the class index tools.
  * @param ctx - host context carrying the tool registry.
+ * @param defaultVersion - the version of the Home the operator marked as default,
+ *   consulted when a search names no version. This is the one place a registration
+ *   changes what an existing tool does: without it, "which index did you mean"
+ *   falls back to "the one built most recently", which is a property of the last
+ *   build rather than of the installation the operator is working on.
  * @returns the disposer that withdraws every registration.
  */
-export declare function registerYonClassTools(ctx: Context): () => void;
+export declare function registerYonClassTools(ctx: Context, defaultVersion?: () => Promise<string | undefined>): () => void;
 /** The indexes currently stored, for a surface that reports on them. */
 export { listClassIndexes, mb };

@@ -1,14 +1,14 @@
 /**
- * The panel's second built-in entry: one icon cell that opens the skill surface.
+ * The panel's second built-in entry: one row that opens the skill surface.
  *
- * Like the project cell it owns the dialog it opens, so opening it needs no
+ * Like the project row it owns the dialog it opens, so opening it needs no
  * cross-seat coordination and the panel's own dismissals stand down while it is
- * up. The two cells are one visual part by construction — they share the entry
- * stylesheet — because a panel whose buttons are laid out differently from each
- * other reads as two features that happened to land in the same box.
+ * up. The two rows are one visual part by construction — they share the entry
+ * stylesheet and both take their name from the panel — because a panel whose
+ * buttons are laid out differently from each other reads as two features that
+ * happened to land in the same box.
  */
 import { useEffect, useRef, useState } from 'react'
-import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   InjectFace, PropsLocale, PropsRuntime,
 } from '@deepseek-ai/dsh-client-ui-slots'
@@ -18,8 +18,8 @@ import css from './panel-item.module.css'
 
 /**
  * Composed props of this panel button seat: the owner share carries the panel's
- * live open state, and the inject face carries the skill operations plus the
- * overlay announcement.
+ * live open state and this entry's name, and the inject face carries the skill
+ * operations plus the overlay announcement.
  */
 export type SkillItemProps =
   PropsRuntime<'yon.panel.item'>
@@ -46,11 +46,11 @@ function DocMark() {
 }
 
 /**
- * Render the entry cell and, while open, the skill surface.
+ * Render the entry row and, while open, the skill surface.
  * @param props - composed slot props.
- * @returns the cell, plus the dialog when it is showing.
+ * @returns the row, plus the dialog when it is showing.
  */
-export function SkillItem({ t, pushOverlay, ...api }: SkillItemProps) {
+export function SkillItem({ t, label, pushOverlay, ...api }: SkillItemProps) {
   const [open, setOpen] = useState(false)
   const trigger = useRef<HTMLButtonElement | null>(null)
   // The face may be rebuilt by the host between renders; the announcement must
@@ -74,22 +74,20 @@ export function SkillItem({ t, pushOverlay, ...api }: SkillItemProps) {
 
   return (
     <>
-      <Tooltip label={t('item.skills')} side="bottom" delayMs={300}>
-        <span className={css.cell}>
-          <button
-            ref={trigger}
-            type="button"
-            className={css.item}
-            data-active={open ? '' : undefined}
-            aria-label={t('item.skills')}
-            aria-expanded={open}
-            aria-haspopup="dialog"
-            onClick={() => { setOpen(value => !value) }}
-          >
-            <DocMark />
-          </button>
-        </span>
-      </Tooltip>
+      {/* Same shape as every other row: the name the panel supplied is the
+          button's visible text and therefore its accessible name. */}
+      <button
+        ref={trigger}
+        type="button"
+        className={css.item}
+        data-active={open ? '' : undefined}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={() => { setOpen(value => !value) }}
+      >
+        <DocMark />
+        <span className={css.label}>{label}</span>
+      </button>
       {open && <SkillManager t={t} onClose={() => { setOpen(false) }} {...api} />}
     </>
   )

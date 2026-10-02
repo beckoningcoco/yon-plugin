@@ -295,18 +295,26 @@ export function ProjectManager({ t, onClose, ...api }: ProjectManagerProps) {
                     role="option"
                     aria-selected={project.projectId === selected?.projectId}
                     tabIndex={project.projectId === tabbableId ? 0 : -1}
-                    className={cn(css.projectRow)}
+                    className={cn(css.projectRow, css.projectRowStack)}
                     data-project={project.projectId}
                     data-archived={project.archived ? '' : undefined}
                     onClick={() => { select(project.projectId) }}
                   >
                     <span className={cn(css.projectMark)} aria-hidden="true"><ProjectMark /></span>
-                    <span className={cn(css.projectName)} title={project.name}>{project.name}</span>
-                    {project.code !== '' && <span className={cn(css.projectCode)}>{project.code}</span>}
-                    {project.fieldCount > 0 && (
-                      <span className={cn(css.projectMeta)}>{t('project.fieldCount', { count: project.fieldCount })}</span>
-                    )}
-                    {project.archived && <span className={cn(css.projectArchived)}>{t('project.archived')}</span>}
+                    {/* Two lines: the name keeps the first one to itself and the
+                        code and the field count drop under it. The list is the
+                        narrowest column in the panel and carries three cells
+                        into it; see `.projectRowStack` for what that cost. */}
+                    <span className={cn(css.projectStack)}>
+                      <span className={cn(css.projectName)} title={project.name}>{project.name}</span>
+                      <span className={cn(css.projectSub)}>
+                        {project.code !== '' && <span className={cn(css.projectCode)}>{project.code}</span>}
+                        {project.archived && <span className={cn(css.tag)}>{t('project.archived')}</span>}
+                        {project.fieldCount > 0 && (
+                          <span className={cn(css.projectMeta)}>{t('project.fieldCount', { count: project.fieldCount })}</span>
+                        )}
+                      </span>
+                    </span>
                   </button>
                 </li>
               ))}

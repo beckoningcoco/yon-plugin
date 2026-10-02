@@ -24,20 +24,66 @@ interface Registration {
   readonly component: unknown
 }
 
-/** Minimal slot-service stand-in: records registrations and runs inject callbacks at once. */
+/**
+ * Minimal slot-service stand-in: records registrations, runs inject callbacks at
+ * once, and serves the ledger the panel's row projection reads.
+ *
+ * A new registration is announced to the key's subscribers, as the real registry
+ * announces it — that announcement is what the panel listens for, so a stand-in
+ * that recorded silently would leave the panel looking at an empty seat.
+ */
 function stubSlots() {
   const registrations: Registration[] = []
+  const listeners = new Map<string, Set<() => void>>()
   const slots = {
     register(options: Record<string, unknown>, component: unknown): () => void {
       registrations.push({ name: String(options.name), options, component })
+      for (const listener of [...listeners.get(String(options.name)) ?? []]) listener()
       return () => {}
     },
     inject(_key: string, callback: () => unknown): () => void {
       callback()
       return () => {}
     },
+    entries(key: string): readonly { options: Record<string, unknown> }[] {
+      return registrations
+        .filter(entry => entry.name === key)
+        .map(entry => ({ options: entry.options }))
+    },
+    subscribe(key: string, fn: () => void): () => void {
+      const set = listeners.get(key) ?? new Set<() => void>()
+      set.add(fn)
+      listeners.set(key, set)
+      return () => { set.delete(fn) }
+    },
   }
   return { slots, registrations }
+}
+
+/**
+ * Minimal locale stand-in: `register` records the call, and `bind` translates
+ * through the dictionaries that were registered. That is all this plugin reads
+ * from the service — including through the seat's label thunks, which are what
+ * the panel's row projection resolves.
+ * @returns the service, plus the spy the dictionary test asserts on.
+ */
+function stubLocale() {
+  const registerLocale = vi.fn()
+  const dicts = new Map<string, Record<string, string>>()
+  const locale = {
+    register(ns: string, dictionaries: Record<string, Record<string, string>>): () => void {
+      registerLocale(ns, dictionaries)
+      for (const [id, dict] of Object.entries(dictionaries)) dicts.set(`${ns}:${id}`, dict)
+      return () => {}
+    },
+    bind(ns: string): (key: string) => string {
+      return key => dicts.get(`${ns}:zh`)?.[key] ?? key
+    },
+    subscribe(): () => void {
+      return () => {}
+    },
+  }
+  return { locale, registerLocale }
 }
 
 /**
@@ -47,13 +93,17 @@ function stubSlots() {
 async function bench() {
   const ctx = new Context()
   const { slots, registrations } = stubSlots()
-  const registerLocale = vi.fn()
+  const { locale, registerLocale } = stubLocale()
   ctx.provide('slots', slots as never)
-  ctx.provide('locale', { register: registerLocale } as never)
+  ctx.provide('locale', locale as never)
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
   return { ctx, registrations, registerLocale, fiber }
 }
+
+/** Read a seat label as the panel does: a plain string, or a thunk resolved now. */
+const readLabel = (label: unknown): string | undefined =>
+  typeof label === 'function' ? (label as () => string)() : label as string | undefined
 
 describe('dsh-plugin-yon-panel browser plugin', () => {
   it('declares the two services it needs', () => {
@@ -66,8 +116,8 @@ describe('dsh-plugin-yon-panel browser plugin', () => {
     const action = registrations.find(entry => entry.name === 'sidebar.footer.action')
 
     // The footer action plus one entry per built-in surface: project, skills,
-    // datasources, knowledge base, digestion ledger.
-    expect(registrations).toHaveLength(6)
+    // datasources, knowledge base, digestion ledger, installations.
+    expect(registrations).toHaveLength(7)
     expect(action?.options.id).toBe('yon-btn')
     expect(action?.options.order).toBe(10)
     expect(action?.options.children).toEqual({
@@ -111,13 +161,46 @@ describe('dsh-plugin-yon-panel browser plugin', () => {
     expect(panelFace.hooks.panel.getSnapshot().overlayDepth).toBe(0)
   })
 
-  it('registers the five built-in entries in order: project, skills, datasources, wiki, digest', async () => {
+  it('registers the six built-in entries in order: project, skills, datasources, wiki, digest, home', async () => {
     const { registrations } = await bench()
 
     const entries = registrations.filter(item => item.name === 'yon.panel.item')
 
-    expect(entries.map(entry => entry.options.id)).toEqual(['project', 'skills', 'datasources', 'wiki', 'digest'])
-    expect(entries.map(entry => entry.options.order)).toEqual([10, 20, 30, 40, 50])
+    expect(entries.map(entry => entry.options.id))
+      .toEqual(['project', 'skills', 'datasources', 'wiki', 'digest', 'home'])
+    expect(entries.map(entry => entry.options.order)).toEqual([10, 20, 30, 40, 50, 60])
+  })
+
+  it('names every built-in entry on its own registration, in the panel dictionary', async () => {
+    const { registrations } = await bench()
+
+    const entries = registrations.filter(item => item.name === 'yon.panel.item')
+
+    // The panel draws each row from the seat rather than from what the entry
+    // renders, so a button that shows no name is a missing label here — this is
+    // the assertion that would catch one.
+    expect(entries.map(entry => readLabel(entry.options.label)))
+      .toEqual(['项目管理', '技能', '数据源', '知识库', '消化检查', 'Home 管理'])
+  })
+
+  it('projects the seat rows into the panel, so it can name the rows it hosts', async () => {
+    const { registrations } = await bench()
+
+    const action = registrations.find(item => item.name === 'sidebar.footer.action')
+    const face = (action?.options.inject as () => {
+      hooks: { items: { getSnapshot(): readonly { id: string; label: string }[] } }
+    })()
+
+    // Readable without rendering a single entry: that is the property the panel
+    // needs to be able to order and name its rows at all.
+    expect(face.hooks.items.getSnapshot()).toEqual([
+      { id: 'project', label: '项目管理' },
+      { id: 'skills', label: '技能' },
+      { id: 'datasources', label: '数据源' },
+      { id: 'wiki', label: '知识库' },
+      { id: 'digest', label: '消化检查' },
+      { id: 'home', label: 'Home 管理' },
+    ])
   })
 
   it('gives the skill entry the skill operations and the overlay announcement', async () => {

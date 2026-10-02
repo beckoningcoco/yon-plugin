@@ -4,4 +4,6 @@ import { type YonSkillsService } from './skill-registry.ts';
 import { type YonDataSourcesService } from './datasource-service.ts';
 import { type YonWikiService } from './wiki-service.ts';
 import { type DigestLog } from './digest-log.ts';
-export declare function registerYonApi(ctx: Context, service: YonProjectsService, skills: YonSkillsService, sources: YonDataSourcesService, wiki: YonWikiService, digestLog: DigestLog): () => void;
+import { type YonHomesService } from './home-service.ts';
+import type { YonMetaService } from './meta-service.ts';
+export declare function registerYonApi(ctx: Context, service: YonProjectsService, skills: YonSkillsService, sources: YonDataSourcesService, wiki: YonWikiService, digestLog: DigestLog, homes: YonHomesService, meta: YonMetaService): () => void;

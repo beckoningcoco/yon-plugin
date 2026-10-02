@@ -92,10 +92,15 @@
   gap: 10px;
 }
 
+/* A capsule, because that is what every pressable thing in this product is: the
+   host's own Button and Pill atoms are fully round at every size, and this group
+   sits in a toolbar two elements away from one. It is also the shape the project
+   panel's status group draws — the same control (a set of choices, one of them
+   chosen) was 14px there and 6px here. */
 .filters {
   display: inline-flex;
   border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: 6px;
+  border-radius: 999px;
   overflow: hidden;
 }
 
@@ -117,8 +122,21 @@
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
+/* Focus rings take a state token, because focus is a state.
+ *
+ * The plugin's other three rings — the manager's buttons, the panel item rows and
+ * the launcher trigger — all draw `state-business-primary`, and so does the host's
+ * own Input the moment it is focused (`.wrap:focus-within`). The three below were
+ * the exception: they drew `button-primary-fill`, which resolves to 15,17,21 in
+ * light — the same near-black as `label-primary`. So the ring announced "this is a
+ * primary action" about a control whose only news was that the keyboard is on it,
+ * and it did it in the one colour that carries no signal here. One state, one token.
+ *
+ * The offsets are not part of this and stay as they are: each one exists because
+ * the ring would otherwise be clipped by an ancestor's `overflow` or hidden under a
+ * neighbour's border — they are geometry, not taste. */
 .filter:focus-visible {
-  outline: 2px solid var(--dsw-alias-button-primary-fill);
+  outline: 2px solid var(--dsw-alias-state-business-primary);
   outline-offset: -2px;
 }
 
@@ -130,7 +148,7 @@
 
 .sectionNote {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
   color: var(--dsw-alias-label-tertiary);
 }
@@ -162,7 +180,7 @@
   gap: 1px;
   padding: 7px var(--pad) 10px;
   border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: 6px;
+  border-radius: 8px;
   overflow: hidden;
 }
 
@@ -186,15 +204,18 @@
 }
 
 .averageLabel {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--dsw-alias-label-tertiary);
 }
 
 /* The heaviest figure on the surface by weight, not by size: the modal title is
    16px and belongs to the chrome, so a value larger than it would outrank the
-   panel's own name. Weight and tabular figures do the work instead. */
+   panel's own name. Weight and tabular figures do the work instead.
+   14px is also where the plugin's headings land, so the three sibling panels'
+   titles and this figure are now the same step of the scale — 15px was a size
+   only these four rules used. */
 .averageValue {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   line-height: 1.3;
   color: var(--dsw-alias-label-primary);
@@ -215,14 +236,24 @@
   inline-size: calc((100% - 2 * var(--pad)) * var(--bar-ratio));
   block-size: 2px;
   background: var(--dsw-alias-state-business-primary);
-  border-start-end-radius: 2px;
-  border-end-end-radius: 2px;
+  border-start-end-radius: 999px;
+  border-end-end-radius: 999px;
 }
 
 /* ---- the log ---- */
 
+/* 140px, not the 132px this was: the column was measured against an 11px
+   timestamp, and the timestamps are 12px now that there is no 11px size left to
+   use. Measured at 12px the same 19 characters need 125.4px in Consolas (what
+   this machine falls back to) and 136.8px in SF Mono, which is what
+   `ui-monospace` resolves to on macOS — so 132px had stopped fitting the strings
+   on one of the two platforms, and by only 6.6px of slack on the other.
+   140px clears the wider one with a few px over, and stays a px value on purpose:
+   a custom property used in two contexts (the grid track here, and the indented
+   detail line below) resolves `em` against whichever element it lands on, so the
+   two would disagree the moment their font sizes differ. */
 .logList {
-  --time-col: 132px;
+  --time-col: 140px;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -233,7 +264,7 @@
 }
 
 .logRow {
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .logHead {
@@ -244,7 +275,7 @@
   inline-size: 100%;
   padding: 5px 8px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
   color: inherit;
   font: inherit;
@@ -257,7 +288,7 @@
 }
 
 .logHead:focus-visible {
-  outline: 2px solid var(--dsw-alias-button-primary-fill);
+  outline: 2px solid var(--dsw-alias-state-business-primary);
   outline-offset: -2px;
 }
 
@@ -265,7 +296,7 @@
    timestamps only reads as a column when the digits line up. */
 .logTime {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--dsw-alias-label-tertiary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -279,33 +310,9 @@
   white-space: nowrap;
 }
 
-/* `border-l2`, not `border-l1`: l1 is a hairline meant for separators *inside* a
-   card, and at this size it rendered as a 4%-black outline the eye reads as no
-   outline at all — which is why the neutral badge (体检) looked like it had fallen
-   out of the component family while the two coloured ones had not. */
-.logOutcome {
-  font-size: 11px;
-  padding: 0 6px;
-  border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: 999px;
-  color: var(--dsw-alias-label-secondary);
-  white-space: nowrap;
-}
-
-/* Two classes, not one, and deliberately so: written as a plain `.tonePass` this
-   rule ties with `.logOutcome` on specificity, and `.logOutcome` comes later in
-   the file — so the badge stayed grey while the colour was being applied to
-   nothing. The compound selector wins regardless of order, and lets the border
-   pick up the tone too. */
-.logOutcome.tonePass {
-  color: var(--dsw-alias-state-success-primary);
-  border-color: var(--dsw-alias-state-success-primary);
-}
-
-.logOutcome.toneFail {
-  color: var(--dsw-alias-state-error-primary);
-  border-color: var(--dsw-alias-state-error-primary);
-}
+/* The outcome badge and the metric chips are `.tag` in the shared stylesheet now,
+   with the state tones as its modifiers — see the block there for what the four
+   hand-rolled versions disagreed about. */
 
 /* A hairline between rows. Without it the list is five unruled lines of text and
    the eye has no row to follow from the timestamp across to the status. */
@@ -342,7 +349,7 @@
 
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .metricStrip {
@@ -351,18 +358,9 @@
   gap: 5px;
 }
 
-.metricChip {
-  font-size: 11px;
-  padding: 1px 6px;
-  border: 0.5px solid var(--dsw-alias-border-l1);
-  border-radius: 4px;
-  color: var(--dsw-alias-label-secondary);
-  font-variant-numeric: tabular-nums;
-}
-
 .failedLine {
   margin: 7px 0 0;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--dsw-alias-state-error-primary);
   word-break: break-all;
 }
@@ -374,7 +372,7 @@
 .helpToggle {
   padding: 3px 9px;
   border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: 6px;
+  border-radius: 999px;
   background: transparent;
   color: var(--dsw-alias-label-secondary);
   font: inherit;
@@ -388,7 +386,7 @@
 }
 
 .helpToggle:focus-visible {
-  outline: 2px solid var(--dsw-alias-button-primary-fill);
+  outline: 2px solid var(--dsw-alias-state-business-primary);
   outline-offset: 1px;
 }
 
@@ -397,11 +395,17 @@
   color: var(--dsw-alias-label-primary);
 }
 
+/* A resting surface, so it gets a resting token. It used to be filled with
+   `interactive-bg-hover` — the colour for "the pointer is on this" — on a block
+   that is never hovered: it looked right and meant the wrong thing, and it is the
+   same value the sibling skill panel already derives for its own read-only body
+   (`.body`, 4% of `label-primary`). Two panels drawing the same kind of block now
+   draw it from the same rule. */
 .help {
   padding: 10px 12px;
   border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: 6px;
-  background: var(--dsw-alias-interactive-bg-hover);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--dsw-alias-label-primary) 4%, transparent);
   font-size: 12px;
   line-height: 1.65;
   color: var(--dsw-alias-label-secondary);
@@ -455,7 +459,7 @@
   gap: 6px;
   flex-wrap: wrap;
   margin-block-start: 4px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--dsw-alias-label-tertiary);
 }
 

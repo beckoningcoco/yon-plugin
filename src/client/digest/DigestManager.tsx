@@ -327,10 +327,10 @@ export function DigestManager({ summary, onClose, t }: DigestManagerProps) {
                           <span className={css.logTime}>{shortTime(entry.at)}</span>
                           <span className={css.logLine}>{entryLine(entry)}</span>
                           <span className={cn(
-                            css.logOutcome,
+                            base.tag,
                             entry.outcome === 'pass'
-                              ? css.tonePass
-                              : entry.outcome === 'fail' ? css.toneFail : undefined,
+                              ? base.tagPass
+                              : entry.outcome === 'fail' ? base.tagFail : undefined,
                           )}>
                             {OUTCOME_LABELS[entry.outcome] ?? entry.outcome}
                           </span>
@@ -355,7 +355,7 @@ export function DigestManager({ summary, onClose, t }: DigestManagerProps) {
                             </dl>
                             <div className={css.metricStrip}>
                               {METRIC_ORDER.map((metric) => (
-                                <span key={metric} className={css.metricChip}>
+                                <span key={metric} className={base.tag}>
                                   {`${METRIC_LABELS[metric] ?? metric} ${percent(entry.metrics[metric] ?? null)}`}
                                 </span>
                               ))}

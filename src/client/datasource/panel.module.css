@@ -5,15 +5,20 @@
    surface and the skill surface stay one family.
 
    Every colour here is a theme alias. The one control the atoms do not ship is
-   the native select, which is styled to sit at the same height as an Input
-   beside it rather than to look like a new component. */
+   the native select, which is styled to look like one of the host's own controls
+   rather than like a new component — see its own rule for which of the three
+   things it matches and which one it deliberately does not. */
 
+/* 14px, not 15: the dialog's own title is the host Modal's 16px above this line,
+   and a panel heading one pixel under the chrome heading is not a level, it is a
+   near-miss. Stepped down to the top of the body scale instead, so the ladder
+   reads 16 chrome / 14 heading / 12–13 content. */
 .title {
   display: flex;
   align-items: center;
   gap: 8px;
   margin: 0 0 6px;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--dsw-alias-label-primary);
 }
@@ -33,19 +38,38 @@
   color: var(--dsw-alias-label-secondary);
 }
 
-/* The native picker, matched to the Input atom's box: same height, same hairline,
-   same radius. Appearance is left alone so the platform's own dropdown renders. */
+/* The native picker, meant to pass as one of the host's controls. Appearance is
+   left alone so the platform's own dropdown renders. Three claims were made here
+   and only two of them are now true; the third is written down instead of guessed:
+ *
+ *   radius 8px — was 6px while the Input atom draws 8px, so the one control whose
+ *     whole job is to pass as an Input was the one control that did not. 8px now.
+ *   hairline `border-l4` — was `border-l2`. This is the plugin's only control-shaped
+ *     box: l2 is what the plugin draws its *containers* with (`.help`, the cards,
+ *     the filter capsules), while the host draws its control boxes with l4 (Input's
+ *     `.wrap`, Tag's outline tone). A select is a control, so it takes the control
+ *     token, and 0.10 -> 0.16 alpha is the difference between "a box that is there"
+ *     and "a box you can find".
+ *   height 28px, font 12px — the height was already the host's own `sm` Button
+ *     (28px/12px); the Input wrap computes to 34px (32 + two 1px borders) in the
+ *     medium size. So this control already sat on the compact step of the platform's
+ *     scale, and its 13px was the one part of it that did not — matching neither that
+ *     step's 12px nor the Input's 14px. 13px is a size only this plugin uses: the
+ *     host's primitive set is 12 (its `sm` Button, Pill, menu group labels) and 14
+ *     (its Button, Input, menu items). The picker therefore takes the font of the step
+ *     its box already came from. The height does not move: the reading is "the picker
+ *     is a small control", and 28px is what that step is. */
 .select {
   width: 100%;
   box-sizing: border-box;
   height: 28px;
   padding: 0 6px;
-  border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: 6px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 8px;
   background: transparent;
   color: var(--dsw-alias-label-primary);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 18px;
   cursor: pointer;
 }
