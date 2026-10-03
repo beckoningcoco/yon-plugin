@@ -94,7 +94,14 @@ export declare function entityDirOf(root: string): string | undefined;
  * The vaults present on this machine, in the order {@link GUESSED} lists them.
  *
  * Duplicates by path are dropped, so a vault reachable at two guessed locations
- * is offered once.
+ * is offered once; duplicates by **id** are dropped too, and that half is not
+ * cosmetic. A vault is addressed by id everywhere — the panel selects a row by
+ * it, `wiki_lookup` is narrowed by it, the registration route deletes by it — so
+ * two rows sharing one id are two rows where only the first can ever be edited or
+ * removed. {@link GUESSED} lists the NCC vault at two locations, and a machine
+ * holding both would have produced exactly that pair.
+ *
+ * First one wins, which keeps the order the list is written in as the priority.
  * @returns the vaults that exist; an empty list when none do.
  */
 export declare function guessVaults(): readonly WikiVault[];

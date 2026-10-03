@@ -1,4 +1,4 @@
-import type { WikiCardPayload, WikiCitersPayload, WikiHealthPayload, WikiListPayload, WikiLogEntry, WikiSearchPayload } from '../../shared/types.ts';
+import type { DirectoryPickResult, SaveVaultInput, WikiCardPayload, WikiCitersPayload, WikiHealthPayload, WikiListPayload, WikiLogEntry, WikiSearchPayload, WikiVaultView } from '../../shared/types.ts';
 export { ApiError as WikiApiError } from '../request.ts';
 /** The knowledge base operations the UI drives. */
 export interface WikiApi {
@@ -53,6 +53,32 @@ export interface WikiApi {
      * @returns the citing page names.
      */
     citers(uri: string, vault?: string): Promise<WikiCitersPayload>;
+    /**
+     * Register a vault, or edit one that is already registered.
+     *
+     * The id is generated from the directory and is not an argument on the way in
+     * except to say *which* registration is being edited — the same convention the
+     * Home client follows, and the reason a vault edited in the panel keeps the id
+     * a conversation already used to address it.
+     * @param id - the registration to edit; absent to add a new one.
+     * @param input - the name and the directory.
+     * @returns the stored vault, with its readiness.
+     */
+    saveVault(id: string | undefined, input: SaveVaultInput): Promise<WikiVaultView>;
+    /**
+     * Unlist one registration. Nothing inside the vault is deleted.
+     * @param id - the registration to remove.
+     */
+    removeVault(id: string): Promise<void>;
+    /**
+     * Ask the host to open its own folder chooser.
+     *
+     * Shared with the Home surface and here for the same reason: the browser half
+     * cannot produce an absolute path, and a typed one is exactly the thing this
+     * field exists to stop being wrong about.
+     * @returns the host's kind, and the chosen path when it has one to give.
+     */
+    pickPath(): Promise<DirectoryPickResult>;
 }
 /**
  * Build the API client.

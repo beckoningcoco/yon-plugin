@@ -10,4 +10,4 @@ export interface WikiManagerProps extends WikiApi, PropsLocale<'yonPanel'> {
  * @param props - the wiki API, the copy, and the close gesture.
  * @returns the dialog.
  */
-export declare function WikiManager({ listVaults, rebuildVault, recentWrites, health, search, pageCard, citers, onClose, t, }: WikiManagerProps): import("react").JSX.Element;
+export declare function WikiManager({ listVaults, rebuildVault, recentWrites, health, search, pageCard, citers, saveVault, removeVault, pickPath, onClose, t, }: WikiManagerProps): import("react").JSX.Element;

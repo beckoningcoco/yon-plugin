@@ -341,10 +341,13 @@ const { WikiManager } = await import('../src/client/wiki/WikiManager.tsx')
 const { archivedFixture, projectFixture, valueShapeFixture } = await import('./fixtures/project.ts')
 const { SKILL_API } = await import('./fixtures/skill.ts')
 const { DATASOURCE_FIXTURE } = await import('./fixtures/datasource.ts')
-const { wikiApi } = await import('./fixtures/wiki.ts')
+const { wikiApi, wikiFixture, wikiWithoutPicker, WIKI_NONE, WIKI_PICKED_PATH } =
+  await import('./fixtures/wiki.ts')
 const { HomeManager } = await import('../src/client/home/HomeManager.tsx')
-const { HOME_FIXTURE, HOME_EMPTY, HOME_PICKED_PATH, homesFixture, homesWithoutPicker } =
-  await import('./fixtures/homes.ts')
+const {
+  HOME_FIXTURE, HOME_EMPTY, HOME_PICKED_PATH, homesFixture, homesWithoutPicker,
+  homesWithClassFailure, homesWithVanishedIndex,
+} = await import('./fixtures/homes.ts')
 // 外壳与六个条目：面板的"行"这一层（批 1 重做的对象）。原先预览只画 Manager，
 // 于是"面板打开时长什么样"根本没有渲染途径，而它是最常被看到的那一屏。
 const { YonPanelRoot } = await import('../src/client/YonPanelRoot.tsx')
@@ -766,6 +769,79 @@ ${parts.map(css => `<style>${css}</style>`).join('\n')}
       + ' multiline=' + multiline + ' overflowing=' + overflowing
       + ' tallestRow=' + Math.round(tallest)
       + ' textareas=' + boxes.length + editors)
+  }
+  // Home 面板的几何。这一页的三个怀疑——左列表底部的脚注板、被塞进属性值里的
+  // 「建索引」按钮、以及压住关键路径表的 sticky 动作条——在图上"看着像"，
+  // 只有 rect 能回答它们各占多少、谁盖住谁。用 keyRole 把关：只有探到过结果的
+  // Home 页有关键路径表（keyRole 是这份样式表独有的类名，不在共享表里）。
+  var keyRole = document.querySelector('[class*="keyRole"]')
+  if (keyRole) {
+    var pane = keyRole.closest('[class*="detailPane"]')
+    var paneRect = pane.getBoundingClientRect()
+    out.push('detailPane ' + Math.round(paneRect.width) + 'x' + Math.round(paneRect.height)
+      + ' content=' + pane.scrollHeight + ' belowFold=' + Math.max(0, pane.scrollHeight - pane.clientHeight))
+    // 逐个子元素的高度：整列多高只是结论，钱花在哪里只有这一行能回答。
+    var kids = pane.children
+    var kidOut = ''
+    for (var ic = 0; ic < kids.length; ic++) {
+      var kcls = String(kids[ic].className || '').split(' ').pop()
+      kidOut += ' | ' + ic + ':' + kids[ic].tagName.toLowerCase() + '.' + kcls
+        + '=' + Math.round(kids[ic].getBoundingClientRect().height)
+    }
+    out.push('paneKids=' + kids.length + kidOut)
+    var keys = document.querySelectorAll('[class*="keyRel"]')
+    var acts = pane.querySelector('[class*="detailActions"]')
+    if (acts !== null && keys.length > 0) {
+      var band = acts.getBoundingClientRect()
+      var under = 0
+      var clear = 0
+      for (var ik = 0; ik < keys.length; ik++) {
+        var rb = keys[ik].getBoundingClientRect()
+        if (rb.bottom > band.top + 0.5 && rb.top < band.bottom) under++
+        else if (rb.bottom <= band.top + 0.5) clear++
+      }
+      out.push('keyRows=' + keys.length + ' clearOfBar=' + clear + ' underBar=' + under)
+      out.push('actions top=' + Math.round(band.top) + ' h=' + Math.round(band.height)
+        + ' pos=' + cs(acts).position + ' offsetTop=' + Math.round(acts.offsetTop)
+        + ' paneBottom=' + Math.round(paneRect.bottom))
+    }
+    var keyBox = document.querySelector('[class*="keys"]')
+    if (keyBox !== null) out.push('keys h=' + Math.round(keyBox.getBoundingClientRect().height))
+    // 属性值那一格：四个 dd 各自多高，以及那个按钮有没有被挤到值列之外。
+    var vals = document.querySelectorAll('[class*="propValue"]')
+    var hs = []
+    var vw = 0
+    for (var iv = 0; iv < vals.length; iv++) {
+      hs.push(Math.round(vals[iv].getBoundingClientRect().height))
+      vw = Math.max(vw, Math.round(vals[iv].getBoundingClientRect().width))
+    }
+    var labels = document.querySelectorAll('[class*="propLabel"]')
+    out.push('propValues=' + vals.length + ' heights=[' + hs.join(',') + '] w=' + vw
+      + ' labelCol=' + (labels.length > 0 ? Math.round(labels[0].getBoundingClientRect().width) : '-'))
+    var vbtns = document.querySelectorAll('[class*="propValue"] button')
+    for (var ib2 = 0; ib2 < vbtns.length; ib2++) {
+      var cell = vbtns[ib2].closest('[class*="propValue"]')
+      var cellRect = cell.getBoundingClientRect()
+      var btnRect = vbtns[ib2].getBoundingClientRect()
+      out.push('valueBtn[' + ib2 + '] ' + Math.round(btnRect.width) + 'x' + Math.round(btnRect.height)
+        + ' btnRight=' + Math.round(btnRect.right) + ' cellRight=' + Math.round(cellRect.right)
+        + ' btnTop=' + Math.round(btnRect.top) + ' cellTop=' + Math.round(cellRect.top))
+    }
+    // 左列表：最后一行之下留了多少空、两条全局脚注吃掉多少高度。
+    var listPane = document.querySelector('[class*="listPane"]')
+    if (listPane !== null) {
+      var projs = listPane.querySelector('[class*="projects"]')
+      var rows2 = listPane.querySelectorAll('[role="option"]')
+      var notes = listPane.querySelectorAll('[class*="note"]')
+      var notesH = 0
+      for (var n = 0; n < notes.length; n++) notesH += notes[n].getBoundingClientRect().height
+      out.push('listPane h=' + Math.round(listPane.getBoundingClientRect().height)
+        + ' rows=' + rows2.length
+        + ' emptyTail=' + (projs !== null && rows2.length > 0
+          ? Math.round(projs.getBoundingClientRect().bottom - rows2[rows2.length - 1].getBoundingClientRect().bottom)
+          : '-')
+        + ' notes=' + notes.length + ' notesH=' + Math.round(notesH))
+    }
   }
   document.getElementById('probe').textContent = 'PROBE ' + out.join(' | ')
 })()
@@ -1396,6 +1472,122 @@ describe('预览导出', () => {
     writeFileSync('preview/panel-wiki-error.html', page(doc.body.innerHTML, 'wiki-error', panel.sheets, false), 'utf8')
   })
 
+  // ── wiki 的三个登记动词 ──────────────────────────────────────────────────────
+  //
+  // 上面九张图全是「读」的样子，因为这一批之前这个面确实是只读的。批 3b 给它加了
+  // 新增 / 编辑 / 移除登记三个动词，而这三个状态**都要点一下才走得到**，静态页一个
+  // 都拍不着——所以三张图各自还压着一条只看 CSS 猜不出来的规则：
+  //
+  //   · 表单里路径那一格是**只读的读出**，值只能从宿主的选择器来；而名称那一格
+  //     反过来，是这条登记里唯一推导不出来的东西（id 从目录名派生），必须能打字；
+  //   · 空名单那一屏是「谁都没登记过」的模样，它得指得出下一步，否则这一页只是
+  //     一句陈述；
+  //   · 两步确认把动作行换成「一句问话 + 两颗按钮」以后，那句问话**必须还在动作行
+  //     里**——共享表的 `.detailActions:last-child` 是贴底吸住的，写在它上面一行的
+  //     内容会滚出视野（安装目录面板第一版就是这么错的，那张图上只剩两颗按钮）。
+  //
+  // 内容边界而非主题问题，三张都只出亮色。
+
+  /** 找一颗按钮按它的可见文字**全等**：这个面里「移除登记」与「移除」是两颗按钮。 */
+  function verb(doc: Document, text: string): HTMLButtonElement {
+    const hit = [...doc.querySelectorAll<HTMLButtonElement>('button')]
+      .find(button => button.textContent?.trim() === text)
+    expect(hit, `这一页上没有「${text}」这颗按钮`).toBeTruthy()
+    return hit as HTMLButtonElement
+  }
+
+  it('渲染 wiki 的登记表单（亮色）', async () => {
+    const panel = wikiPanel()
+    const view = render(<WikiManager t={t} onClose={noop} {...wikiApi} />)
+    await settle(view.container.ownerDocument.body)
+    const doc = view.container.ownerDocument
+
+    fireEvent.click(verb(doc, name('wiki.new')))
+    await settle(doc.body)
+
+    const inner = doc.body.innerHTML
+    expect(inner).toContain(name('wiki.newTitle'))
+
+    // 路径是**选出来的**，不是打出来的：框只读、空表单里它是空的。一个绝对路径错一个
+    // 字符，面板不会报错，只会安静地列出一个空的知识库——这就是只读的理由。
+    const field = doc.querySelector<HTMLInputElement>('#yon-wiki-path')
+    expect(field?.readOnly).toBe(true)
+    expect(field?.value).toBe('')
+    // 名称反过来：它可写，因为它是唯一推导不出来的东西。断「可写」而不是断「有」——
+    // 哪天它被改成只读或换成下拉，只有这条断言会响。
+    const label = doc.querySelector<HTMLInputElement>('#yon-wiki-label')
+    expect(label?.readOnly).toBe(false)
+    // 而这个面里没有下拉：产品线和版本都不必使用者选（那是安装目录面板的事）。
+    expect(doc.querySelector('select')).toBeNull()
+
+    fireEvent.click(verb(doc, name('wiki.pickDir')))
+    await settle(doc.body)
+    expect(doc.querySelector<HTMLInputElement>('#yon-wiki-path')?.value).toBe(WIKI_PICKED_PATH)
+
+    writeFileSync('preview/panel-wiki-form.html', page(doc.body.innerHTML, 'wiki-form', panel.sheets, false), 'utf8')
+  })
+
+  it('渲染 wiki 的空名单（亮色）', async () => {
+    const panel = wikiPanel()
+    const view = render(<WikiManager t={t} onClose={noop} {...wikiFixture(WIKI_NONE)} />)
+    await settle(view.container.ownerDocument.body)
+
+    const inner = view.container.ownerDocument.body.innerHTML
+    // 这是**一次都没登记过的第一屏**，所以它自己得是一页图。断言落在那句指路的
+    // 文案上：空态说得出下一步才算空态，只说「没有」就只是一句陈述。
+    expect(inner).toContain(name('wiki.emptyHint'))
+    expect(view.container.ownerDocument.querySelector('[class*="emptyTitle"]')).not.toBeNull()
+    // 而且「新增」那颗按钮还在——空态里它是唯一的出路。
+    expect(verb(view.container.ownerDocument, name('wiki.new'))).toBeTruthy()
+    writeFileSync('preview/panel-wiki-empty.html', page(inner, 'wiki-empty', panel.sheets, false), 'utf8')
+  })
+
+  it('渲染 wiki 的移除确认（亮色）', async () => {
+    const panel = wikiPanel()
+    const view = render(<WikiManager t={t} onClose={noop} {...wikiApi} />)
+    await settle(view.container.ownerDocument.body)
+    const doc = view.container.ownerDocument
+
+    fireEvent.click(verb(doc, name('wiki.remove')))
+    await settle(doc.body)
+
+    const inner = doc.body.innerHTML
+    // 断在问话上，**不能断在确认按钮的文案上**：`wiki.remove`（列表那颗）是「移除登记」，
+    // 而 `wiki.removeYes` 是「移除」——后者是前者的子串，所以「inner 里有『移除』」在
+    // 确认行没打开时同样成立。那句问话只出现在这一段分支里。
+    expect(inner).toContain(name('wiki.removeAsk'))
+    expect(inner).toContain(name('wiki.removeYes'))
+    // 而且它必须在**动作行里面**，理由见上面那段注释。
+    expect(doc.querySelector('[class*="detailActions"]')?.textContent).toContain(name('wiki.removeAsk'))
+    // 那句说明（「vault 目录和里面的索引文件都不动」）是这一步的全部安抚，少了它
+    // 使用者会以为点下去要删东西。
+    expect(inner).toContain(name('wiki.removeAbout'))
+    writeFileSync('preview/panel-wiki-confirm.html', page(inner, 'wiki-confirm', panel.sheets, false), 'utf8')
+  })
+
+  // 一台没有本地目录选择器的宿主：那颗按钮照旧画出来，点下去才知道"这台机器没有"。
+  // 这条路径要点击才走到，静态页拍不到，所以验收只落在断言上（与安装目录面板同款）。
+  // 它值得有一条，因为这里**没有**可手输的回退——使用者点半天是等不到一个输入框的。
+  it('宿主没有目录选择器时，wiki 说明登记不了', async () => {
+    const view = render(<WikiManager t={t} onClose={noop} {...wikiWithoutPicker()} />)
+    await settle(view.container.ownerDocument.body)
+    const doc = view.container.ownerDocument
+
+    fireEvent.click(verb(doc, name('wiki.new')))
+    await settle(doc.body)
+
+    // 说明只在问过之后才出现（宿主是懒问的）。
+    expect(doc.body.innerHTML).not.toContain(name('wiki.pickUnavailable'))
+    fireEvent.click(verb(doc, name('wiki.pickDir')))
+    await settle(doc.body)
+
+    expect(doc.body.innerHTML).toContain(name('wiki.pickUnavailable'))
+    // 唯一的路径输入框仍然是只读的那一个：没有第二个可以打的框冒出来。
+    expect(doc.querySelector<HTMLInputElement>('#yon-wiki-path')?.readOnly).toBe(true)
+    expect([...doc.querySelectorAll<HTMLInputElement>('input')].filter(input => input.readOnly === false)
+      .map(input => input.id)).toEqual(['yon-wiki-label'])
+  })
+
   // ── 安装目录面板 ──────────────────────────────────────────────────────────────
   //
   // 这一页的四个状态都是**只有点一下才看得到**的，而它们各自压着一条只看 CSS 猜不出来
@@ -1667,6 +1859,135 @@ describe('预览导出', () => {
     // 按钮自己也要说"正在建"，否则点第二次的人不知道第一次生效了。
     expect(inner).toContain(name('home.metaBuilding'))
     writeFileSync('preview/panel-home-meta-building.html', page(inner, 'home-meta-building', panel.sheets, false), 'utf8')
+  })
+
+  // ── 类索引那一段（批 3a） ────────────────────────────────────────────────────
+  //
+  // 这一段和上面元数据那段的来路不同：它是**先有这一批，后有图**——两个按钮和三种
+  // 结论（没有 / 已有 / 建立失败）就是这一批加的东西，所以每一屏都要有一页。批 3a 之
+  // 前这一格是详情栏 `<dl>` 里的一行「类索引」，只读；现在它是一个会动的块。
+  //
+  // 数清按钮是这一段的重点：`home.classRemove` 只该在**有文件**的时候出现，画多了就
+  // 是一个必然报「本来就没有」的按钮。
+  it('渲染安装目录面板的类索引行（已建，亮色）', async () => {
+    const panel = PANELS.find(candidate => candidate.id === 'home') as Panel
+    const view = render(<HomeManager t={t} onClose={noop} {...HOME_FIXTURE} />)
+    await settle(view.container.ownerDocument.body)
+    const doc = view.container.ownerDocument
+
+    // 默认选中的 `ncc-2111` 建过索引——和列表行上的 `index` 是同一份（fixture 里两个
+    // 数共用一组常量），所以这一页同时是"列表与详情说的是同一件事"的证据。
+    const inner = doc.body.innerHTML
+    expect(inner).toContain(filled('home.indexLine', {
+      classes: '143908', size: '12.3 MB', at: '2026-09-28 16:02:41',
+    }))
+    expect(inner).toContain(name('home.classRebuild'))
+    expect(inner).not.toContain(name('home.classBuild'))
+    // 有索引才画删除；没有索引那一页必须一个都找不到。
+    expect([...doc.querySelectorAll('button')]
+      .filter(button => button.textContent?.trim() === name('home.classRemove'))).toHaveLength(1)
+    // 已经有索引就**不该**再讲一遍这索引是什么：那句话是给还没建的人看的。
+    expect(inner).not.toContain(name('home.classWhy'))
+    writeFileSync('preview/panel-home-class-built.html', page(inner, 'home-class-built', panel.sheets, false), 'utf8')
+  })
+
+  it('渲染安装目录面板的类索引行（没有，亮色）', async () => {
+    const panel = PANELS.find(candidate => candidate.id === 'home') as Panel
+    const view = render(<HomeManager t={t} onClose={noop} {...HOME_FIXTURE} />)
+    await settle(view.container.ownerDocument.body)
+    const doc = view.container.ownerDocument
+
+    const row = doc.querySelector<HTMLButtonElement>('button[data-key="ncc-2207"]')
+    fireEvent.click(row as HTMLButtonElement)
+    await settle(doc.body)
+
+    const inner = doc.body.innerHTML
+    expect(inner).toContain(name('home.indexNone'))
+    expect(inner).toContain(name('home.classBuild'))
+    expect(inner).not.toContain(name('home.classRebuild'))
+    // 还没建的时候要讲清这索引是什么、要多久——它是这一页唯一需要做决定的地方。
+    expect(inner).toContain(name('home.classWhy'))
+    // 没文件就**没有**删除可点。
+    expect([...doc.querySelectorAll('button')]
+      .filter(button => button.textContent?.trim() === name('home.classRemove'))).toHaveLength(0)
+    writeFileSync('preview/panel-home-class-none.html', page(inner, 'home-class-none', panel.sheets, false), 'utf8')
+  })
+
+  it('渲染安装目录面板的类索引（建立中，亮色）', async () => {
+    const panel = PANELS.find(candidate => candidate.id === 'home') as Panel
+    const view = render(<HomeManager t={t} onClose={noop} {...HOME_FIXTURE} />)
+    await settle(view.container.ownerDocument.body)
+    const doc = view.container.ownerDocument
+
+    const row = doc.querySelector<HTMLButtonElement>('button[data-key="ncc-2207"]')
+    fireEvent.click(row as HTMLButtonElement)
+    await settle(doc.body)
+
+    const build = [...doc.querySelectorAll('button')]
+      .find(button => button.textContent?.trim() === name('home.classBuild')) as HTMLButtonElement
+    expect(build).toBeTruthy()
+    fireEvent.click(build)
+    await settle(doc.body)
+
+    const inner = doc.body.innerHTML
+    // 进度那一条：两个数（扫过多少 jar、多少个类），没有分母——类索引边扫边记，扫之前
+    // 不知道总数，真机就是这么答的。
+    expect(inner).toContain(filled('home.classProgress', { jars: '3120', classes: '62400' }))
+    expect(inner).toContain(name('home.classBuilding'))
+    // 跑到一半就不再讲"这索引是什么"了：决定已经做过。
+    expect(inner).not.toContain(name('home.classWhy'))
+    writeFileSync('preview/panel-home-class-building.html', page(inner, 'home-class-building', panel.sheets, false), 'utf8')
+  })
+
+  it('渲染安装目录面板的类索引（建立失败，亮色）', async () => {
+    const panel = PANELS.find(candidate => candidate.id === 'home') as Panel
+    const view = render(<HomeManager t={t} onClose={noop} {...homesWithClassFailure()} />)
+    await settle(view.container.ownerDocument.body)
+    const doc = view.container.ownerDocument
+
+    // 夹具默认把失败挂在 `ncc-2105`（那条路径失效的登记）上——真机上失败的理由就是
+    // 这个：指到了一个不是安装目录的地方。
+    const row = doc.querySelector<HTMLButtonElement>('button[data-key="ncc-2105"]')
+    fireEvent.click(row as HTMLButtonElement)
+    await settle(doc.body)
+
+    const inner = doc.body.innerHTML
+    const alert = doc.querySelector('[role="alert"]')
+    expect(alert?.textContent).toContain('建立失败')
+    expect(alert?.textContent).toContain('modules/*/classes')
+    // 失败不是"没有索引"：那一句仍然在，因为文件确实没建出来。
+    expect(inner).toContain(name('home.indexNone'))
+    writeFileSync('preview/panel-home-class-failed.html', page(inner, 'home-class-failed', panel.sheets, false), 'utf8')
+  })
+
+  it('删除索引后说清删掉了什么，两种答复各说各的', async () => {
+    const panel = PANELS.find(candidate => candidate.id === 'home') as Panel
+
+    // Two renders live side by side in one jsdom document (nothing unmounts them here),
+    // so every query below is scoped to its own `container` — a document-wide
+    // `querySelectorAll` would find the *other* render's button and click that one.
+    const clickRemove = async (
+      view: ReturnType<typeof render>,
+    ): Promise<string> => {
+      await settle(view.container.ownerDocument.body)
+      const button = [...view.container.querySelectorAll('button')]
+        .find(candidate => candidate.textContent?.trim() === name('home.classRemove')) as HTMLButtonElement
+      expect(button).toBeTruthy()
+      fireEvent.click(button)
+      await settle(view.container.ownerDocument.body)
+      return view.container.innerHTML
+    }
+
+    // 真删掉了一个文件。
+    expect(await clickRemove(render(<HomeManager t={t} onClose={noop} {...HOME_FIXTURE} />)))
+      .toContain(name('home.classRemoved'))
+
+    // 按下去的时候文件已经不在了。这句答复是这一批唯一"说不清就骗人"的地方：不说，
+    // 使用者会以为删除成功了。
+    const inner = await clickRemove(render(<HomeManager t={t} onClose={noop} {...homesWithVanishedIndex()} />))
+    expect(inner).toContain(name('home.classRemoveNone'))
+    expect(inner).not.toContain(name('home.classRemoved'))
+    writeFileSync('preview/panel-home-class-removed.html', page(inner, 'home-class-removed', panel.sheets, false), 'utf8')
   })
 
   // 同一条规则的另一半：真机上正经安装目录**一定**是截断的（量出来的：462 483 个目录项、

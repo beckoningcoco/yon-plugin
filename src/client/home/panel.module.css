@@ -5,13 +5,20 @@
    action row, the empty state, the error strip — comes from the shared stylesheet,
    so this surface and its five siblings stay one family.
 
-   Every colour here is a theme alias. Two rules are declared here that a sibling
-   surface also declares (`.select` in `datasource/panel.module.css`, `.subTitle` in
-   `wiki/panel.module.css`): the collision guard in `preview/render.spec.tsx` checks
-   the sheets *of one panel* against the shared one, and these two are not in the
-   shared sheet, so neither is a clash. They are restated rather than promoted to
-   the shared sheet because promoting a rule four surfaces already read is a change
-   to all four, and the declarations are five lines each. */
+   Every colour here is a theme alias. Three rules are declared here that a sibling
+   surface also declares (`.select` in `datasource/panel.module.css`, `.subTitle` and
+   `.card` in `wiki/panel.module.css`): the collision guard in
+   `preview/render.spec.tsx` checks the sheets *of one panel* against the shared one,
+   and none of these three is in the shared sheet, so none is a clash — CSS modules
+   scope per sheet, and the same name in two sheets is two selectors. They are
+   restated rather than promoted because promoting a rule four surfaces already read
+   is a change to all four.
+
+   `.card` is the one of the three where the sibling is a different rule rather than
+   a copy: the wiki's page card is a flex column at radius 8 with no fill, because it
+   sits inside a pane that already has a border. This one is a grid block that has to
+   lift off a page of the same colour as itself, so it takes the fill, the 12px radius
+   and the shadow — the derivation is at the rule. */
 
 .title {
   display: flex;
@@ -23,14 +30,119 @@
   color: var(--dsw-alias-label-primary);
 }
 
+/* The row of verbs under the title, ruled off from what they act on.
+ *
+ * The verbs used to be the detail column's last child, which is what made the
+ * shared `.detailActions:last-child` rule pin them to the pane's foot; they moved
+ * under the title in the previous pass. What is added here is the separation: the
+ * rule under the row says the controls and the facts below them are two things.
+ * A hairline, not a filled bar — the row above it is a toolbar, not a header. */
+.verbRow {
+  padding-bottom: 8px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
 /* A section heading inside the detail column. Same rung as the wiki surface's:
    12px semibold secondary, and 18px of air above it because it is separating two
-   blocks rather than starting the column. */
+   blocks rather than starting the column.
+ *
+ * The air is 8 + the column's own 10px gap, not 18 on top of it. The pane is a flex
+ * column with `gap: 10px`, and a flex item's margins do not collapse into that gap —
+ * so the 18/6 this rule used to carry came out as 28 above and 16 below. Measured on
+ * the home pane this pass: each heading cost 15px of glyphs and 39px of air, 54px
+ * apiece, and three of them were 162px of a 450px column. Written as 8/0 the same
+ * rhythm is produced by the gap that is already there. */
 .subTitle {
-  margin: 18px 0 6px;
+  margin: 8px 0 0;
   font-size: 12px;
   font-weight: 600;
   color: var(--dsw-alias-label-secondary);
+}
+
+/* A section heading that carries its own control on the right.
+ *
+ * Measured before this: the metadata block was one property row — a `<dd>` holding
+ * the state sentence, the freshness note, the source list *and* the build button —
+ * and it came out 102px tall where its three sibling rows were 18/36/36, with the
+ * button's right edge at 748 and the value column's at 748: pinned to the far end
+ * of a 273px cell, 273px away from the sentence it belongs to, and alone on its
+ * line the moment that sentence wrapped (`preview/panel-home-jars.png`).
+ *
+ * So the block is promoted to a section and the control moves to its heading. The
+ * placement the old comment argued for is kept — the button is still the value's
+ * own control, not a verb in the pane's action row — while the row collapses to a
+ * heading and a sentence. */
+.blockHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 18px 0 6px;
+}
+
+/* The heading inside it keeps `.subTitle`'s rung and gives up its own margin: the
+   row owns the spacing. Written as a child selector rather than as a second rung
+   so the two cannot drift apart. */
+.blockHead > h4 {
+  margin: 0;
+}
+
+/* Two controls on a heading, where `.blockHead`'s `space-between` expects one.
+ *
+ * The pair belongs to one block — building the class index and dropping it — so they
+ * are one item at the far end rather than two ends of a row. `flex: none` on the
+ * buttons and `nowrap` for the same reason `.pathRow > button` carries them: a text
+ * button that wraps stops being the size its neighbour was laid out against. */
+.blockVerbs {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+}
+
+.blockVerbs > button {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* A sub-heading of the block above it — 关键路径 under 探测结果.
+ *
+ * It used to carry `.subTitle`, the same rung as the heading it sits under, so the
+ * two read as siblings: measured identical at 12px/600/secondary, with 18px above
+ * each. The step down is the weight (500), taken from `.inlineTitle`'s rung, and
+ * the smaller gap; the colour stays secondary, because tertiary is what the labels
+ * *inside* the table below it use. */
+.keyHead {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* The three block headings, marked with a short bar of the accent colour.
+ *
+ * Three headings at 12px differ from each other only in weight and the space above
+ * them, which the previous pass established was too fine a step for the eye — it was
+ * the difference between 600 and 500. The bar makes the step a mark instead of a
+ * measurement, and it is the only place this surface spends the accent colour on a
+ * *shape*; the alternative token, `--dsw-alias-brand-primary`, is not a colour (it
+ * is bluish-1000 in the light theme, bluish-50 in the dark), so the accent has to be
+ * `state-business-primary`.
+ *
+ * `flex` because a ::before on an inline box would sit on the text baseline. */
+.accent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.accent::before {
+  content: '';
+  flex: none;
+  width: 3px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--dsw-alias-state-business-primary);
 }
 
 /* A registration whose directory no longer reads as a Home. Dimmed rather than
@@ -38,6 +150,18 @@
    and dropping it from the list would only hide the problem. */
 .rowNotReady {
   opacity: 0.55;
+}
+
+/* The selected row, marked on the *left* edge.
+ *
+ * The shared `.projectRow[aria-selected='true']` already fills it with
+ * `interactive-bg-active`; what was missing is a mark that survives the fill being
+ * a 6% tint. A 2px bar in the state colour, drawn as an inset shadow rather than a
+ * border so it rides inside the row's own 8px radius and cannot change the row's
+ * width. Home-local rather than a change to the shared sheet: the six surfaces'
+ * lists share `.projectRow`, and the other five are not being redesigned here. */
+.rowOn {
+  box-shadow: inset 2px 0 0 var(--dsw-alias-state-business-primary);
 }
 
 /* A Home path is read character by character — drive letter, separators, mixed
@@ -75,10 +199,21 @@
   flex: 1;
 }
 
+/* An icon button, so it needs a hit area and a hover that says it is one. Nothing
+   else in this surface is hand-drawn — every other control is a host atom — so this
+   is the one place the pressed and hovered states have to be written out. 3px of
+   padding takes it from 17x17 to 19x19 measured.
+ *
+ * This is the one deliberate divergence from the host's button language: its own
+ * Button is a pill (`r18` at `h36`, `r14` at `h28` — half the height either way).
+ * This one is 8px, because 999px in this project already means "status" (3.5) and a
+ * 19px control drawn as a pill would read as a tag. Recorded in §7 rather than left
+ * for someone to "fix". */
 .copyBtn {
   flex: none;
-  padding: 2px;
+  padding: 3px;
   border: none;
+  border-radius: 8px;
   background: none;
   line-height: 0;
   color: var(--dsw-alias-label-tertiary);
@@ -86,7 +221,12 @@
 }
 
 .copyBtn:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
+}
+
+.copyBtn:active {
+  background: var(--dsw-alias-interactive-bg-active);
 }
 
 .copyOk {
@@ -125,42 +265,169 @@
   cursor: not-allowed;
 }
 
+/* ---- the card face ---- */
+
+/* The two fact blocks — the path/product/index grid and the probe's reading — read
+   as bare text on the dialog's background. This lifts them off it.
+ *
+ * The boundary is carried by the hairline and the shadow, *not* by the fill. That is
+ * a measured constraint rather than a preference: in the light theme
+ * `--dsw-alias-bg-layer-1` (the dialog) and `bg-layer-2` (the page under it) resolve
+ * to the same value, so in the light preview the card's computed background came out
+ * `rgb(255, 255, 255)` — identical to the page — and the probe's contrast figure for
+ * `.keyRole` is 3.71:1 whether it is measured against the page or against the card.
+ * The fill is declared anyway because the dark theme *does* layer: there the card
+ * computes to `rgb(44, 44, 46)` against a darker page.
+ *
+ * The price is vertical: measured on the home pane, this pass takes the detail
+ * column's content from 847px to 961px, all of it the 20px of padding plus the
+ * hairline per block, and the fold moves from 397px to 511px. */
+/* The radius is 8px rather than the 12px a mock-up wants: 8 is this project's
+   documented step for "a box" (3.5) and the one sibling card that already exists —
+   the wiki's page card — is 8px too, so a second 12px user would turn a one-off
+   value into a tier without giving it a job. */
+.card {
+  margin: 0;
+  padding: 10px 12px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: var(--dsw-shadow-lv1);
+}
+
 /* ---- the standard paths ---- */
 
 /* Three columns: what the path is for, the path itself, and whether this Home has
    it. A grid rather than the property grid, because eleven rows of label/value
-   would spend the width twice on a value that is nearly always two words long. */
+   would spend the width twice on a value that is nearly always two words long.
+ *
+ * The same card face as the blocks above it, so the three blocks read as one system.
+ * The row gap comes down from 10 to 6 to pay for part of the padding: an eleven-row
+ * table cannot afford both. */
 .keys {
   display: grid;
   grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
-  gap: 4px 10px;
+  gap: 6px 10px;
   align-items: baseline;
   font-size: 12px;
   line-height: 16px;
+  padding: 10px 12px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: var(--dsw-shadow-lv1);
 }
 
+/* The role name — 模块根, 模块注册 — at the head of each row.
+ *
+ * It used to be `label-tertiary`, which is this project's *footnote* rung, and on the
+ * card face that measured **3.71:1** in the light theme — under the 4.5:1 body text
+ * needs, and 12px gets no large-text exemption. The dark theme read 6.53:1, so the
+ * defect was light-only and invisible in half the screenshots.
+ *
+ * The fix is the rung the sibling column already uses: `label-secondary`. Measured on
+ * the same card, light 3.71 → **5.80**, dark 6.53 → **9.25** — the identical pair the
+ * path chip reports, because it is now the identical colour.
+ *
+ * The cost, stated plainly: the first two columns are no longer separated by colour.
+ * What still separates them is *shape* — the path is a chip (6px radius, 4% fill,
+ * monospace) and the role name is bare text — and the third column is a filled pill.
+ * Position and form carry the reading; colour was doing a second job here and doing
+ * it badly. Recorded as a deliberate trade in docs/yon-panel-ui-design.md §七. */
 .keyRole {
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsw-alias-label-secondary);
 }
 
+/* The path is a token to be read character by character, so it gets the host's own
+   inline-code chip: `0 5px` of padding at 6px radius, taken from
+   `ui-primitives/src/markdown/MarkdownText.module.css` (`:not(pre) > code`). The 6px
+   is the host's value for exactly this shape, not a new rung of ours.
+ *
+ * The fill is the *resting* derivation this project already settled on — 4% of
+ * `label-primary`, the same rule the digest's `.help` and the skill panel's `.body`
+ * use. The first cut of this rule used `interactive-bg-hover` because it looked
+ * right, which is the mistake the digest pass had already written down and removed:
+ * that token means "the pointer is on this" and this chip is never hovered. */
 .keyRel {
+  padding: 0 5px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--dsw-alias-label-primary) 4%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   word-break: break-all;
   color: var(--dsw-alias-label-secondary);
 }
 
-/* The path is present. Green is the theme's "this one works" tone, which is the
-   same claim the level bars in the wiki surface make with it. */
-.keyState {
-  white-space: nowrap;
-  color: var(--dsw-alias-state-success-primary);
-}
-
-/* Absent. Dimmed rather than red: a Home that has no `nclogs/` yet is not a
-   fault, and eleven red marks would read as a broken installation. */
+/* The path is present / absent, as a filled pill.
+ *
+ * These were coloured *text* in the state tones, and measured against the surface
+ * they sat on that was not legible: on the light preview `state-success-primary`
+ * computes to rgb(34, 197, 94) and came out **2.28:1** — under even the 3:1 that
+ * large text gets — and `label-dimmed` came out **1.26:1**, which is to say the
+ * eleven "absent" marks on a `--shape jars` Home were effectively invisible. So the
+ * fill carries the state and the text is `label-primary` on top of it, which is the
+ * pair the theme actually ships for this: both tones are `tertiary` fills, which are
+ * light (100-step) in the light theme and dark (900-step) in the dark one, so one
+ * rule covers both. Measured after: 17.33:1 and 5.21:1 in the light theme, 11.46:1
+ * and 7.21:1 in the dark. */
+.keyState,
 .keyStateNo {
   white-space: nowrap;
-  color: var(--dsw-alias-label-dimmed);
+  padding: 1px 8px;
+  border-radius: 999px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.keyState {
+  background: var(--dsw-alias-state-success-tertiary);
+}
+
+/* Absent is quiet rather than red: a Home that has no `nclogs/` yet is not a fault,
+   and eleven red marks would read as a broken installation. Quiet is not the same as
+   gone — the pill keeps a fill and the text stays at the secondary rung.
+ *
+ * Same resting derivation as the path chip above. This was the last rule in the
+ * project filling anything with `interactive-bg-hover` outside a `:hover` selector —
+ * every other use of that token is on a hover, and the digest pass had already taken
+ * it off one resting block for that reason. Measured on the pill after the swap:
+ * 5.80:1 in the light theme, against 5.21:1 before. The dark theme's Home has no
+ * absent key in the material, so there the same pair is measured on the path chip,
+ * which carries the identical fill and text colour: 9.25:1. */
+.keyStateNo {
+  background: color-mix(in srgb, var(--dsw-alias-label-primary) 4%, transparent);
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* ---- where the registration lives ---- */
+
+/* The registration file and the skills mirror, folded into a disclosure.
+ *
+ * Reference material, read rarely — but open it is expensive: the two paths came to
+ * 95px of a 387px column that already scrolls 359px, mostly because the mirror line
+ * carries *two* long paths (the NCC and BIP skills trees) and wrapped to three lines.
+ * Collapsed it is one line, and the summary still names what is behind it. A native
+ * `<details>` rather than a state-driven button: nothing here needs React to know,
+ * and the platform's own disclosure is keyboard-operable and announced as such.
+ *
+ * The mirror *warning* is deliberately not inside: a mirror that failed to write is a
+ * state that must be seen without unfolding anything. */
+.storageFold {
+  margin: 8px 0 0;
+  padding: 2px 0 4px;
+}
+
+.storageFold > summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.storageFold[open] > summary {
+  margin-bottom: 6px;
+}
+
+.storageFold > p {
+  margin: 4px 0 0;
 }
 
 /* ---- probe notes ---- */

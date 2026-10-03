@@ -397,10 +397,11 @@
 
 /* A resting surface, so it gets a resting token. It used to be filled with
    `interactive-bg-hover` — the colour for "the pointer is on this" — on a block
-   that is never hovered: it looked right and meant the wrong thing, and it is the
-   same value the sibling skill panel already derives for its own read-only body
-   (`.body`, 4% of `label-primary`). Two panels drawing the same kind of block now
-   draw it from the same rule. */
+   that is never hovered: it looked right and meant the wrong thing. The resting
+   value is 4% of `label-primary`, which the skill panel derived first for its own
+   read-only body. That panel has since dropped its box along with the source view
+   it framed, so what carries the derivation now is this rule and the two the home
+   panel added (`docs/yon-panel-ui-design.md` 3.16). */
 .help {
   padding: 10px 12px;
   border: 0.5px solid var(--dsw-alias-border-l2);

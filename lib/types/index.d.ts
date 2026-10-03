@@ -21,6 +21,7 @@ import { type YonProjectsService } from './host/service.ts';
 import { type YonSkillsService } from './host/skill-registry.ts';
 import { type YonDataSourcesService } from './host/datasource-service.ts';
 import { type YonWikiService } from './host/wiki-service.ts';
+import { type YonClassService } from './host/class-service.ts';
 import { type YonHomesService } from './host/home-service.ts';
 import { type YonMetaService } from './host/meta-service.ts';
 export { DOMAIN_NAME, YON_DOMAIN } from './host/domain.ts';
@@ -53,7 +54,9 @@ export { DEFAULT_DIGEST_CONFIG, digestConfigPath, loadDigestConfig, saveDigestCo
 export { auditDigest } from './host/digest-audit.ts';
 export type { DigestAudit, CountRate, Verdicts } from './host/digest-audit.ts';
 export type { DigestConfig, DigestThresholds } from './host/digest-config.ts';
-export { classIndexDir, classIndexPath } from './host/class-index.ts';
+export { classIndexDir, classIndexPath, removeClassIndex, listClassIndexes, summaryOf } from './host/class-index.ts';
+export { createYonClassService } from './host/class-service.ts';
+export type { YonClassService, ClassBuildResult, ClassBuildHandle } from './host/class-service.ts';
 export { defaultWikiStorePath } from './host/wiki-store.ts';
 export { guessVaults } from './host/wiki-index.ts';
 export type { WikiHit, WikiLookupResult, WikiMatch, WikiPageContent, WikiVaultView, YonWikiService, } from './host/wiki-service.ts';
@@ -68,12 +71,15 @@ export { mirrorHomes, mirrorPathOf } from './host/home-mirror.ts';
 export { HOME_TOOL_NAMES } from './host/home-tools.ts';
 export { decodeText, declaredEncoding, isBinary, redactSecrets, resolveInside } from './host/home-files.ts';
 export { META_TOOL_NAMES } from './host/meta-tools.ts';
+export { BIP_META_TOOL_NAMES } from './host/bip-meta-tools.ts';
+export { BIP_META_ROOT, BipMetaError, loadBipMetadata, clearBipMetadataCache } from './host/bip-meta.ts';
+export type { BipColumn, BipChild, BipCorpus, BipEntity } from './host/bip-meta.ts';
 export { buildMetaIndex, readMetaIndex, writeMetaIndex, metaIndexPath, metaIndexDir } from './host/meta-index.ts';
 export { createYonMetaService } from './host/meta-service.ts';
 export type { YonMetaService, MetaQueryAnswer, MetaDetailAnswer } from './host/meta-service.ts';
 export { parseBmf } from './host/meta-bmf.ts';
 export type { BmfComponent, BmfEntity, BmfEnum, BmfField } from './host/meta-bmf.ts';
-export type { HomeFileView, HomeFindPayload, HomeIndexView, HomeKeyView, HomeListPayload, HomeMetaIndexView, HomeProduct, HomeProfileView, HomeReadPayload, HomeShape, HomeView, MetaBuildView, MetaCountsView, MetaFreshnessView, MetaIndexPayload, MetaIndexStatusView, SaveHomeInput, } from './shared/types.ts';
+export type { ClassBuildView, ClassIndexPayload, ClassIndexStatusView, HomeFileView, HomeFindPayload, HomeIndexView, HomeKeyView, HomeListPayload, HomeMetaIndexView, HomeProduct, HomeProfileView, HomeReadPayload, HomeShape, HomeView, MetaBuildView, MetaCountsView, MetaFreshnessView, MetaIndexPayload, MetaIndexStatusView, SaveHomeInput, } from './shared/types.ts';
 export { HOME_PRODUCTS } from './shared/types.ts';
 export type { CreateProjectInput, DataSourceBinding, DataSourceListPayload, DataSourceProbeResult, DataSourceView, JsonValue, ProjectDetail, ProjectSummary, ProjectStatus, SaveDataSourceInput, SkillDetail, SkillView, UpdateProjectInput, } from './shared/types.ts';
 declare module '@deepseek-ai/cordis' {
@@ -90,6 +96,8 @@ declare module '@deepseek-ai/cordis' {
         yonHomes: YonHomesService;
         /** The metadata index over those installations' `.bmf` files. */
         yonMeta: YonMetaService;
+        /** The class index over the same installations, built and reported on here. */
+        yonClass: YonClassService;
     }
 }
 /**

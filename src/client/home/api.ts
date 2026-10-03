@@ -12,7 +12,8 @@
  */
 import { request } from '../request.ts'
 import type {
-  DirectoryPickResult, HomeListPayload, HomeView, MetaIndexStatusView, SaveHomeInput,
+  ClassIndexStatusView, DirectoryPickResult, HomeListPayload, HomeView, MetaIndexStatusView,
+  SaveHomeInput,
 } from '../../shared/types.ts'
 
 // The shared failure keeps this module's name for it, as the other three do.
@@ -77,6 +78,32 @@ export interface HomeApi {
   buildMeta(id: string): Promise<{ started: boolean; status: MetaIndexStatusView }>
 
   /**
+   * The class index built for this Home's version.
+   *
+   * No `fresh` counterpart to the metadata call above: this status reads each stored
+   * index file's head rather than parsing it, so it is cheap enough for the progress
+   * poll to ask for it directly.
+   * @param id - the registration to ask about.
+   * @returns what is stored, and what a running build is doing.
+   */
+  classStatus(id: string): Promise<ClassIndexStatusView>
+
+  /**
+   * Start building, or rebuilding, the class index. Returns as soon as it is queued.
+   * @param id - the registration to build for.
+   * @returns whether a build actually started, and the state to show meanwhile.
+   */
+  buildClass(id: string): Promise<{ started: boolean; status: ClassIndexStatusView }>
+
+  /**
+   * Drop the stored index. A derived file, so this asks for no confirmation beyond
+   * whatever the panel puts in front of the click.
+   * @param id - the registration whose index should go.
+   * @returns whether a file was actually removed.
+   */
+  removeClassIndex(id: string): Promise<boolean>
+
+  /**
    * Ask the host to open its own folder chooser.
    *
    * Here rather than in the component because the browser half cannot produce an
@@ -138,6 +165,29 @@ export function createHomeApi(): HomeApi {
         { method: 'POST', body: '{}' },
       )
       return { started: answer.started, status: answer.status }
+    },
+
+    async classStatus(id) {
+      const answer = await request<{ home: string; status: ClassIndexStatusView }>(
+        `/homes/${idSegment(id)}/class-index`,
+      )
+      return answer.status
+    },
+
+    async buildClass(id) {
+      const answer = await request<{ home: string; started: boolean; status: ClassIndexStatusView }>(
+        `/homes/${idSegment(id)}/class-index`,
+        { method: 'POST', body: '{}' },
+      )
+      return { started: answer.started, status: answer.status }
+    },
+
+    async removeClassIndex(id) {
+      const answer = await request<{ home: string; removed: boolean }>(
+        `/homes/${idSegment(id)}/class-index`,
+        { method: 'DELETE' },
+      )
+      return answer.removed
     },
 
     pickPath() {

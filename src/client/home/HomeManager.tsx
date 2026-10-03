@@ -1,7 +1,8 @@
 /**
  * The installation surface: every registered Home on one side, and on the other
  * what that directory actually is — what the probe found, which standard paths it
- * has, and whether a class index exists for its version.
+ * has, and the two indexes built over it: the class index the model searches to find
+ * which jar holds a class, and the metadata index it reads `.bmf` files through.
  *
  * ## Why this surface exists at all
  *
@@ -14,11 +15,19 @@
  * ## What the probe is, and is not
  *
  * A probe walks directory entries and counts what it sees. It does not open a
- * jar — `buildClassIndex` does, and that takes minutes. So the two numbers it
- * reports are counts of names, and when the walk hits its cap they are reported
- * as lower bounds (`capped`) rather than as figures that look precise and are
- * not. Nothing here builds an index either: this batch registers, probes and
- * reads, and the index line reports only whether a build already exists.
+ * jar — the class index does, and that walk is 26.2 s on the reference installation.
+ * So the two numbers it reports are counts of names, and when the walk hits its cap
+ * they are reported as lower bounds (`capped`) rather than as figures that look
+ * precise and are not.
+ *
+ * ## Why the two index blocks are built here rather than only through a tool
+ *
+ * Both indexes take long enough to want a progress bar and are per-version rather than
+ * per-question, so the model can ask for one and the operator can too. Either side
+ * starting a build is visible — and joined — on the other, because both go through the
+ * same service. The two blocks are deliberately symmetrical: same heading, same
+ * placement of the control, same progress line, and the same rule that the panel never
+ * claims an index it did not read.
  *
  * Same shape as its five siblings, on purpose: the shared stylesheet carries the
  * pane split, the list, the property grid, the form rows, the action row, the
@@ -31,8 +40,8 @@ import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Input, Modal, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import {
-  HOME_PRODUCTS, HOME_VERSIONS, type HomeProduct, type HomeShape, type HomeView,
-  type MetaIndexStatusView,
+  HOME_PRODUCTS, HOME_VERSIONS, type ClassIndexStatusView, type HomeProduct, type HomeShape,
+  type HomeView, type MetaIndexStatusView,
 } from '../../shared/types.ts'
 import { cn } from '../cn.ts'
 import type { YonPanelKey } from '../locales.ts'
@@ -49,10 +58,13 @@ const COPY_LINGER_MS = 1600
 /**
  * How often a running build is asked where it is.
  *
- * A build is ~3.6 s on the reference installation and reports every 200 files, so a tick
- * a second is enough to watch it move without the poll being the thing that costs.
+ * Both builds report as they go — the metadata walk every file, the class walk every 200
+ * jars — and the shorter of the two runs ~3.6 s on the reference installation while the
+ * longer runs 26.2 s, so a tick a second watches either without the poll being the thing
+ * that costs. The class status is read through each index file's head rather than parsed
+ * (measured 1 ms against 372 ms), which is what makes a tick a second affordable there.
  */
-const META_POLL_MS = 1000
+const BUILD_POLL_MS = 1000
 
 /** Which translation key names each shape the probe can conclude. */
 const SHAPE_KEY: Record<HomeShape, YonPanelKey> = {
@@ -212,7 +224,10 @@ export function HomeManager({ t, onClose, ...api }: HomeManagerProps) {
    * what the dependency lists name. `WikiManager` and `DigestManager` read their APIs
    * the same way for the same reason.
    */
-  const { listHomes, metaStatus: readMetaStatus } = api
+  const {
+    listHomes, metaStatus: readMetaStatus, classStatus: readClassStatus, buildClass: startClassBuild,
+    removeClassIndex: dropClassIndex,
+  } = api
   const [homes, setHomes] = useState<readonly HomeView[]>([])
   const [complete, setComplete] = useState(true)
   const [payloadError, setPayloadError] = useState<string>()
@@ -230,6 +245,11 @@ export function HomeManager({ t, onClose, ...api }: HomeManagerProps) {
   const [metaStatus, setMetaStatus] = useState<MetaIndexStatusView>()
   /** True between pressing build and the request coming back — not while it runs. */
   const [metaBusy, setMetaBusy] = useState(false)
+  /** The same pair for the class index, which is a second walk with its own state. */
+  const [classStatus, setClassStatus] = useState<ClassIndexStatusView>()
+  const [classBusy, setClassBusy] = useState(false)
+  /** What the last delete answered, so "there was nothing to delete" is not silent. */
+  const [classNote, setClassNote] = useState<string>()
   const [confirmingRemove, setConfirmingRemove] = useState(false)
   /**
    * What the host says its chooser is, or undefined while it has not been asked.
@@ -245,8 +265,9 @@ export function HomeManager({ t, onClose, ...api }: HomeManagerProps) {
 
   const focusedOnce = useRef(false)
   const list = useRef<HTMLUListElement | null>(null)
-  /** The progress poll, while a build is running. */
+  /** The progress polls, while a build of either index is running. */
   const metaPoll = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
+  const classPoll = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
 
   useEffect(() => () => {
     if (copyTimer.current !== undefined) clearTimeout(copyTimer.current)
@@ -299,12 +320,20 @@ export function HomeManager({ t, onClose, ...api }: HomeManagerProps) {
 
   /** True while a build for the selected Home is actually running. */
   const metaRunning = metaStatus?.build?.running === true
+  const classRunning = classStatus?.build?.running === true
 
   /** Stop asking a running build where it is. */
   const stopMetaPoll = useCallback((): void => {
     if (metaPoll.current !== undefined) {
       clearInterval(metaPoll.current)
       metaPoll.current = undefined
+    }
+  }, [])
+
+  const stopClassPoll = useCallback((): void => {
+    if (classPoll.current !== undefined) {
+      clearInterval(classPoll.current)
+      classPoll.current = undefined
     }
   }, [])
 
@@ -329,10 +358,39 @@ export function HomeManager({ t, onClose, ...api }: HomeManagerProps) {
         },
         () => { stopMetaPoll() },
       )
-    }, META_POLL_MS)
+    }, BUILD_POLL_MS)
   }, [readMetaStatus, stopMetaPoll])
 
-  useEffect(() => () => { stopMetaPoll() }, [stopMetaPoll])
+  /**
+   * The same for the class index — but with no cheap/full pair.
+   *
+   * There is nothing expensive to skip here: the status reads each stored index's head
+   * rather than parsing it, so the tick and the opening call are the same request. The
+   * one thing the tick cannot see by itself is the *list row's* summary, and that is
+   * refreshed by re-reading the list when the walk stops.
+   */
+  const watchClass = useCallback((id: string): void => {
+    stopClassPoll()
+    classPoll.current = setInterval(() => {
+      void readClassStatus(id).then(
+        (status) => {
+          setClassStatus(status)
+          if (status.build?.running !== true) {
+            stopClassPoll()
+            // The row above carries the same index in summary form, and it was read
+            // before the build finished.
+            void load(id)
+          }
+        },
+        () => { stopClassPoll() },
+      )
+    }, BUILD_POLL_MS)
+  }, [readClassStatus, stopClassPoll, load])
+
+  useEffect(() => () => {
+    stopMetaPoll()
+    stopClassPoll()
+  }, [stopMetaPoll, stopClassPoll])
 
   // The index status belongs to the selected row, so it is re-read when the selection
   // changes and never merged across rows — a status left over from the previous Home
@@ -358,6 +416,29 @@ export function HomeManager({ t, onClose, ...api }: HomeManagerProps) {
     return () => { live = false }
   }, [readMetaStatus, current?.id, stopMetaPoll, watchMeta])
 
+  // The class status follows the same selection, and for the same reason. It also
+  // drops any note from the last delete: "there was nothing to delete" was an answer
+  // about *that* row, and leaving it under another one reads as a claim about this one.
+  useEffect(() => {
+    stopClassPoll()
+    const id = current?.id
+    setClassNote(undefined)
+    if (id === undefined) {
+      setClassStatus(undefined)
+      return
+    }
+    let live = true
+    void readClassStatus(id).then(
+      (status) => {
+        if (!live) return
+        setClassStatus(status)
+        if (status.build?.running === true) watchClass(id)
+      },
+      () => { if (live) setClassStatus(undefined) },
+    )
+    return () => { live = false }
+  }, [readClassStatus, current?.id, stopClassPoll, watchClass])
+
   /**
    * Start a build. Deliberately not through `act`: `act` raises `busy`, which disables
    * every control in the pane — right for a save that finishes in milliseconds, wrong for
@@ -375,6 +456,55 @@ export function HomeManager({ t, onClose, ...api }: HomeManagerProps) {
         setFailure(forget(cause))
       } finally {
         setMetaBusy(false)
+      }
+    })()
+  }
+
+  /**
+   * Start a class-index build. Not through `act` for the same reason as `buildMeta`:
+   * this walk runs for tens of seconds and the point is to watch it.
+   */
+  const buildClass = (row: HomeView): void => {
+    setClassBusy(true)
+    setClassNote(undefined)
+    setFailure(undefined)
+    void (async () => {
+      try {
+        const answer = await startClassBuild(row.id)
+        setClassStatus(answer.status)
+        // `started` is false when a build for this version was already in flight —
+        // which is exactly the case worth watching, so it is not an early exit.
+        if (answer.status.build?.running === true || answer.started) watchClass(row.id)
+        else await load(row.id)
+      } catch (cause: unknown) {
+        setFailure(forget(cause))
+      } finally {
+        setClassBusy(false)
+      }
+    })()
+  }
+
+  /**
+   * Drop the stored class index for one row.
+   *
+   * No two-step confirmation, unlike removing the registration itself: this deletes a
+   * file the plugin derived from the installation, and one button press rebuilds it.
+   * The answer is reported either way — a `false` means there was no file, and saying
+   * nothing would leave the operator believing a delete happened.
+   */
+  const removeIndexFor = (row: HomeView): void => {
+    setClassBusy(true)
+    setClassNote(undefined)
+    setFailure(undefined)
+    void (async () => {
+      try {
+        const removed = await dropClassIndex(row.id)
+        setClassNote(removed ? t('home.classRemoved') : t('home.classRemoveNone'))
+        await load(row.id)
+      } catch (cause: unknown) {
+        setFailure(forget(cause))
+      } finally {
+        setClassBusy(false)
       }
     })()
   }
@@ -483,7 +613,9 @@ export function HomeManager({ t, onClose, ...api }: HomeManagerProps) {
         role="option"
         aria-selected={home.id === selected}
         tabIndex={home.id === tabbableId ? 0 : -1}
-        className={cn(base.projectRow, !home.ready ? css.rowNotReady : undefined)}
+        className={cn(base.projectRow,
+          !home.ready ? css.rowNotReady : undefined,
+          home.id === selected ? css.rowOn : undefined)}
         data-key={home.id}
         onClick={() => {
           setSelected(home.id)
@@ -513,7 +645,7 @@ export function HomeManager({ t, onClose, ...api }: HomeManagerProps) {
     return (
       <>
         <p className={cn(base.note)}>{t('home.probedAt', { at: when(profile.probedAt) })}</p>
-        <dl className={cn(base.props)}>
+        <dl className={cn(base.props, css.card)}>
           <dt className={cn(base.propLabel)}>{t('home.shape')}</dt>
           <dd className={cn(base.propValue)}>{t(SHAPE_KEY[profile.shape])}</dd>
 
@@ -524,7 +656,7 @@ export function HomeManager({ t, onClose, ...api }: HomeManagerProps) {
           <dd className={cn(base.propValue)}>{`${atLeast}${profile.jars}`}</dd>
         </dl>
 
-        <h4 className={cn(css.subTitle)}>{t('home.keyPaths')}</h4>
+        <h4 className={cn(css.keyHead, css.accent)}>{t('home.keyPaths')}</h4>
         <div className={cn(css.keys)}>
           {profile.keys.map(key => (
             <Fragment key={key.rel}>
@@ -613,28 +745,9 @@ export function HomeManager({ t, onClose, ...api }: HomeManagerProps) {
             <p className={cn(base.note)}>{t('home.showing', { shown: visible.length, total: homes.length })}</p>
           )}
 
-          {/* Said out loud: the registrations live in a file the operator owns and
-              may edit by hand, so the surface names it rather than implying the
-              panel is the only way in. */}
-          {configPath !== '' && (
-            <p className={cn(base.note)} title={configPath}>
-              {t('home.configPath')} <span className={cn(css.mono)}>{configPath}</span>
-            </p>
-          )}
-
-          {/* The other half of the feature: the same registration, written where
-              Claude Code's toolchain reads it. Named rather than assumed, and the
-              warning is shown beside it when the mirror could not be written. */}
-          {mirrorPath !== undefined && (
-            <p className={cn(base.note)} title={mirrorPath}>
-              {t('home.mirror')} <span className={cn(css.mono)}>{mirrorPath}</span>
-            </p>
-          )}
-          {mirrorWarning !== undefined && (
-            <p className={cn(base.note)} role="status">
-              {t('home.mirrorWarn', { message: mirrorWarning })}
-            </p>
-          )}
+          {/* The two paths that used to sit here — the registration file and the skills
+              mirror — moved to the detail column's 存放位置 section; the reasoning and
+              the measurement are at that block. The list column now holds the list. */}
         </section>
 
         <section className={cn(base.detailPane)}>
@@ -795,131 +908,23 @@ export function HomeManager({ t, onClose, ...api }: HomeManagerProps) {
               )
               : (
                 <>
-                  <h3 className={cn(css.title)}>
-                    {current.label}
-                    {current.isDefault && <span className={cn(base.tagMuted)}>{t('home.defaultTag')}</span>}
-                  </h3>
+                  <h3 className={cn(css.title)}>{current.label}</h3>
 
                   {!current.ready && <p className={cn(base.note)}>{t('home.notReady')}</p>}
 
-                  <dl className={cn(base.props)}>
-                    <dt className={cn(base.propLabel)}>{t('home.path')}</dt>
-                    <dd className={cn(base.propValue)}>
-                      <span className={cn(css.pathRow)}>
-                        <span className={cn(css.mono)}>{current.path}</span>
-                        <button
-                          type="button"
-                          className={cn(css.copyBtn,
-                            copied === 'copied' ? css.copyOk : undefined,
-                            copied === 'failed' ? css.copyBad : undefined)}
-                          aria-label={copied === 'copied'
-                            ? t('home.copied')
-                            : copied === 'failed' ? t('home.copyFailed') : t('home.copy')}
-                          title={t('home.copy')}
-                          onClick={() => { copyPath(current.path) }}
-                        >
-                          {copied === 'copied' ? <CheckMark /> : <CopyMark />}
-                        </button>
-                      </span>
-                    </dd>
-
-                    <dt className={cn(base.propLabel)}>{t('home.product')}</dt>
-                    <dd className={cn(base.propValue)}>{t(PRODUCT_KEY[current.product])}</dd>
-
-                    <dt className={cn(base.propLabel)}>{t('home.indexTitle')}</dt>
-                    <dd className={cn(base.propValue)}>
-                      {current.index === undefined
-                        ? t('home.indexNone')
-                        : t('home.indexLine', {
-                          classes: current.index.totalClasses,
-                          size: bytes(current.index.bytes),
-                          at: when(current.index.builtAt),
-                        })}
-                    </dd>
-
-                    {/* The build button sits with the value rather than in the action
-                        row at the foot of the pane, because it is the value's own
-                        control: the row above it describes an index, and the thing you
-                        do about that index belongs on the same line as the description.
-                        The class index has no such button yet, which is why this reads
-                        as one row that can act and one that cannot. */}
-                    <dt className={cn(base.propLabel)}>{t('home.metaTitle')}</dt>
-                    <dd className={cn(base.propValue)}>
-                      <span className={cn(css.pathRow)}>
-                        <span>
-                          {metaStatus === undefined || metaStatus.indexed !== true
-                            ? t('home.metaNone')
-                            : t('home.metaLine', {
-                              entities: metaStatus.counts?.entities ?? 0,
-                              fields: metaStatus.counts?.fields ?? 0,
-                              enums: metaStatus.counts?.enums ?? 0,
-                              size: bytes(metaStatus.bytes ?? 0),
-                              at: when(metaStatus.builtAt ?? ''),
-                            })}
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={metaBusy || metaRunning}
-                          onClick={() => { buildMeta(current) }}
-                        >
-                          {metaRunning
-                            ? t('home.metaBuilding')
-                            : metaStatus?.indexed === true ? t('home.metaRebuild') : t('home.metaBuild')}
-                        </Button>
-                      </span>
-                      {metaStatus?.build !== undefined && metaRunning && (
-                        <p className={cn(base.note)} role="status">
-                          {t('home.metaProgress', {
-                            parsed: metaStatus.build.parsed,
-                            total: metaStatus.build.total,
-                            files: metaStatus.build.files,
-                          })}
-                        </p>
-                      )}
-                      {metaStatus?.build?.error !== undefined && (
-                        <p className={cn(base.note)} role="alert">
-                          {t('home.metaFailed', { error: metaStatus.build.error })}
-                        </p>
-                      )}
-                      {metaStatus?.freshness !== undefined && (
-                        <p className={cn(base.note)}>
-                          {metaStatus.freshness.state === 'fresh'
-                            ? t('home.metaFresh')
-                            : t('home.metaStale', {
-                              changed: metaStatus.freshness.changed,
-                              added: metaStatus.freshness.added,
-                              removed: metaStatus.freshness.removed,
-                            })}
-                        </p>
-                      )}
-                      {(metaStatus?.sourceHomes?.length ?? 0) > 0 && (
-                        <p className={cn(base.note)}>
-                          {t('home.metaFrom')}{' '}
-                          <span className={cn(css.mono)}>
-                            {(metaStatus?.sourceHomes ?? []).join('  ·  ')}
-                          </span>
-                        </p>
-                      )}
-                      {metaStatus === undefined && <p className={cn(base.note)}>{t('home.metaWhy')}</p>}
-                    </dd>
-                  </dl>
-
-                  <h4 className={cn(css.subTitle)}>{t('home.probeTitle')}</h4>
-                  {probeBlock(current)}
-
-                  {probeNote !== undefined && (
-                    <p className={cn(base.note)} role="status">{probeNote}</p>
-                  )}
-
-                  {/* The question goes **inside** the action row rather than on a
-                      line above it. The shared sheet pins `.detailActions:last-child`
-                      to the bottom of the pane, so a line above it scrolls out of
-                      view — and the one moment that question must be readable is
-                      exactly when the buttons it asks about are on screen. The
-                      preview caught this: the confirm page showed the two buttons
-                      and no question at all. */}
-                  <div className={cn(base.detailActions)}>
+                  {/* The pane's verbs sit at the top of the column, not pinned to its foot.
+                      The shared sheet pins `.detailActions:last-child` to the bottom, and the
+                      Home pane is the one surface where what scrolls under that band is a
+                      *table*: measured on `preview/panel-home-jars.png`, the bar covered 3 of
+                      the 11 key-path rows at rest (2 in the unreadable-path state), and the
+                      band's top hairline crossed the table's rows. That is the case
+                      `panel.module.css` excludes the *project* pane for — "a destructive verb
+                      parked over a scrolling table" — and the same reasoning holds here.
+                      Nothing is lost by moving up: the verbs are visible without scrolling at
+                      all, where the pinned row still required scrolling to the foot. The
+                      `:last-child` in the shared rule is what withdrew the sticky band; this
+                      row is simply no longer the last child. */}
+                  <div className={cn(base.detailActions, css.verbRow)}>
                     {confirmingRemove && (
                       <span className={cn(base.note)}>
                         {t('home.removeAsk')} {t('home.removeAbout')}
@@ -994,8 +999,224 @@ export function HomeManager({ t, onClose, ...api }: HomeManagerProps) {
                         </Button>
                       )}
                   </div>
+
+                  {/* No heading over this one. It was added — and then taken back out,
+                      measured: a heading costs 43px in this column (15px of glyphs plus
+                      the 8 plus the gap), and all it would have said is 「登记信息」 above
+                      the first block of a pane whose title is already the thing being
+                      described. The three headings that stayed earn their air: 元数据索引
+                      and 类索引 each separate a block that acts, 探测结果 separates facts a
+                      reader looks for by name. Path and product line stay in here because
+                      they are read, not acted on — that is the whole distinction. */}
+                  <dl className={cn(base.props, css.card)}>
+                    <dt className={cn(base.propLabel)}>{t('home.path')}</dt>
+                    <dd className={cn(base.propValue)}>
+                      <span className={cn(css.pathRow)}>
+                        <span className={cn(css.mono)}>{current.path}</span>
+                        <button
+                          type="button"
+                          className={cn(css.copyBtn,
+                            copied === 'copied' ? css.copyOk : undefined,
+                            copied === 'failed' ? css.copyBad : undefined)}
+                          aria-label={copied === 'copied'
+                            ? t('home.copied')
+                            : copied === 'failed' ? t('home.copyFailed') : t('home.copy')}
+                          title={t('home.copy')}
+                          onClick={() => { copyPath(current.path) }}
+                        >
+                          {copied === 'copied' ? <CheckMark /> : <CopyMark />}
+                        </button>
+                      </span>
+                    </dd>
+
+                    <dt className={cn(base.propLabel)}>{t('home.product')}</dt>
+                    <dd className={cn(base.propValue)}>{t(PRODUCT_KEY[current.product])}</dd>
+
+                  </dl>
+
+                  {/* The build button sits on the section heading rather than in the pane's
+                      action row, because it is this block's own control — the sentence under
+                      the heading describes an index, and the thing you do about that index
+                      belongs to the same block. That was the old argument for putting it in
+                      the value cell, and it still holds; what did not was the shape it came
+                      out in. */}
+                  <div className={cn(css.blockHead)}>
+                    <h4 className={cn(css.subTitle, css.accent)}>{t('home.metaTitle')}</h4>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={metaBusy || metaRunning}
+                      onClick={() => { buildMeta(current) }}
+                    >
+                      {metaRunning
+                        ? t('home.metaBuilding')
+                        : metaStatus?.indexed === true ? t('home.metaRebuild') : t('home.metaBuild')}
+                    </Button>
+                  </div>
+
+                  {/* The state sentence keeps the value rung it had as a `<dd>` — it *is*
+                      this block's value — while the diagnostics under it stay notes. */}
+                  <p className={cn(base.propValue)}>
+                    {metaStatus === undefined || metaStatus.indexed !== true
+                      ? t('home.metaNone')
+                      : t('home.metaLine', {
+                        entities: metaStatus.counts?.entities ?? 0,
+                        fields: metaStatus.counts?.fields ?? 0,
+                        enums: metaStatus.counts?.enums ?? 0,
+                        size: bytes(metaStatus.bytes ?? 0),
+                        at: when(metaStatus.builtAt ?? ''),
+                      })}
+                  </p>
+                  {metaStatus?.build !== undefined && metaRunning && (
+                    <p className={cn(base.note)} role="status">
+                      {t('home.metaProgress', {
+                        parsed: metaStatus.build.parsed,
+                        total: metaStatus.build.total,
+                        files: metaStatus.build.files,
+                      })}
+                    </p>
+                  )}
+                  {metaStatus?.build?.error !== undefined && (
+                    <p className={cn(base.note)} role="alert">
+                      {t('home.metaFailed', { error: metaStatus.build.error })}
+                    </p>
+                  )}
+                  {metaStatus?.freshness !== undefined && (
+                    <p className={cn(base.note)}>
+                      {metaStatus.freshness.state === 'fresh'
+                        ? t('home.metaFresh')
+                        : t('home.metaStale', {
+                          changed: metaStatus.freshness.changed,
+                          added: metaStatus.freshness.added,
+                          removed: metaStatus.freshness.removed,
+                        })}
+                    </p>
+                  )}
+                  {(metaStatus?.sourceHomes?.length ?? 0) > 0 && (
+                    <p className={cn(base.note)}>
+                      {t('home.metaFrom')}{' '}
+                      <span className={cn(css.mono)}>
+                        {(metaStatus?.sourceHomes ?? []).join('  ·  ')}
+                      </span>
+                    </p>
+                  )}
+                  {metaStatus === undefined && <p className={cn(base.note)}>{t('home.metaWhy')}</p>}
+
+                  {/* The class index reads as the metadata block's twin, and it is placed
+                      right after it: both are walks of the same installation, both are
+                      built and deleted from here, and the difference between them is the
+                      reason each carries its own explanation.
+
+                      Where they differ is what the explanation is for. The metadata build
+                      takes seconds, so its 「这是什么」 line is only worth showing when
+                      nothing came back at all. This one takes about half a minute and the
+                      operator is deciding whether to spend it, so the sentence stays until
+                      there is an index to describe instead — and while it is building, the
+                      decision is already made and the line stops being read. */}
+                  <div className={cn(css.blockHead)}>
+                    <h4 className={cn(css.subTitle, css.accent)}>{t('home.indexTitle')}</h4>
+                    <span className={cn(css.blockVerbs)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={classBusy || classRunning}
+                        onClick={() => { buildClass(current) }}
+                      >
+                        {classRunning
+                          ? t('home.classBuilding')
+                          : classStatus?.indexed === true ? t('home.classRebuild') : t('home.classBuild')}
+                      </Button>
+                      {/* Only offered when there is a file behind it. A delete button that
+                          answers "there was nothing to delete" is a button that should not
+                          have been drawn. */}
+                      {classStatus?.indexed === true && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={classBusy || classRunning}
+                          onClick={() => { removeIndexFor(current) }}
+                        >
+                          {t('home.classRemove')}
+                        </Button>
+                      )}
+                    </span>
+                  </div>
+
+                  <p className={cn(base.propValue)}>
+                    {classStatus?.indexed !== true
+                      ? t('home.indexNone')
+                      : t('home.indexLine', {
+                        classes: classStatus.totalClasses ?? 0,
+                        size: bytes(classStatus.bytes ?? 0),
+                        at: when(classStatus.builtAt ?? ''),
+                      })}
+                  </p>
+                  {classStatus?.indexed !== true && !classRunning && (
+                    <p className={cn(base.note)}>{t('home.classWhy')}</p>
+                  )}
+                  {classRunning && classStatus?.build !== undefined && (
+                    <p className={cn(base.note)} role="status">
+                      {t('home.classProgress', {
+                        jars: classStatus.build.jars,
+                        classes: classStatus.build.classes,
+                      })}
+                    </p>
+                  )}
+                  {classStatus?.build?.error !== undefined && (
+                    <p className={cn(base.note)} role="alert">
+                      {t('home.classFailed', { error: classStatus.build.error })}
+                    </p>
+                  )}
+                  {classNote !== undefined && (
+                    <p className={cn(base.note)} role="status">{classNote}</p>
+                  )}
+
+                  <h4 className={cn(css.subTitle, css.accent)}>{t('home.probeTitle')}</h4>
+                  {probeBlock(current)}
+
+                  {probeNote !== undefined && (
+                    <p className={cn(base.note)} role="status">{probeNote}</p>
+                  )}
+
                 </>
               )}
+
+          {/* A mirror that failed to write is a state, not a detail: it stays outside
+              the disclosure below so it is legible without unfolding anything. */}
+          {mirrorWarning !== undefined && (
+            <p className={cn(base.note)} role="status">
+              {t('home.mirrorWarn', { message: mirrorWarning })}
+            </p>
+          )}
+
+          {/* Where the registration itself lives. A fact about the registry rather than
+              about the selected row, which is why it sat at the foot of the *list*
+              column — but it is a fact about this Home in every other respect, and the
+              list column paid for it: measured, the two notes came to 112px of a 450px
+              column (25%) carrying three paths that wrapped into six ragged lines in
+              196px of usable width, below 134px of empty list.
+              Rendered in the empty state too, and deliberately: naming the file is what
+              makes "or edit it by hand" actionable when there is nothing registered yet
+              — the one moment the file's path matters most. */}
+
+          {draft === undefined && (
+            <details className={cn(css.storageFold)}>
+              <summary>{t('home.storageTitle')}</summary>
+              {configPath !== '' && (
+                <p className={cn(base.note)} title={configPath}>
+                  {t('home.configPath')} <span className={cn(css.mono)}>{configPath}</span>
+                </p>
+              )}
+              {/* The other half of the feature: the same registration, written where
+                  Claude Code's toolchain reads it. Named rather than assumed, and the
+                  warning is shown beside it when the mirror could not be written. */}
+              {mirrorPath !== undefined && (
+                <p className={cn(base.note)} title={mirrorPath}>
+                  {t('home.mirror')} <span className={cn(css.mono)}>{mirrorPath}</span>
+                </p>
+              )}
+            </details>
+          )}
         </section>
       </div>
     </Modal>

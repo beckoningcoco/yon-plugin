@@ -3,7 +3,7 @@
  *
  * ## Why a section exists at all
  *
- * Every capability here already documents itself: twenty-three tool descriptions and
+ * Every capability here already documents itself: twenty-seven tool descriptions and
  * nine skill bodies. What none of them says is the shape of the whole — which
  * groups exist, what each is for, and which one to reach for first. A model
  * shown `wiki_lookup` beside `knowledge_search` has two similar names and no
@@ -96,13 +96,14 @@ interface PromptRegistry {
  */
 export const YON_PROMPT_TEXT = `Yon 面板为用友客开提供一套运行在本机的能力：登记项目与环境、直连数据库、两套知识库、素材消化。下面是整体图景和使用这套能力时必须守的规则；每个工具的具体用法在它自己的描述里。
 
-能力分九组：
+能力分十组：
 · project_* —— 使用者在此登记的客开项目及其字段（环境地址、账号、部署路径、版本号等）。这是配置记录，不是代码工程，与当前工作目录无关。
 · datasource_* —— 已登记的环境数据库连接，可执行 SQL 取真实数据。
 · ncc_home_* —— 使用者登记的本机 NCC/BIP 安装目录（Home）。涉及安装目录里的东西（源码、配置、.bmf 元数据）先 ncc_home_list 拿已登记的 Home，不要问使用者要路径：登记过一次就该查得到。home 参数的 id 由该工具给出，ncc_home_find / ncc_home_read 只认 id，不认路径。
 · wiki_* —— 使用者自己的用友实体知识库：实体 → 物理表、字段清单、验证状态。会持续生长。
 · knowledge_* —— 随插件发布的平台参考库（约 450 篇，只读），讲平台机制、报错含义、做法。
-· ncc_meta_find / ncc_meta_detail —— 安装目录里的元数据索引（实体 / 表名 / VO 类 / 字段 / 枚举）。「某个中文名对应哪张表」「哪些单据有这个字段」「这个状态码是什么意思」先查它，不要用 ncc_home_find 去翻 .bmf。索引要先在 Home 管理里建一次；ncc_home_list 的返回里 meta 字段会说建没建。
+· ncc_meta_find / ncc_meta_detail —— **NCC** 安装目录里的元数据索引（实体 / 表名 / VO 类 / 字段 / 枚举）。「某个中文名对应哪张表」「哪些单据有这个字段」「这个状态码是什么意思」先查它，不要用 ncc_home_find 去翻 .bmf。索引要先在 Home 管理里建一次；ncc_home_list 的返回里 meta 字段会说建没建。
+· bip_meta_find / bip_meta_detail —— **旗舰版**的元数据，读的是随包发布的快照：不用建索引，也不用连环境，但它只覆盖一部分实体，不是整套。查旗舰版的实体 / 表名 / 字段 / 枚举名用它。它给得出枚举的名字，给不出取值。这两条只认各自的产品线，别拿 ncc_meta_* 查旗舰版，反过来也一样。
 · ncc_class_search / knowledge_build_index —— 类名 → jar 的定位索引，先建索引再查。
 · ncc_gbk_edit —— 读写 NCC 老源码常见的 GBK 编码文件。
 · digest_* —— 把新素材消化成知识库页面的流程：digest_plan 摸底，写页，digest_audit 验收；digest_sweep 体检整库。digest 的三个工具只做计划与校验，真正落页的是 wiki_write。

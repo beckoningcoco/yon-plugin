@@ -25,8 +25,8 @@
 import type { HomeApi } from '../../src/client/home/api.ts'
 import { homeLabelOf } from '../../src/shared/types.ts'
 import type {
-  HomeKeyView, HomeListPayload, HomeProfileView, HomeView, MetaBuildView, MetaCountsView,
-  MetaIndexStatusView, SaveHomeInput,
+  ClassBuildView, ClassIndexStatusView, HomeKeyView, HomeListPayload, HomeProfileView, HomeView,
+  MetaBuildView, MetaCountsView, MetaIndexStatusView, SaveHomeInput,
 } from '../../src/shared/types.ts'
 
 /**
@@ -124,6 +124,18 @@ const META_BUILT_2111 = '2026-09-30T07:42:18.000Z'
 const META_BUILT_2312 = '2026-10-01T02:40:11.000Z'
 
 /**
+ * 2111 那份**类**索引的三个数：建成时间、类数、体积。
+ *
+ * 单独拎出来，因为同一份索引在两个地方各说一遍：列表行上的 `index`（模型调
+ * `ncc_home_list` 时读的）和详情栏的 `classStatus`。面板批 3a 之前只画前者，现在是
+ * 后者——两个字符串一旦不同，图上就会出现「列表说 9-28、详情说别的」这种真机上不
+ * 可能有的样子。类数与体积照前面的样本延续（`HOME_HOMES[0]` 用的就是这两个数）。
+ */
+const CLASS_BUILT_2111 = '2026-09-28T16:02:41.000Z'
+const CLASS_TOTAL_2111 = 143_908
+const CLASS_BYTES_2111 = 12_884_901
+
+/**
  * 已建索引的两种结论，按**版本**记账——真机上那份文件就叫 `meta_index_<版本>.json`，
  * 两个 Home 用同一个版本号时共用一份，所以这里也按版本而不是按 id 答。
  *
@@ -149,6 +161,66 @@ const META_SETTLED: Record<string, MetaIndexStatusView> = {
     sourceHomes: ['D:/NCProject/NCC/zhongduan/home'],
     freshness: { state: 'stale', changed: 2, added: 1, removed: 0 },
   },
+}
+
+/**
+ * 一个版本存下来的**类**索引，按版本记账——理由与 {@link META_SETTLED} 完全相同：
+ * 真机上那份文件叫 `class_index_<版本>.json`，两个 Home 用同一个版本号时共用一份。
+ *
+ * 只有 `2111` 建过：另外三条登记正好留出「还没有索引」那一格，而默认选中的就是
+ * 2111，所以第一屏画的是建好的那种。这两件事与 `HOME_HOMES[0].index` 是同一份事实。
+ */
+const CLASS_SETTLED: Record<string, ClassIndexStatusView> = {
+  '2111': {
+    indexed: true,
+    version: '2111',
+    builtAt: CLASS_BUILT_2111,
+    totalClasses: CLASS_TOTAL_2111,
+    bytes: CLASS_BYTES_2111,
+  },
+}
+
+/**
+ * 一次**类**索引构建跑到一半的样子。
+ *
+ * 与 {@link buildingView} 不同，这一份没有分母：`ClassBuildView` 报的是已经扫过多少
+ * 个 jar、多少个类（`src/host/class-service.ts` 的 progress），因为类索引是边扫边记，
+ * 扫之前不知道总数。所以面板上那句进度只有两个数——这正是要看的。
+ */
+function classBuildingView(): ClassBuildView {
+  return {
+    running: true,
+    jars: 3120,
+    classes: 62_400,
+    current: 'modules/arap/lib/arap_arap-1.jar',
+    startedAt: '2026-10-02T03:11:40.000Z',
+  }
+}
+
+/** 一次**失败**的构建：扫到一个读不开的 jar，或者根目录根本不是安装目录。 */
+function classFailedView(error: string): ClassBuildView {
+  return {
+    running: false,
+    jars: 12,
+    classes: 0,
+    current: '',
+    startedAt: '2026-10-02T03:11:40.000Z',
+    error,
+  }
+}
+
+/**
+ * 失败时服务端给的那句话，逐字抄自 `class-service.ts` 那条「不是安装目录」的答复。
+ *
+ * 抄而不是另写：面板那句「建立失败：{error}」要判断的是**这么长的一句话折进那一格会
+ * 占几行、会不会把按钮挤下去**，换一句短的就不是那句话的长度了。路径是拼进去的，
+ * 与真机一致——所以它跟着被选中的那一行走。
+ * @param path - 那次构建的安装目录。
+ * @returns 服务端会写进 `ClassBuildView.error` 的那句话。
+ */
+export function classPathError(path: string): string {
+  return `${path} 里既没有 .jar，也没有 modules/*/classes 下的 .class 或 .java`
+    + ' —— 确认这是 NCC/BIP 的 home 目录（不是项目目录或 jar 存放目录）。'
 }
 
 /**
@@ -204,7 +276,7 @@ export const HOME_HOMES: readonly HomeView[] = [
     version: '2111',
     isDefault: true,
     profile: profile(),
-    index: { builtAt: '2026-09-28T16:02:41.000Z', totalClasses: 143_908, bytes: 12_884_901 },
+    index: { builtAt: CLASS_BUILT_2111, totalClasses: CLASS_TOTAL_2111, bytes: CLASS_BYTES_2111 },
     meta: { builtAt: META_BUILT_2111, counts: META_2111, bytes: 8_332_000 },
   }),
   home({
@@ -324,12 +396,23 @@ export function homesFixture(payload: HomeListPayload = HOME_PAYLOAD): HomeApi {
    */
   let building = ''
 
+  /** 类索引那一条的同一个开关，另起一份：两个构建各有各的进度。 */
+  let classBuilding = ''
+
   /** 一个 Home 现在的索引状态：存下来的那份，外加（如果它在跑）构建进度。 */
   const statusOf = (id: string, fresh: boolean): MetaIndexStatusView => {
     const row = payload.homes.find(candidate => candidate.id === id) ?? HOME_HOMES[0] as HomeView
     const stored = settledMeta(row.version, fresh)
     const base: MetaIndexStatusView = stored ?? { indexed: false, version: row.version }
     return building === id ? { ...base, build: buildingView() } : base
+  }
+
+  /** 一个 Home 现在的类索引状态：存下来的那份，外加（如果它在跑）扫描进度。 */
+  const classStatusOf = (id: string): ClassIndexStatusView => {
+    const row = payload.homes.find(candidate => candidate.id === id) ?? HOME_HOMES[0] as HomeView
+    const stored = CLASS_SETTLED[row.version]
+    const base: ClassIndexStatusView = stored ?? { indexed: false, version: row.version }
+    return classBuilding === id ? { ...base, build: classBuildingView() } : base
   }
 
   return {
@@ -370,7 +453,66 @@ export function homesFixture(payload: HomeListPayload = HOME_PAYLOAD): HomeApi {
       building = id
       return Promise.resolve({ started: true, status: statusOf(id, false) })
     },
+
+    // 类索引那一条完全照做：进度定格在「正在建」，按钮改口叫「建立中…」。
+    classStatus: (id) => Promise.resolve(classStatusOf(id)),
+
+    buildClass: (id) => {
+      classBuilding = id
+      return Promise.resolve({ started: true, status: classStatusOf(id) })
+    },
+
+    // 删除不落地：下一次 `load()` 读到的还是同一份 payload，所以删掉的索引会回来。
+    // 静态预览图要的正是这个确定性。真机上这里回 `false` 的那条分支（文件已经不在了）
+    // 见 {@link homesWithVanishedIndex}。
+    removeClassIndex: () => Promise.resolve(true),
   }
+}
+
+/**
+ * 一台刚把类索引建**失败**过的机器。
+ *
+ * 与元数据那条不同的地方：失败是服务端**记着的**一句话（`class-service.ts` 把 error
+ * 留在那次构建的状态里），所以它不需要点击就能画出来——这也正是真机上的样子，打开
+ * 面板就会看见上一次失败的原因。
+ *
+ * 挑 `ncc-2105` 那条（路径失效的登记）当默认：它的失败理由最真，也正好把「失败」和
+ * 「路径失效」两种红字排在同一个详情栏里，要判断的就是这两句会不会挤成一团。
+ *
+ * @param payload - `GET /homes` 的答案；默认 {@link HOME_PAYLOAD}。
+ * @param failed - 报失败的那条登记的 id。
+ * @returns 面板要的那几个方法；被点的那条 id 永远给出失败状态，其余照常。
+ */
+export function homesWithClassFailure(
+  payload: HomeListPayload = HOME_PAYLOAD,
+  failed = 'ncc-2105',
+): HomeApi {
+  const base = homesFixture(payload)
+  return {
+    ...base,
+    classStatus: (id) => {
+      const row = payload.homes.find(candidate => candidate.id === id) ?? HOME_HOMES[0] as HomeView
+      const stored = CLASS_SETTLED[row.version]
+      const state: ClassIndexStatusView = stored ?? { indexed: false, version: row.version }
+      return Promise.resolve(id === failed
+        ? { ...state, build: classFailedView(classPathError(row.path)) }
+        : state)
+    },
+  }
+}
+
+/**
+ * 一台「按下删除那一刻文件已经不在了」的机器。
+ *
+ * 这条分支只有点了删除才会出现：状态刚说「有索引」（按钮画出来了），点下去的时候文件
+ * 已经被别的东西删掉。它的验收落在那一句答复上——「本来就没有索引文件，没有删掉任何
+ * 东西」——因为不说这一句，使用者会以为删除成功了。
+ *
+ * @param payload - `GET /homes` 的答案；默认 {@link HOME_PAYLOAD}。
+ * @returns 面板要的那几个方法；删除一律回 `false`。
+ */
+export function homesWithVanishedIndex(payload: HomeListPayload = HOME_PAYLOAD): HomeApi {
+  return { ...homesFixture(payload), removeClassIndex: () => Promise.resolve(false) }
 }
 
 /**

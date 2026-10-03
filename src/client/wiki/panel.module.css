@@ -1,6 +1,7 @@
 /* Knowledge-base pieces the shared dialog chrome does not cover: the detail
-   title, the vault path, the dimming of a vault whose directory has moved, and
-   the four blocks the tabs are made of — the level bars, the figure list, the gap
+   title, the vault path, the dimming of a vault whose directory has moved, the
+   form's path readout and the list head's two verbs, and the four blocks the tabs
+   are made of — the level bars, the figure list, the gap
    rows and a page card. Everything structural — the pane split, the list, the
    property grid, the action row, the empty state, the text input — comes from the
    shared stylesheet, so this surface, the project surface, the datasource surface
@@ -45,6 +46,24 @@
   display: flex;
   align-items: flex-start;
   gap: 6px;
+}
+
+/* The readout takes the width the chooser's button does not, so the field is the
+   long thing in the row rather than the button. Same rule as the Home form's, and
+   it is spelled here rather than shared: this sheet and the shared one are the only
+   two on this page, and a `.pathField` in the shared sheet would then be the one
+   name both surfaces had to agree about forever. */
+.pathField {
+  flex: 1;
+}
+
+/* The registration verbs, kept together at the right end of the list head: the
+   shared `.listHead` spreads its children, so 新增 and 全部重建 would otherwise be
+   pushed to the middle and the far edge of the strip. */
+.headVerbs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .copyBtn {

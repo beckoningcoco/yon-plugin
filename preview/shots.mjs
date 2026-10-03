@@ -94,10 +94,23 @@ for (const page of pages) {
 
   // The probe renders even without a page to look at, so a missing PROBE line means
   // the injection itself broke — not that a value was absent. Worth failing on.
+  // The probe is read back with the same three flags the picture is taken with. That
+  // is not cosmetic: without them Chrome falls back to its own default headless window
+  // (~800x505), so every number printed here described a *different* viewport than the
+  // PNG in the same directory — and a figure that looks authoritative while answering
+  // about somewhere else is worse than no figure (docs/yon-panel-ui-design.md §5.1).
+  //
+  // Identical flags are necessary, not sufficient: even so, the `--dump-dom` layout and
+  // the `--screenshot` layout are not the same layout (§5.1, root cause not established).
+  // So these numbers are safe to read *against each other* — two states, two runs, one
+  // field — and are not a description of the pixels next to them.
   const dom = spawnSync(chrome, [
     '--headless=new',
     '--disable-gpu',
+    '--hide-scrollbars',
     '--no-first-run',
+    `--force-device-scale-factor=${SCALE}`,
+    `--window-size=${WINDOW}`,
     `--user-data-dir=${asPath(profile)}`,
     '--dump-dom',
     asUrl(html),

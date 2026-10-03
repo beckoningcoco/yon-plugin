@@ -1,4 +1,4 @@
-import type { DirectoryPickResult, HomeListPayload, HomeView, MetaIndexStatusView, SaveHomeInput } from '../../shared/types.ts';
+import type { ClassIndexStatusView, DirectoryPickResult, HomeListPayload, HomeView, MetaIndexStatusView, SaveHomeInput } from '../../shared/types.ts';
 export { ApiError as HomeApiError } from '../request.ts';
 /** The Home operations the UI drives. */
 export interface HomeApi {
@@ -51,6 +51,32 @@ export interface HomeApi {
         started: boolean;
         status: MetaIndexStatusView;
     }>;
+    /**
+     * The class index built for this Home's version.
+     *
+     * No `fresh` counterpart to the metadata call above: this status reads each stored
+     * index file's head rather than parsing it, so it is cheap enough for the progress
+     * poll to ask for it directly.
+     * @param id - the registration to ask about.
+     * @returns what is stored, and what a running build is doing.
+     */
+    classStatus(id: string): Promise<ClassIndexStatusView>;
+    /**
+     * Start building, or rebuilding, the class index. Returns as soon as it is queued.
+     * @param id - the registration to build for.
+     * @returns whether a build actually started, and the state to show meanwhile.
+     */
+    buildClass(id: string): Promise<{
+        started: boolean;
+        status: ClassIndexStatusView;
+    }>;
+    /**
+     * Drop the stored index. A derived file, so this asks for no confirmation beyond
+     * whatever the panel puts in front of the click.
+     * @param id - the registration whose index should go.
+     * @returns whether a file was actually removed.
+     */
+    removeClassIndex(id: string): Promise<boolean>;
     /**
      * Ask the host to open its own folder chooser.
      *

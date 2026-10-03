@@ -13,16 +13,23 @@
  * column of facts would be a wall — and the three questions an operator has
  * (what is in here, what is missing, is anyone using it) deserve separate answers.
  *
- * Read-only by design. Nothing on this surface writes to a vault: adding one stays
- * a file edit, because a machine path is not something to invite somebody to type
- * into a browser field.
+ * The registration is editable from here now — added, renamed, re-pointed and
+ * unlisted — and that is worth reading narrowly: **no page is written from this
+ * surface.** Each of those verbs writes this panel's own list of vaults and nothing
+ * else, and unlisting deletes nothing inside the vault either — not even the derived
+ * `wiki/.yon-index.json` the reader may have materialised there (reading is what
+ * writes that file, which is what makes leaving it behind harmless). The path is
+ * still not typed. It comes from the host's own folder chooser, because an absolute
+ * machine path one character wrong names a different directory — and a different
+ * directory is a vault with no pages, which reports no error at all.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Button, Modal, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, Input, Modal, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import type {
-  WikiCardView, WikiGapView, WikiHealthReport, WikiLevel, WikiLogEntry,
-  WikiRelationGroupView, WikiSearchPayload, WikiVaultView,
+import {
+  WIKI_ENTITY_DIRS, type SaveVaultInput, type WikiCardView, type WikiGapView,
+  type WikiHealthReport, type WikiLevel, type WikiLogEntry,
+  type WikiRelationGroupView, type WikiSearchPayload, type WikiVaultView,
 } from '../../shared/types.ts'
 import { cn } from '../cn.ts'
 import type { YonPanelKey } from '../locales.ts'
@@ -61,6 +68,31 @@ const KIND_KEY: Record<string, YonPanelKey> = {
   depends: 'wiki.kind.depends',
   extends: 'wiki.kind.extends',
   parent: 'wiki.kind.parent',
+}
+
+/**
+ * What the create/edit form holds while it is open.
+ *
+ * No `ready`, no page count: those are readings of the directory, and the form is
+ * where the directory is being named, not described. The name is the operator's —
+ * the one field on this registration that cannot be derived from anything, which is
+ * why the service takes it and mints the id itself.
+ */
+interface Draft {
+  /** The registration being edited, or undefined while creating. */
+  readonly id?: string
+  label: string
+  path: string
+}
+
+/**
+ * A blank draft, or one seeded from an existing registration.
+ * @param vault - the row being edited; omitted while creating.
+ * @returns the draft the form starts from.
+ */
+function draftOf(vault?: WikiVaultView): Draft {
+  if (vault === undefined) return { label: '', path: '' }
+  return { id: vault.id, label: vault.label, path: vault.path }
 }
 
 /** Props the entry hands this surface. */
@@ -189,12 +221,37 @@ function RelationRow({ group, t }: {
  * @returns the dialog.
  */
 export function WikiManager({
-  listVaults, rebuildVault, recentWrites, health, search, pageCard, citers, onClose, t,
+  listVaults, rebuildVault, recentWrites, health, search, pageCard, citers,
+  saveVault, removeVault, pickPath, onClose, t,
 }: WikiManagerProps) {
   const [vaults, setVaults] = useState<readonly WikiVaultView[]>([])
   const [selected, setSelected] = useState<string | undefined>(undefined)
   /** The vault being rebuilt, or `'*'` while every vault is. */
   const [busy, setBusy] = useState<string | undefined>(undefined)
+  /**
+   * True while a registration is being written — saved or removed.
+   *
+   * Deliberately not `busy`: that one carries *which* index walk is running
+   * (`'*'` or a vault id), and every value it can hold is already spoken for. Two
+   * flags rather than one also keeps the two acts' buttons apart — a save takes
+   * milliseconds and disables the form, a rebuild takes tens of seconds and must
+   * leave the pane alive to watch it.
+   */
+  const [mutating, setMutating] = useState(false)
+  /** The open registration form, or undefined while the pane reads instead. */
+  const [draft, setDraft] = useState<Draft | undefined>(undefined)
+  /** True between 移除登记 and its answer: the two-step the destructive verb gets. */
+  const [confirmingRemove, setConfirmingRemove] = useState(false)
+  /** What the last removal answered, so the state it leaves is not silent. */
+  const [removedNote, setRemovedNote] = useState<string | undefined>(undefined)
+  /**
+   * What the host says its chooser is, or undefined while it has not been asked.
+   *
+   * Not reset with the draft: the host's answer is a property of this machine, so
+   * once known it holds for every form opened afterwards.
+   */
+  const [pickerKind, setPickerKind] = useState<string | undefined>(undefined)
+  const [picking, setPicking] = useState(false)
   const [failure, setFailure] = useState<string | undefined>(undefined)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<Tab>('overview')
@@ -222,12 +279,24 @@ export function WikiManager({
     if (copyTimer.current !== undefined) clearTimeout(copyTimer.current)
   }, [])
 
-  const load = useCallback(async () => {
+  /**
+   * Read every registration.
+   *
+   * @param keepId - the row to leave selected afterwards. A save names the row it
+   *   produced, so the vault the operator just registered is the one the pane
+   *   describes; a removal names nothing and falls through to the first row left.
+   */
+  const load = useCallback(async (keepId?: string) => {
     setLoading(true)
     setFailure(undefined)
     try {
       const answer = await listVaults()
       setVaults(answer.vaults)
+      setSelected(previous => {
+        const wanted = keepId ?? previous
+        if (wanted !== undefined && answer.vaults.some(vault => vault.id === wanted)) return wanted
+        return answer.vaults[0]?.id
+      })
     } catch (cause: unknown) {
       setFailure(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -240,6 +309,8 @@ export function WikiManager({
   const current = vaults.find(vault => vault.id === selected) ?? vaults[0]
   const currentId = current?.id
   const ready = current?.ready === true
+  /** True while either kind of write is in flight, so no second one is started. */
+  const blocked = mutating || busy !== undefined
 
   // Health and history follow the selection, and reload after a rebuild: the log
   // is the whole point of showing it, and showing a stale one after rebuilding
@@ -294,6 +365,93 @@ export function WikiManager({
     } finally {
       setBusy(undefined)
     }
+  }
+
+  /**
+   * Write the open form, then select whatever it produced.
+   *
+   * The id goes in as the *first* argument and never as a field: on the way in it
+   * says which registration is being edited, and a created one is minted by the
+   * service from the directory. Renaming therefore cannot re-address a vault that
+   * a conversation has already named — which is the point of an immutable id.
+   */
+  const save = (): void => {
+    const open = draft
+    if (open === undefined) return
+    const body: SaveVaultInput = { label: open.label.trim(), path: open.path.trim() }
+    void (async () => {
+      setMutating(true)
+      setFailure(undefined)
+      setRemovedNote(undefined)
+      try {
+        const saved = await saveVault(open.id, body)
+        setDraft(undefined)
+        await load(saved.id)
+      } catch (cause: unknown) {
+        setFailure(cause instanceof Error ? cause.message : String(cause))
+      } finally {
+        setMutating(false)
+      }
+    })()
+  }
+
+  /**
+   * Open the host's folder chooser and take the directory it returns.
+   *
+   * Asked on a click, never on mount: asking is what opens the host's dialog, so a
+   * fresh form shows a button and the host's kind is learned once. Cancelling is a
+   * normal answer (`path: null`), not a failure — the field keeps what it had. And
+   * there is deliberately no text box behind this button: an absolute machine path
+   * cannot be typed correctly by inspection, and a wrong one names a directory that
+   * is simply not a vault, which reports no error at all.
+   */
+  const choosePath = (): void => {
+    void (async () => {
+      setPicking(true)
+      try {
+        const answer = await pickPath()
+        setPickerKind(answer.kind)
+        const chosen = answer.kind === 'native' && typeof answer.path === 'string' ? answer.path : ''
+        if (chosen !== '') {
+          setDraft(open => (open === undefined ? open : { ...open, path: chosen }))
+        }
+      } catch (cause: unknown) {
+        setFailure(cause instanceof Error ? cause.message : String(cause))
+      } finally {
+        setPicking(false)
+      }
+    })()
+  }
+
+  /**
+   * Unlist one registration, after the question.
+   *
+   * Nothing inside the vault goes: the pages stay, and so does the index cache the
+   * vault carries — that file is derived and rebuildable, and deleting anything
+   * inside somebody's repository is outside what this panel owns. The label is
+   * captured before the call because the row it names is about to be the one that
+   * is gone; the note reports what happened rather than asking the operator to
+   * trust that something did.
+   */
+  const remove = (vault: WikiVaultView): void => {
+    const label = vault.label
+    setConfirmingRemove(false)
+    void (async () => {
+      setMutating(true)
+      setFailure(undefined)
+      try {
+        await removeVault(vault.id)
+        setRemovedNote(t('wiki.removed', { label }))
+        // Nothing named: the row is gone, so the pane falls to whichever row is
+        // first among those left rather than to a row that no longer exists.
+        setSelected(undefined)
+        await load()
+      } catch (cause: unknown) {
+        setFailure(cause instanceof Error ? cause.message : String(cause))
+      } finally {
+        setMutating(false)
+      }
+    })()
   }
 
   /** Put the vault path on the clipboard, since it is a machine fact people paste. */
@@ -351,30 +509,42 @@ export function WikiManager({
     { id: 'activity' as const, label: t('wiki.tab.activity'), count: report?.usage.total },
   ]), [t, report])
 
-  /** The overview: what the vault is, and what its pages can answer. */
+  /**
+   * The directory this registration points at.
+   *
+   * Outside the overview tab and outside `report`: it is a fact about the
+   * registration, not about the index, and the state where it matters most is the
+   * one with no index at all — a row reading 路径不可用 has nothing else in the pane
+   * to say which directory failed to be a vault.
+   */
+  const pathBlock = (
+    <dl className={cn(base.props)}>
+      <dt className={cn(base.propLabel)}>{t('wiki.path')}</dt>
+      <dd className={cn(base.propValue)}>
+        <span className={cn(css.pathRow)}>
+          <span className={cn(css.mono)}>{current?.path}</span>
+          <button
+            type="button"
+            className={cn(css.copyBtn,
+              copied === 'copied' ? css.copyOk : undefined,
+              copied === 'failed' ? css.copyBad : undefined)}
+            aria-label={copied === 'copied'
+              ? t('wiki.copied')
+              : copied === 'failed' ? t('wiki.copyFailed') : t('wiki.copyPath')}
+            title={t('wiki.copyPath')}
+            onClick={copyPath}
+          >
+            {copied === 'copied' ? <CheckMark /> : <CopyMark />}
+          </button>
+        </span>
+      </dd>
+    </dl>
+  )
+
+  /** The overview: what the vault's pages can answer. */
   const overview = report === undefined ? null : (
     <>
       <dl className={cn(base.props)}>
-        <dt className={cn(base.propLabel)}>{t('wiki.path')}</dt>
-        <dd className={cn(base.propValue)}>
-          <span className={cn(css.pathRow)}>
-            <span className={cn(css.mono)}>{current?.path}</span>
-            <button
-              type="button"
-              className={cn(css.copyBtn,
-                copied === 'copied' ? css.copyOk : undefined,
-                copied === 'failed' ? css.copyBad : undefined)}
-              aria-label={copied === 'copied'
-                ? t('wiki.copied')
-                : copied === 'failed' ? t('wiki.copyFailed') : t('wiki.copyPath')}
-              title={t('wiki.copyPath')}
-              onClick={copyPath}
-            >
-              {copied === 'copied' ? <CheckMark /> : <CopyMark />}
-            </button>
-          </span>
-        </dd>
-
         <dt className={cn(base.propLabel)}>{t('wiki.pages')}</dt>
         <dd className={cn(base.propValue)}>{current?.ready === true ? current.pages : '—'}</dd>
 
@@ -636,14 +806,30 @@ export function WikiManager({
         <section className={cn(base.listPane)} aria-label={t('wiki.list')}>
           <div className={cn(base.listHead)}>
             <span className={cn(base.listTitle)}>{t('wiki.list')}</span>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy !== undefined || vaults.length === 0}
-              onClick={() => { void rebuild() }}
-            >
-              {busy === '*' ? t('wiki.rebuilding') : t('wiki.rebuildAll')}
-            </Button>
+            {/* Two verbs, so they are grouped: `.listHead` spreads its children
+                apart, and on its own 新增 would land in the middle of the strip. */}
+            <span className={cn(css.headVerbs)}>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={mutating}
+                onClick={() => {
+                  setDraft(draftOf())
+                  setConfirmingRemove(false)
+                  setRemovedNote(undefined)
+                }}
+              >
+                {t('wiki.new')}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={blocked || vaults.length === 0}
+                onClick={() => { void rebuild() }}
+              >
+                {busy === '*' ? t('wiki.rebuilding') : t('wiki.rebuildAll')}
+              </Button>
+            </span>
           </div>
 
           {loading
@@ -665,6 +851,12 @@ export function WikiManager({
                           setCard(undefined)
                           setTerm('')
                           setOpenGap(undefined)
+                          // The form and the question both belong to the row that was
+                          // selected when they were opened, so picking another row
+                          // drops them rather than leaving them attached to this one.
+                          setDraft(undefined)
+                          setConfirmingRemove(false)
+                          setRemovedNote(undefined)
                         }}
                       >
                         <span className={cn(base.projectMark)} aria-hidden="true"><BookMark /></span>
@@ -680,7 +872,80 @@ export function WikiManager({
         </section>
 
         <section className={cn(base.detailPane)}>
-          {current === undefined ? (
+          {/* The removal report is the one message that has to outlive the row it
+              names, so it sits above everything — including above the empty state,
+              which is where removing the last registration lands. It is also why it
+              is not laid under the verb row: `.detailActions:last-child` is what
+              gives that row its sticky band, and anything rendered after it takes
+              the band away. */}
+          {removedNote !== undefined && (
+            <p className={cn(base.note)} role="status">{removedNote}</p>
+          )}
+
+          {draft !== undefined ? (
+            <form className={cn(base.form)} onSubmit={(event) => { event.preventDefault(); save() }}>
+              <h3 className={cn(css.title)}>
+                {draft.id === undefined ? t('wiki.newTitle') : t('wiki.editTitle')}
+              </h3>
+
+              <p className={cn(base.hint)}>
+                {draft.id === undefined ? t('wiki.createHint') : t('wiki.editHint')}
+              </p>
+
+              <div className={cn(base.formRow)}>
+                <label className={cn(base.formLabel)} htmlFor="yon-wiki-label">{t('wiki.labelLabel')}</label>
+                <Input
+                  id="yon-wiki-label"
+                  className={cn(base.inputFill)}
+                  value={draft.label}
+                  onChange={(event) => { setDraft({ ...draft, label: event.target.value }) }}
+                />
+              </div>
+
+              <div className={cn(base.formRow)}>
+                <label className={cn(base.formLabel)} htmlFor="yon-wiki-path">{t('wiki.pathLabel')}</label>
+                {/* Picked, never typed — the same field the Home form has, for the
+                    same reason: this path has to be right about which directory on
+                    the machine it names, and no text box is. */}
+                <span className={cn(css.pathRow)}>
+                  <Input
+                    id="yon-wiki-path"
+                    className={cn(base.inputFill, css.pathField)}
+                    value={draft.path}
+                    readOnly
+                    placeholder={t('wiki.pathNone')}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={mutating || picking}
+                    onClick={choosePath}
+                  >
+                    {picking ? t('wiki.picking') : t('wiki.pickDir')}
+                  </Button>
+                </span>
+                {pickerKind !== undefined && pickerKind !== 'native' && (
+                  <p className={cn(base.hint)}>{t('wiki.pickUnavailable')}</p>
+                )}
+              </div>
+
+              <div className={cn(base.detailActions)}>
+                <Button type="submit" size="sm" disabled={mutating}>
+                  {mutating ? t('wiki.saving') : t('wiki.save')}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={mutating}
+                  onClick={() => { setDraft(undefined) }}
+                >
+                  {t('wiki.cancel')}
+                </Button>
+              </div>
+            </form>
+          ) : current === undefined ? (
             <div className={cn(base.empty)}>
               <span className={cn(base.emptyMark)} aria-hidden="true"><BookMark /></span>
               <p className={cn(base.emptyTitle)}>{t('wiki.empty')}</p>
@@ -692,6 +957,18 @@ export function WikiManager({
                 {current.label}
                 <span className={cn(base.projectMeta)}>{current.id}</span>
               </h3>
+
+              {pathBlock}
+
+              {/* Named rather than left to the row's dimming: an unready registration
+                  is a directory that is *not* a vault, and the four layouts are the
+                  whole rule. Printed from the shared constant so the list a reader
+                  searches and the list this says cannot drift apart. */}
+              {!current.ready && (
+                <p className={cn(base.note)}>
+                  {t('wiki.notReadyHint', { dirs: WIKI_ENTITY_DIRS.join(' · ') })}
+                </p>
+              )}
 
               <div className={cn(css.searchRow)}>
                 <input
@@ -736,9 +1013,20 @@ export function WikiManager({
               )}
 
               <div className={cn(base.detailActions)}>
+                {/* The question goes *inside* the row, not above it — the same arrangement
+                    the Home surface uses, and for the reason it measured: this row is the
+                    pane's sticky foot (`.detailActions:last-child`), so a sibling written
+                    just before it in flow sits at the row's unpinned position, below the
+                    fold, and the picture of that state is two buttons and no question.
+                    The row already wraps, so the sentence costs it a second line. */}
+                {confirmingRemove && (
+                  <span className={cn(base.note)}>
+                    {t('wiki.removeAsk')} {t('wiki.removeAbout')}
+                  </span>
+                )}
                 <Button
                   size="sm"
-                  disabled={busy !== undefined || !current.ready}
+                  disabled={blocked || !current.ready}
                   onClick={() => { void rebuild(current.id) }}
                 >
                   {busy === current.id ? t('wiki.rebuilding') : t('wiki.rebuild')}
@@ -751,6 +1039,55 @@ export function WikiManager({
                 >
                   {t('wiki.refresh')}
                 </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={blocked}
+                  onClick={() => {
+                    setDraft(draftOf(current))
+                    setConfirmingRemove(false)
+                    setRemovedNote(undefined)
+                  }}
+                >
+                  {t('wiki.edit')}
+                </Button>
+                {/* Two steps, as the Home and datasource surfaces do it. Unlisting is
+                    not destructive to the vault, but it is destructive to the *list* —
+                    the registration has to be entered again by hand to come back — so
+                    it is not a verb that answers to one press either. */}
+                {confirmingRemove
+                  ? (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className={cn(base.dangerButton)}
+                        disabled={mutating}
+                        onClick={() => { remove(current) }}
+                      >
+                        {t('wiki.removeYes')}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={mutating}
+                        onClick={() => { setConfirmingRemove(false) }}
+                      >
+                        {t('wiki.cancel')}
+                      </Button>
+                    </>
+                  )
+                  : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className={cn(base.dangerButton)}
+                      disabled={blocked}
+                      onClick={() => { setConfirmingRemove(true) }}
+                    >
+                      {t('wiki.remove')}
+                    </Button>
+                  )}
               </div>
             </>
           )}

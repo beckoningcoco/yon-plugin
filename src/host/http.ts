@@ -32,8 +32,24 @@
  *   DELETE /yon/api/homes/<id>               drop one registration
  *   POST   /yon/api/homes/<id>/probe         re-read the directory and store the result
  *   PUT    /yon/api/homes/<id>/default       make this the Home a bare version means
+ *   GET    /yon/api/homes/<id>/meta-index    metadata index status, and any build running
+ *   POST   /yon/api/homes/<id>/meta-index    start building it (returns at once)
+ *   GET    /yon/api/homes/<id>/class-index   class index status, and any build running
+ *   POST   /yon/api/homes/<id>/class-index   start building it (returns at once)
+ *   DELETE /yon/api/homes/<id>/class-index   drop the stored index (derived; rebuildable)
  *
  *   POST   /yon/api/pick-directory          open the host's own folder chooser
+ *
+ *   GET    /yon/api/wiki                    list the registered vaults
+ *   POST   /yon/api/wiki/vaults             register one
+ *   PUT    /yon/api/wiki/vaults/<id>        edit one registration (id is immutable)
+ *   DELETE /yon/api/wiki/vaults/<id>        unlist one (nothing inside the vault moves)
+ *   GET    /yon/api/wiki/recent             a vault's own log tail
+ *   POST   /yon/api/wiki/rebuild            rebuild one index, or every one
+ *   GET    /yon/api/wiki/health             level breakdown, references, holes, activity
+ *   GET    /yon/api/wiki/search             pages answering a term
+ *   GET    /yon/api/wiki/card               one page as a card
+ *   GET    /yon/api/wiki/citers             who cites one entity URI
  *
  * A datasource key is `<configKey>::<env>` and carries non-ASCII text, so every
  * route segment below is decoded (by {@link segmentsOf}) and every client call
@@ -48,7 +64,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import {
   API_PREFIX, PROJECT_STATUSES, type ApiError, type DirectoryPickResult, type JsonValue,
-  type SaveHomeInput, type SetFieldInput, type UpdateProjectInput,
+  type SaveHomeInput, type SaveVaultInput, type SetFieldInput, type UpdateProjectInput,
 } from '../shared/types.ts'
 import { ProjectError, type YonProjectsService } from './service.ts'
 import { SkillError, type YonSkillsService } from './skill-registry.ts'
@@ -57,6 +73,7 @@ import { WikiError, type YonWikiService } from './wiki-service.ts'
 import { digestLogPath, type DigestLog } from './digest-log.ts'
 import { HomeError, type YonHomesService } from './home-service.ts'
 import type { YonMetaService } from './meta-service.ts'
+import type { YonClassService } from './class-service.ts'
 
 /** Largest request body accepted, in bytes. */
 const MAX_BODY_BYTES = 1_000_000
@@ -265,6 +282,22 @@ function homeInputOf(body: Record<string, unknown>): SaveHomeInput {
 }
 
 /**
+ * Read a vault registration body.
+ *
+ * Absent fields become the empty string rather than being rejected here, so the
+ * refusal comes from the service with its own wording — one place that says what
+ * a missing path means, rather than two.
+ * @param body - the parsed request body.
+ * @returns the input the service reads.
+ */
+function vaultInputOf(body: Record<string, unknown>): SaveVaultInput {
+  return {
+    label: typeof body.label === 'string' ? body.label : '',
+    path: typeof body.path === 'string' ? body.path : '',
+  }
+}
+
+/**
  * Serve the `/yon/api/homes` branch.
  *
  * A registration is identified by its generated id, and the id is not editable —
@@ -278,6 +311,7 @@ function homeInputOf(body: Record<string, unknown>): SaveHomeInput {
  * @param segments - the decoded path segments after the API prefix.
  * @param homes - the Home service.
  * @param meta - the metadata index over those Homes.
+ * @param classes - the class index over the same Homes.
  * @param search - the request's query string, for the one route that has a flag.
  */
 async function handleHomes(
@@ -287,6 +321,7 @@ async function handleHomes(
   segments: readonly string[],
   homes: YonHomesService,
   meta: YonMetaService,
+  classes: YonClassService,
   search: URLSearchParams,
 ): Promise<void> {
   const id = segments[1]
@@ -353,6 +388,35 @@ async function handleHomes(
       // will cut. `started: false` means one was already running for this version.
       const handle = await meta.startBuild(id)
       sendJson(res, 202, { home: id, ...handle })
+      return
+    }
+    sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+    return
+  }
+
+  // /yon/api/homes/<id>/class-index
+  //
+  // No `fresh` flag, unlike the metadata route beside it: this status reads each stored
+  // index file's head rather than parsing it (measured 1 ms against 372 ms on an index
+  // the size of the reference Home's), so there is no expensive half to skip.
+  if (tail === 'class-index') {
+    if (method === 'GET') {
+      sendJson(res, 200, { home: id, status: await classes.status(id) })
+      return
+    }
+    if (method === 'POST') {
+      // Returns as soon as the walk is queued rather than when it finishes: the panel
+      // polls GET for progress, and the reference installation's walk is 26.2 s.
+      const handle = await classes.startBuild(id)
+      sendJson(res, 202, { home: id, ...handle })
+      return
+    }
+    if (method === 'DELETE') {
+      // The file is derived and the same block can rebuild it, so this is not the
+      // destructive verb the registration's own DELETE is. The answer says whether a
+      // file was actually there, because "removed: false" and "removed: true" are
+      // different states for a panel to report.
+      sendJson(res, 200, { home: id, removed: await classes.remove(id) })
       return
     }
     sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
@@ -457,9 +521,10 @@ async function handlePickDirectory(
 /**
  * Serve the `/yon/api/wiki` branch.
  *
- * Six routes, in two groups. The first group is registration: which vaults exist,
- * how big they are, and a rebuild. The second is what the vault's own contents
- * say — its health, a search, one page as a card, and who cites a missing entity.
+ * Three groups. Which vaults exist, how big they are, and a rebuild. What the
+ * vault's own contents say — its health, a search, one page as a card, and who
+ * cites a missing entity. And the registration itself: `/vaults` adds one, edits
+ * one, and unlists one, which is the only group here that changes anything.
  *
  * Search lives here rather than being left to the model's `wiki_lookup` because
  * the panel is where somebody looks something up for themselves. Reading a whole
@@ -506,6 +571,40 @@ async function handleWiki(
       return
     }
     sendJson(res, 200, { vaults: await wiki.list() })
+    return
+  }
+
+  // /yon/api/wiki/vaults, and /yon/api/wiki/vaults/<id>
+  //
+  // Registering a vault, which is the panel's own bookkeeping: what these three
+  // verbs write is this plugin's `wiki_config.json`. None of them writes a page,
+  // and none deletes anything inside a vault, so an id is a row in that file and
+  // nothing more. (A save answers with the same view the list builds, so on a
+  // directory that already *is* a vault it materialises the derived
+  // `wiki/.yon-index.json` the way a read does.) The id is immutable on edit for
+  // the same reason a Home's is: a conversation that narrowed a lookup to this
+  // vault keeps meaning the same directory.
+  if (tail === 'vaults') {
+    const id = segments[2]
+    if (id === undefined) {
+      if (method === 'POST') {
+        const vault = await wiki.saveVault(vaultInputOf(await objectBody(req)))
+        sendJson(res, 201, { vault })
+        return
+      }
+      sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+      return
+    }
+    if (method === 'PUT') {
+      sendJson(res, 200, { vault: await wiki.saveVault(vaultInputOf(await objectBody(req)), id) })
+      return
+    }
+    if (method === 'DELETE') {
+      await wiki.removeVault(id)
+      sendJson(res, 200, { removed: id })
+      return
+    }
+    sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
     return
   }
 
@@ -711,6 +810,7 @@ export function registerYonApi(
   digestLog: DigestLog,
   homes: YonHomesService,
   meta: YonMetaService,
+  classes: YonClassService,
 ): () => void {
   const carrier = ctx.get('webServer') as RouteRegistrar | undefined
   if (carrier === undefined) {
@@ -746,7 +846,7 @@ export function registerYonApi(
           return
         }
         if (segments[0] === 'homes') {
-          await handleHomes(req, res, method, segments, homes, meta, url.searchParams)
+          await handleHomes(req, res, method, segments, homes, meta, classes, url.searchParams)
           return
         }
         // A segment of its own, not `/homes/pick-directory`: `handleHomes` reads

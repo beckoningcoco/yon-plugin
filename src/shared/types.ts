@@ -524,6 +524,50 @@ export interface MetaIndexPayload {
 }
 
 /**
+ * A class-index build that is running, so the panel can show where it is.
+ *
+ * Counts jars rather than files, because that is the unit this walk moves in: a jar is
+ * one read of two small regions, and the loose files it also picks up are a rounding
+ * error beside the ~8,500 jars a real installation holds.
+ */
+export interface ClassBuildView {
+  readonly running: boolean
+  readonly jars: number
+  readonly classes: number
+  /** The file being read, relative to the Home. */
+  readonly current: string
+  readonly startedAt: string
+  /** Why the last build failed, if it did. */
+  readonly error?: string
+}
+
+/**
+ * The class index built for a Home's version, when one exists.
+ *
+ * Separate from {@link HomeIndexView}, which is what a *list* row carries. This one is
+ * the answer to a call about one Home, so it also carries the build in flight — and it
+ * is read through the file's head rather than parsed, because the panel asks for it
+ * every time the selection changes.
+ */
+export interface ClassIndexStatusView {
+  /** False when nothing is stored for this version yet. */
+  readonly indexed: boolean
+  readonly version: string
+  readonly builtAt?: string
+  readonly totalJars?: number
+  readonly totalClasses?: number
+  /** Size of the stored file, in bytes. */
+  readonly bytes?: number
+  readonly build?: ClassBuildView
+}
+
+/** `GET /yon/api/homes/<id>/class-index` payload. */
+export interface ClassIndexPayload {
+  readonly home: string
+  readonly status: ClassIndexStatusView
+}
+
+/**
  * `GET /yon/api/homes` gains this when a Home's version has a metadata index.
  *
  * Carried on {@link HomeView} rather than as a separate call, for the same reason the
@@ -555,6 +599,38 @@ export interface WikiVaultView {
 /** Body of `GET /yon/api/wiki`, and of a rebuild's answer. */
 export interface WikiListPayload {
   readonly vaults: readonly WikiVaultView[]
+}
+
+/**
+ * The directories a vault's entity pages may live in, in the order they are tried.
+ *
+ * Shared rather than owned by the reader, because the panel has to name them too:
+ * a registration whose directory holds none of these is the one state where the
+ * operator needs to be told what to create, and a list typed out again in a
+ * translation string is a list that drifts from the one being searched.
+ *
+ * The Chinese names are not hypothetical — `yon-ncc-obsidian` was initialised with
+ * `wiki/实体`, `wiki/来源`, `wiki/模块`, so a reader that only knows the English
+ * convention silently finds nothing there.
+ */
+export const WIKI_ENTITY_DIRS = ['wiki/entities', 'wiki/实体', 'entities', '实体'] as const
+
+/**
+ * Body of `POST /yon/api/wiki/vaults` and `PUT /yon/api/wiki/vaults/<id>`.
+ *
+ * No `id`, unlike a Home: that one is derived from the product line and version it
+ * is registered under, and this one is derived from the directory the operator
+ * picked. Either way it is the service's to mint and nobody's to type, which is
+ * what makes it immutable on edit rather than a field to validate.
+ *
+ * `label` is here and is not derived, because there is nothing to derive it from:
+ * a Home is `<产品线><版本>`, while a vault's name is whatever the operator calls
+ * that knowledge base. It defaults to the directory's own name in the form.
+ */
+export interface SaveVaultInput {
+  readonly label: string
+  /** Absolute vault root; both separators are accepted on input. */
+  readonly path: string
 }
 
 /** One dated line of a vault's `log.md`, as both halves read it. */

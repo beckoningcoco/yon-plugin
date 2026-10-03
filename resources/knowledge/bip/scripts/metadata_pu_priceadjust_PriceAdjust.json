@@ -1,7 +1,0 @@
-{
-  "code": "200",
-  "data": {
-    "msg": "Does not exist in DB. uri: pu.priceadjust.PriceAdjust, tenantId: nfkwaryp",
-    "resultCode": "500"
-  }
-}

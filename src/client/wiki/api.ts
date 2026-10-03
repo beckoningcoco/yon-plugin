@@ -5,17 +5,23 @@
  * The apply world builds one of these and hands the methods to the entry through
  * an inject face, so a component never fetches and never learns a URL.
  *
- * A vault is still not editable from here: its path is a machine fact the
- * operator sets once, and this surface reports rather than configures. What it
- * reports grew, though — a vault's health, a search across its pages, one page as
- * a card and the pages citing a missing entity are all answers about what is
- * already on disk, not changes to it.
+ * The registration is editable from here now, and that means less than it sounds:
+ * every one of these calls writes the same single document — this panel's list of
+ * vaults — and none of them writes a page. Reading an already-registered vault can
+ * materialise the derived `wiki/.yon-index.json` cache inside it; that is the
+ * *reader's* doing, it is why that file can safely be left behind when a vault is
+ * unlisted, and nothing here creates or deletes one. The path is still not typed; it
+ * comes from the host's own folder chooser, because an absolute machine path is not
+ * something a browser field can be right about.
  */
 import { request } from '../request.ts'
 import type {
-  WikiCardPayload, WikiCitersPayload, WikiHealthPayload, WikiListPayload,
-  WikiLogEntry, WikiLogPayload, WikiSearchPayload,
+  DirectoryPickResult, SaveVaultInput, WikiCardPayload, WikiCitersPayload, WikiHealthPayload,
+  WikiListPayload, WikiLogEntry, WikiLogPayload, WikiSearchPayload, WikiVaultView,
 } from '../../shared/types.ts'
+
+/** One id as a URL segment, the way the Home client spells it. */
+const idSegment = (id: string): string => encodeURIComponent(id)
 
 // The shared failure keeps this module's name for it, as its siblings do.
 export { ApiError as WikiApiError } from '../request.ts'
@@ -79,6 +85,35 @@ export interface WikiApi {
    * @returns the citing page names.
    */
   citers(uri: string, vault?: string): Promise<WikiCitersPayload>
+
+  /**
+   * Register a vault, or edit one that is already registered.
+   *
+   * The id is generated from the directory and is not an argument on the way in
+   * except to say *which* registration is being edited — the same convention the
+   * Home client follows, and the reason a vault edited in the panel keeps the id
+   * a conversation already used to address it.
+   * @param id - the registration to edit; absent to add a new one.
+   * @param input - the name and the directory.
+   * @returns the stored vault, with its readiness.
+   */
+  saveVault(id: string | undefined, input: SaveVaultInput): Promise<WikiVaultView>
+
+  /**
+   * Unlist one registration. Nothing inside the vault is deleted.
+   * @param id - the registration to remove.
+   */
+  removeVault(id: string): Promise<void>
+
+  /**
+   * Ask the host to open its own folder chooser.
+   *
+   * Shared with the Home surface and here for the same reason: the browser half
+   * cannot produce an absolute path, and a typed one is exactly the thing this
+   * field exists to stop being wrong about.
+   * @returns the host's kind, and the chosen path when it has one to give.
+   */
+  pickPath(): Promise<DirectoryPickResult>
 }
 
 /**
@@ -128,6 +163,22 @@ export function createWikiApi(): WikiApi {
 
     citers(uri, vault) {
       return request<WikiCitersPayload>(`/wiki/citers${query({ uri, vault })}`)
+    },
+
+    async saveVault(id, input) {
+      const body = JSON.stringify(input)
+      const answer = id === undefined
+        ? await request<{ vault: WikiVaultView }>('/wiki/vaults', { method: 'POST', body })
+        : await request<{ vault: WikiVaultView }>(`/wiki/vaults/${idSegment(id)}`, { method: 'PUT', body })
+      return answer.vault
+    },
+
+    async removeVault(id) {
+      await request<{ removed: string }>(`/wiki/vaults/${idSegment(id)}`, { method: 'DELETE' })
+    },
+
+    pickPath() {
+      return request<DirectoryPickResult>('/pick-directory', { method: 'POST', body: '{}' })
     },
   }
 }

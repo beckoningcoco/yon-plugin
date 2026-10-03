@@ -319,35 +319,44 @@ pnpm pack        # 打包，prepack 会先 build
 
 ## 源码地图
 
+六个面板，每个的形状都一样：`src/client/<X>Item.tsx` 一个内建条目、`src/client/<X>/` 一组界面文件、
+`src/host/<X>-*.ts` 一组 host 模块。下面按这层结构列 —— 想找某个文件时，`find src/client src/host -type f` 仍是权威。
+
+### 基础层（六个面板共用）
+
 | 文件 | 职责 |
 |---|---|
-| `src/index.ts` | Host 入口：打开两个领域、发布 `ctx.yonProjects` / `ctx.yonSkills`、注册自带技能、挂 `/yon/api` |
-| `skills/<名字>/SKILL.md` | 插件自带技能的**源文件**（普通技能 bundle，你编辑这个） |
-| `scripts/build-skills.mjs` | 把 `skills/*/SKILL.md` 内联成 TS；`--check` 用来抓漂移 |
-| `src/host/domain.ts` | 项目领域与两张表的 zod schema、路径安全的记录键编码 |
-| `src/host/service.ts` | 项目存储服务：主子表聚合、级联删除、写入校验、变更订阅、按 id/名称/编码定位 |
-| `src/host/tools.ts` | 面向 agent 的工具：5 个 `project_*` 工具 + 跟随会话权限档的写操作闸门（拒绝 / 直写 / 确认） |
-| `src/host/skill-domain.ts` | `yon_skills` 领域：一个技能一条开关记录 |
-| `src/host/skill-registry.ts` | 自带技能的注册 / 注销 / 开关，以及 `ctx.skills` 的本地契约声明 |
-| `src/host/skill-catalog.ts` | 自带技能的类型定义，以及「为什么内联」的说明 |
-| `src/host/skill-catalog.generated.ts` | **生成物**（已提交、勿手改）：自带技能的名字 / 描述 / 正文 |
-| `src/host/http.ts` | `/yon/api` 前缀路由（projects + skills）与错误映射（没有 web server 的部署下不挂载） |
-| `src/shared/types.ts` | 前后端共用的数据契约（项目 + 技能） |
-| `src/client/index.ts` | 浏览器半入口：席位注册、面板 store、两个内建条目、API 客户端的注入面 |
+| `src/index.ts` | Host 入口：打开各领域、发布服务、注册自带技能、挂 `/yon/api` |
+| `src/host/tools.ts` | 工具注册表，以及跟随会话权限档的写操作闸门（拒绝 / 直写 / 确认） |
+| `src/host/http.ts` | `/yon/api` 全部路由与错误映射（没有 web server 的部署下不挂载） |
+| `src/host/prompt.ts` | 注入给模型的工具说明。**组数是写下来的**，新增一组工具要同步改 |
+| `src/shared/types.ts` | 前后端共用的数据契约 |
+| `src/client/index.ts` | 浏览器半入口：席位注册、面板 store、**六个**内建条目、API 客户端注入面 |
 | `src/client/YonPanelRoot.tsx` | 侧栏底部触发按钮、面板外壳、分层后的关闭行为 |
 | `src/client/panel-store.ts` | 面板开合状态 + 覆盖层层数（一次 Esc 只关一层） |
-| `src/client/ProjectItem.tsx` | 内建的「项目管理」条目（图标格子 + 打开界面 + 焦点归还） |
-| `src/client/SkillItem.tsx` | 内建的「YONSKILL」条目（同上，共用一套图标格样式） |
-| `src/client/request.ts` | 两个 API 客户端共用的 `/yon/api` JSON 调用与错误类型 |
-| `src/client/project/api.ts` | 项目接口的瘦封装：组件唯一的数据入口 |
-| `src/client/skill/api.ts` | 技能接口的瘦封装 |
-| `src/client/skill/SkillManager.tsx` | 技能面板：分组列表、正文阅读、只对自带技能开放开关 |
-| `src/client/panel.module.css` | 两个面板共用的对话框样式（原 `project/panel.module.css`） |
-| `src/client/panel-item.module.css` | 两个内建格子共用的图标格样式（原 `ProjectItem.module.css`） |
-| `src/client/project/ProjectManager.tsx` | 项目界面：列表、搜索、属性编辑、危险操作分级 |
-| `src/client/project/FieldTable.tsx` | 动态字段表：逐行保存状态、失败重试、删除确认 |
-| `src/client/project/InlineText.tsx` | 就地可编辑文本（回车/失焦保存，Esc 放弃） |
-| `src/client/project/CreateProjectDialog.tsx` | 新建项目对话框 |
-| `src/client/project/useComposing.ts` | 输入法 composition 保护 |
-| `src/client/cn.ts` | CSS 模块类名拼接（`noUncheckedIndexedAccess` 下的一次收窄） |
-| `src/client/slots.ts` / `locales.ts` | 席位与 inject face 类型 / 词典 |
+| `src/client/panel.module.css` / `panel-item.module.css` | 六个面板共用的对话框样式 / 六个内建格共用的图标格样式 |
+| `src/client/request.ts` | 各 API 客户端共用的 `/yon/api` JSON 调用与错误类型 |
+| `src/client/slots.ts` / `locales.ts` / `cn.ts` / `item-rows.ts` | 席位与 inject face 类型 / 词典（**zh 与 en 两份**）/ 类名拼接 / 条目行 |
+| `scripts/build-skills.mjs` | 把 `skills/*/SKILL.md` 内联成 TS；`--check` 用来抓漂移 |
+| `skills/<名字>/SKILL.md` | 插件自带技能的**源文件**（普通技能 bundle，你编辑这个） |
+
+### 六个面板
+
+| 面板 | 界面（`src/client/`） | host 半（`src/host/`） | 职责 |
+|---|---|---|---|
+| 项目 `project` | `project/{ProjectManager,FieldTable,InlineText,CreateProjectDialog}.tsx`、`useComposing.ts`、`api.ts` | `domain.ts`、`service.ts` | 项目与动态字段：主子表聚合、级联删除、写入校验、按 id/名称/编码定位；`tools.ts` 另有 5 个 `project_*` 工具 |
+| 技能 `skill` | `skill/{SkillManager.tsx,api.ts}` | `skill-domain.ts`、`skill-registry.ts`、`skill-catalog.ts`、`skill-catalog.generated.ts` | 自带技能的注册 / 注销 / 开关；`.generated.ts` 是**生成物**（已提交、勿手改） |
+| 数据源 `datasource` | `datasource/{DataSourceManager.tsx,api.ts,panel.module.css}` | `datasource-store.ts`、`datasource-service.ts`、`datasource-probe.ts`、`datasource-catalog.ts`、`datasource-tools.ts` | 数据源登记与 SQL 取数：探测交给随包的脚本跑，密码只以 `hasPassword` 进视图 |
+| 安装目录 `home` | `home/{HomeManager.tsx,api.ts,panel.module.css}` | `home-store.ts`、`home-probe.ts`、`home-mirror.ts`、`home-service.ts`、`home-tools.ts`、`home-files.ts` | 登记本机 NCC/BIP Home，探测它是什么（不打开 jar）、镜像回技能侧；`home-files.ts` 管包含性检查、编码与凭据打码 |
+| 知识库 `wiki` | `wiki/{WikiManager.tsx,api.ts,panel.module.css}` | `wiki-store.ts`、`wiki-index.ts`、`wiki-graph.ts`、`wiki-usage.ts`、`wiki-service.ts`、`wiki-tools.ts`、`wiki-write.ts` | 页与页之间的引用图、被问过什么 / 答不上什么的日志。两条写入路径互不相干：**页**走 `wiki-write.ts`（三种模式，不能覆盖已有页），**登记**（`wiki-service.ts` 的 `saveVault`/`removeVault`，面板的三个动词）只改 `wiki_config.json`，不写页也不在 vault 里删东西 |
+| 消化 `digest` | `digest/{DigestManager.tsx,api.ts,panel.module.css}` | `digest-log.ts`、`digest-audit.ts`、`digest-plan.ts`、`digest-sweep.ts`、`digest-config.ts`、`digest-tools.ts` | 判断一份「源素材 → 知识页」消化得够不够：配置阈值与词表、批量按源文档分组验收、每次验收留一条流水 |
+
+### 不属于任何面板的读取层
+
+| 文件 | 职责 |
+|---|---|
+| `src/host/class-index.ts` / `class-tools.ts` | 类索引：走一遍安装目录、从每个 `.jar` 里读类名，然后按类名查它在哪个 jar |
+| `src/host/meta-bmf.ts` / `meta-index.ts` / `meta-service.ts` / `meta-tools.ts` | NCC 元数据：把 `modules/*/METADATA/*.bmf` 压平成可查的索引 |
+| `src/host/bip-meta.ts` / `bip-meta-tools.ts` | 旗舰版元数据：解析随包的快照，进程内缓存，不建索引 |
+| `src/host/knowledge-tools.ts` | 随包参考文档的检索 |
+| `src/host/gbk-tool.ts` | GBK 源码文件的读与改 |

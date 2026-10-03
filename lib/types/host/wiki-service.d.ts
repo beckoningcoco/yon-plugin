@@ -2,7 +2,7 @@ import { type WikiRefKind, type WikiVault } from './wiki-index.ts';
 import { type WikiAssessment, type WikiGap, type WikiGraphSummary, type WikiLevel } from './wiki-graph.ts';
 import type { WikiStore } from './wiki-store.ts';
 import { type WikiUsageLog, type WikiUsageMiss } from './wiki-usage.ts';
-import type { WikiLogEntry, WikiVaultView } from '../shared/types.ts';
+import type { SaveVaultInput, WikiLogEntry, WikiVaultView } from '../shared/types.ts';
 import type { WikiCardView, WikiHealthReport } from '../shared/types.ts';
 /** What a knowledge base call can fail with. */
 export declare class WikiError extends Error {
@@ -196,6 +196,27 @@ export interface YonWikiService {
     citers(uri: string, vaultId?: string): Promise<readonly string[]>;
     /** Drop the cached indexes and rebuild them from disk. */
     rebuild(vaultId?: string): Promise<readonly WikiVaultView[]>;
+    /**
+     * Register a vault, or edit one that is already registered.
+     *
+     * The registration is the panel's own bookkeeping, so this writes the panel's
+     * document and nothing else — a vault's files, its index cache included, belong
+     * to the operator's own repository and are not this service's to touch.
+     * @param input - the label and the directory.
+     * @param id - the registration to edit; absent to add a new one. Immutable.
+     * @returns the stored vault, with its readiness.
+     */
+    saveVault(input: SaveVaultInput, id?: string): Promise<WikiVaultView>;
+    /**
+     * Drop one registration.
+     *
+     * The directory is left exactly as it is, `wiki/.yon-index.json` included: the
+     * index is derived and will be rebuilt if the vault is registered again, and
+     * deleting a file inside somebody's Obsidian repository to unlist it would be
+     * this panel reaching outside what it owns.
+     * @param id - the registration to remove.
+     */
+    removeVault(id: string): Promise<void>;
     /**
      * Forget what is cached for one vault: on disk and in memory.
      *

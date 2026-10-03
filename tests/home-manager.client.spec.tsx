@@ -25,7 +25,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactElement } from 'react'
-import type { HomeListPayload, HomeView, MetaIndexStatusView } from '../src/shared/types.ts'
+import type {
+  ClassIndexStatusView, HomeListPayload, HomeView, MetaIndexStatusView,
+} from '../src/shared/types.ts'
 import type { HomeApi } from '../src/client/home/api.ts'
 import { HomeManager, type HomeManagerProps } from '../src/client/home/HomeManager.tsx'
 import { zh } from '../src/client/locales.ts'
@@ -87,8 +89,21 @@ function indexed(version: string, entities: number): MetaIndexStatusView {
 }
 
 /** An in-memory stand-in for the host, recording every status read. */
-function stubApi(rows: readonly HomeView[], statuses: Record<string, MetaIndexStatusView>) {
+function stubApi(
+  rows: readonly HomeView[],
+  statuses: Record<string, MetaIndexStatusView>,
+  classStatuses: Record<string, ClassIndexStatusView> = {},
+) {
   const calls: { id: string; fresh: boolean }[] = []
+  /**
+   * The class reads, kept apart from the metadata ones.
+   *
+   * Two recorders rather than one list: the cases below count "how many status reads
+   * happened for this row", and merging the two kinds would make every count a sum of
+   * two different things — the assertion that a render does not re-read would pass or
+   * fail depending on the other walk's behaviour.
+   */
+  const classCalls: string[] = []
   /** A member no case here calls, present so the stand-in is the whole face. */
   const unused = <T,>(): T => vi.fn(async () => { throw new Error('this case does not call it') }) as T
 
@@ -109,8 +124,16 @@ function stubApi(rows: readonly HomeView[], statuses: Record<string, MetaIndexSt
       calls.push({ id, fresh })
       return statuses[id] ?? { indexed: false, version: rows.find(row => row.id === id)?.version ?? '' }
     }),
+    // Not `unused()`: the pane asks this one as soon as a row is selected, so a stub
+    // that threw would fail every case here rather than the ones that ask for it.
+    classStatus: vi.fn(async (id: string): Promise<ClassIndexStatusView> => {
+      classCalls.push(id)
+      return classStatuses[id] ?? { indexed: false, version: rows.find(row => row.id === id)?.version ?? '' }
+    }),
+    buildClass: unused(),
+    removeClassIndex: unused(),
   }
-  return { api, calls }
+  return { api, calls, classCalls }
 }
 
 const Manager = HomeManager as unknown as (props: HomeManagerProps) => ReactElement
@@ -126,10 +149,11 @@ const row = (id: string): HTMLElement => {
 function bench(
   rows: readonly HomeView[] = [home({ id: 'a' })],
   statuses: Record<string, MetaIndexStatusView> = { a: indexed('2111', 5573) },
+  classStatuses: Record<string, ClassIndexStatusView> = {},
 ) {
-  const { api, calls } = stubApi(rows, statuses)
+  const { api, calls, classCalls } = stubApi(rows, statuses, classStatuses)
   const view = render(<Manager {...api} t={seatOver(zh)} onClose={vi.fn()} />)
-  return { ...view, api, calls }
+  return { ...view, api, calls, classCalls }
 }
 
 describe('home surface', () => {
@@ -213,5 +237,140 @@ describe('home surface', () => {
     // same version is visible as exactly that. The path is its own element (`.mono`) so
     // that it wraps instead of clipping, which is why this is not a single lookup.
     expect(screen.getAllByText(/E:\/NCProject\/NCC\/2111\/home/).length).toBeGreaterThan(0)
+  })
+
+  it('reads the class status once per selection, on its own account', async () => {
+    // The class effect is a second effect with its own dependency chain — it reaches the
+    // list through `watchClass` → `load` → `listHomes` — so the metadata case above
+    // passing says nothing about this one. What it would look like if it went wrong is
+    // the same 100% CPU spin the header of this component documents: the status arrives
+    // as a new object, the render re-runs the effect, the effect asks again. Sixty
+    // milliseconds is several turns of the timer queue with nothing to change.
+    const { classCalls } = bench(undefined, undefined, {
+      a: { indexed: true, version: '2111', builtAt: '2026-09-28T16:02:41.000Z',
+        totalClasses: 143_908, bytes: 12_884_901 },
+    })
+    await waitFor(() => { expect(classCalls).toEqual(['a']) })
+
+    await new Promise(resolve => setTimeout(resolve, 60))
+    expect(classCalls).toEqual(['a'])
+  })
+
+  it('offers to build the class index, and says what building it buys', async () => {
+    bench([home({ id: 'a' })], {}, {})
+
+    // 没有索引那一句说的是"这一格是空的"，另一句说的是"这东西是什么"——后者只在还没有
+    // 索引时出现，也只有在那一屏它是可读的：那正是使用者要不要按下按钮的那一刻。
+    expect(await screen.findByText(at('home.indexNone'))).toBeTruthy()
+    expect(screen.getByText(at('home.classBuild'))).toBeTruthy()
+    expect(screen.getByText(at('home.classWhy'))).toBeTruthy()
+    // A delete button for a file that is not there is a button that can only answer
+    // "there was nothing to delete".
+    expect(screen.queryByText(at('home.classRemove'))).toBeNull()
+  })
+
+  it('labels a stored class index with its own counts, and offers both acts', async () => {
+    bench(undefined, undefined, {
+      a: { indexed: true, version: '2111', builtAt: '2026-09-28T16:02:41.000Z',
+        totalClasses: 143_908, bytes: 12_884_901 },
+    })
+
+    expect(await screen.findByText(/143908 个类/)).toBeTruthy()
+    expect(screen.getByText(at('home.classRebuild'))).toBeTruthy()
+    expect(screen.getByText(at('home.classRemove'))).toBeTruthy()
+    // Already indexed, so the explanation of what an index is has no reader left.
+    expect(screen.queryByText(at('home.classWhy'))).toBeNull()
+  })
+
+  it('keeps the verbs above the content, where no sticky rule can park them over the table', async () => {
+    // A probed row, so the key-path table this case is about is actually on the page.
+    bench([home({
+      id: 'a',
+      profile: {
+        probedAt: '2026-09-29T03:08:00.000Z',
+        shape: 'ncc-home',
+        present: ['modules', 'ierp'],
+        modules: 237,
+        jars: 3517,
+        capped: false,
+        keys: [{ role: '模块根', rel: 'modules', exists: true }],
+        warnings: [],
+      },
+    })])
+
+    // The four verbs used to be the *last* child of the scrolling column, which is what
+    // made the shared `.detailActions:last-child` rule pin them to the pane's foot:
+    // measured, they then sat at offsetTop 487 in a 450px pane — outside it until you
+    // scrolled, and covering up to 3 of the 11 key-path rows once you did. What this case
+    // locks is the *order*, not the pixels: every verb comes before the blocks it acts on.
+    // Move the row back to the bottom and this fails, whether or not anyone re-measures.
+    const verb = await screen.findByRole('button', { name: at('home.probe') })
+    for (const heading of [at('home.metaTitle'), at('home.keyPaths')]) {
+      const block = screen.getByText(heading)
+      expect(verb.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    }
+  })
+
+  it('folds where the registration lives instead of spending the list column on it', async () => {
+    bench()
+    await screen.findByText(at('home.metaTitle'))
+
+    // Both paths used to sit under the list: measured 116px of a 450px column (25%), three
+    // long paths wrapped into six ragged lines in the 196px of width that column has. They
+    // are a fact about the registry and are read rarely, so they fold — and fold *closed*,
+    // because the height was the entire complaint. The mirror *warning* stays outside this
+    // element on purpose (a mirror that failed to write must be legible without unfolding);
+    // that is a separate state and not what this case is about.
+    const fold = document.querySelector('details')
+    expect(fold).not.toBeNull()
+    expect(fold!.open).toBe(false)
+    expect(fold!.className).toMatch(/storageFold/)
+    expect(fold!.textContent).toContain(at('home.configPath'))
+
+    // …and it is not in the list column, which is the whole point of the move: that
+    // column is 229px wide, so the same three paths there cost 116 of its 450px.
+    const list = document.querySelector('[class*="listPane"]')
+    expect(list).not.toBeNull()
+    expect(list!.contains(fold)).toBe(false)
+    expect(list!.textContent).not.toContain(at('home.configPath'))
+  })
+
+  it('keeps the class hooks the card face and the accent bars hang on', async () => {
+    // The "make it less plain" pass is CSS plus four class names, and a class name
+    // dropped in a refactor is invisible to everything else here: `tsc` sees a string
+    // either way, no other case in this file reads these elements, and the preview
+    // images are not asserted on. The numbers recorded for that pass in
+    // docs/yon-panel-ui-design.md §一 are attached to *these* elements, so if the
+    // hooks go the measurements quietly stop describing what ships.
+    bench([home({
+      id: 'a',
+      profile: {
+        probedAt: '2026-09-29T03:08:00.000Z',
+        shape: 'ncc-home',
+        present: ['modules', 'ierp'],
+        modules: 237,
+        jars: 3517,
+        capped: false,
+        keys: [{ role: '模块根', rel: 'modules', exists: true }],
+        warnings: [],
+      },
+    }), home({ id: 'b' })])
+    await screen.findByText(at('home.metaTitle'))
+
+    // Two: the path/product/index grid, and the probe's reading. The card on one and
+    // not the other is exactly the drift this catches.
+    expect(document.querySelectorAll('[class*="card"]')).toHaveLength(2)
+    // One: the tool row under the title. The form's own action row is the shared
+    // sticky band and deliberately does not carry it.
+    expect(document.querySelectorAll('[class*="verbRow"]')).toHaveLength(1)
+    // Four: 元数据索引 and 类索引 (the two blocks that act), 探测结果 (the `.subTitle`)
+    // and 关键路径. The index grid's own two rows are *not* accents — they are facts a
+    // reader looks up, and the accent is what marks the blocks you press a button in.
+    expect(document.querySelectorAll('[class*="accent"]')).toHaveLength(4)
+    // Only the selected row, and it is the selected row.
+    const marked = document.querySelectorAll('[class*="rowOn"]')
+    expect(marked).toHaveLength(1)
+    expect(marked[0]!.getAttribute('data-key')).toBe(row('a').getAttribute('data-key'))
+    expect(row('a').getAttribute('aria-selected')).toBe('true')
   })
 })

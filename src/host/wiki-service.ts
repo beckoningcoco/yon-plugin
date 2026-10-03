@@ -20,11 +20,25 @@
  * Indexes are cached in memory per vault for the life of one service instance,
  * and rebuilt only on request — see `wiki-index.ts` for why staleness is the
  * operator's decision rather than something detected behind their back.
+ *
+ * ## The two calls that write
+ *
+ * {@link YonWikiService.saveVault} and {@link YonWikiService.removeVault} are the
+ * only things here that change the registration, and what they change is this
+ * panel's own document — the list of which directories count as knowledge bases.
+ * They are on this interface rather than in a module of their own because the store
+ * is already here and the HTTP face takes one service per surface. Neither writes a
+ * page and neither deletes anything inside a vault, so registering and unregistering
+ * cannot damage the operator's repository. One qualification, because the difference
+ * matters: a save answers with the same view `list()` builds, so on a directory that
+ * already *is* a vault the answer materialises the derived `wiki/.yon-index.json`
+ * exactly the way a read does. Page writes are a different act with a different gate,
+ * and they live in `wiki-write.ts`.
  */
 import { readFile, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
-  buildWikiIndex, ensureWikiIndex, entityDirOf, wikiIndexPath, writeWikiIndex,
+  buildWikiIndex, ensureWikiIndex, entityDirOf, isVault, wikiIndexPath, writeWikiIndex,
   type WikiIndex, type WikiPage, type WikiRefKind, type WikiVault,
 } from './wiki-index.ts'
 import {
@@ -37,7 +51,7 @@ import {
   createWikiUsageLog,
   type WikiUsageLog, type WikiUsageMiss, type WikiUsageSummary,
 } from './wiki-usage.ts'
-import type { WikiLogEntry, WikiVaultView } from '../shared/types.ts'
+import type { SaveVaultInput, WikiLogEntry, WikiVaultView } from '../shared/types.ts'
 import type {
   WikiCardView, WikiGraphView, WikiHealthReport, WikiLevelStat,
   WikiRelationGroupView, WikiUsageView,
@@ -250,6 +264,27 @@ export interface YonWikiService {
   /** Drop the cached indexes and rebuild them from disk. */
   rebuild(vaultId?: string): Promise<readonly WikiVaultView[]>
   /**
+   * Register a vault, or edit one that is already registered.
+   *
+   * The registration is the panel's own bookkeeping, so this writes the panel's
+   * document and nothing else — a vault's files, its index cache included, belong
+   * to the operator's own repository and are not this service's to touch.
+   * @param input - the label and the directory.
+   * @param id - the registration to edit; absent to add a new one. Immutable.
+   * @returns the stored vault, with its readiness.
+   */
+  saveVault(input: SaveVaultInput, id?: string): Promise<WikiVaultView>
+  /**
+   * Drop one registration.
+   *
+   * The directory is left exactly as it is, `wiki/.yon-index.json` included: the
+   * index is derived and will be rebuilt if the vault is registered again, and
+   * deleting a file inside somebody's Obsidian repository to unlist it would be
+   * this panel reaching outside what it owns.
+   * @param id - the registration to remove.
+   */
+  removeVault(id: string): Promise<void>
+  /**
    * Forget what is cached for one vault: on disk and in memory.
    *
    * Called after a write. The page on disk is newer than any index, and a lookup
@@ -268,6 +303,52 @@ function asTerm(value: unknown, argument: string): string {
     throw new WikiError('invalid-input', `${argument} 必须是非空字符串`)
   }
   return value.trim()
+}
+
+/**
+ * A vault root as it is stored: forward slashes, no trailing separator.
+ *
+ * Both separators are accepted because people paste from Explorer and the host's
+ * folder chooser returns whichever the platform uses; the stored form is one
+ * spelling so the document reads the same on either platform, and so a vault
+ * cannot be registered twice under two spellings of one directory.
+ * @param input - the path as it arrived.
+ * @returns the stored form.
+ */
+function normaliseRoot(input: string): string {
+  return input.trim().replace(/\\/g, '/').replace(/\/+$/, '')
+}
+
+/** A short, readable id built from the directory the vault would live in. */
+function slugOf(text: string): string {
+  return text
+    .trim()
+    .replace(/[^A-Za-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+}
+
+/**
+ * An id no other vault holds, derived from the directory's own name.
+ *
+ * Nothing else about a vault is stable enough to name it by: the label is
+ * whatever the operator calls it and changes, the page count changes, and the
+ * path is the one fact that has to be unique anyway. A directory named entirely
+ * in Chinese slugs to nothing, so there is a fallback rather than an empty id —
+ * `WikiVault.id` is documented as matching `/^[a-zA-Z0-9_-]+$/` and is used as a
+ * record key.
+ * @param vaults - the registrations already stored.
+ * @param root - the normalised root being registered.
+ * @returns an unused id.
+ */
+function uniqueId(vaults: readonly WikiVault[], root: string): string {
+  const base = slugOf(root.split('/').filter(part => part !== '').pop() ?? '') || 'vault'
+  const taken = new Set(vaults.map(vault => vault.id))
+  if (!taken.has(base)) return base
+  for (let suffix = 2; suffix < 1000; suffix += 1) {
+    if (!taken.has(`${base}-${suffix}`)) return `${base}-${suffix}`
+  }
+  return `${base}-${Date.now()}`
 }
 
 /**
@@ -388,6 +469,42 @@ export function createYonWikiService(
    */
   const vaults = async (): Promise<readonly WikiVault[]> => (await store.read()).vaults
 
+  /**
+   * Serialises the read-modify-write rounds of the two registration calls.
+   *
+   * The store already serialises its own writes, which is a different thing: two
+   * rounds interleaved would each read the list before the other wrote, and the
+   * second write would drop the first one's vault — silently, since both would
+   * report success. `home-service` holds the same queue for the same reason.
+   */
+  let queue: Promise<unknown> = Promise.resolve()
+
+  const inLine = <T,>(work: () => Promise<T>): Promise<T> => {
+    const next = queue.then(work, work)
+    queue = next.catch(() => undefined)
+    return next
+  }
+
+  /**
+   * The registrations, refusing to write over a document that could not be read.
+   *
+   * `store.read()` answers an unreadable document with an empty list, which is the
+   * right answer to "what is registered" and the wrong one to "what should I write
+   * back" — the second would replace a list somebody can repair with the single
+   * vault being added.
+   */
+  const readable = async (): Promise<readonly WikiVault[]> => {
+    const read = await store.read()
+    if (read.error !== undefined) throw new WikiError('invalid-input', read.error)
+    return read.vaults
+  }
+
+  /** Drop one path's cached index and graph. Memory only — the files stay. */
+  const forget = (vaultPath: string): void => {
+    indexes.delete(vaultPath)
+    graphs.delete(vaultPath)
+  }
+
   /** One vault by id, or every vault when no id is given. */
   const select = async (vaultId: string | undefined): Promise<readonly WikiVault[]> => {
     const all = await vaults()
@@ -436,15 +553,88 @@ export function createYonWikiService(
     return built
   }
 
+  /**
+   * One vault as both halves read it: the registration plus what is behind it.
+   *
+   * Shared by the list and by the two registration calls, so that a vault the
+   * panel has just saved is described by the same code as one it read from the
+   * document — a save answering with a hand-built view would be a second
+   * definition of "ready" waiting to drift from this one.
+   * @param vault - the registration.
+   * @returns the view.
+   */
+  const viewOf = async (vault: WikiVault): Promise<WikiVaultView> => {
+    const ready = entityDirOf(vault.path) !== undefined
+    if (!ready) return { ...vault, pages: 0, ready: false }
+    const index = await indexFor(vault)
+    return { ...vault, pages: index.entities.length, indexedAt: index.builtAt, ready: true }
+  }
+
   return {
     async list() {
-      const all = await vaults()
-      return Promise.all(all.map(async (vault): Promise<WikiVaultView> => {
-        const ready = entityDirOf(vault.path) !== undefined
-        if (!ready) return { ...vault, pages: 0, ready: false }
-        const index = await indexFor(vault)
-        return { ...vault, pages: index.entities.length, indexedAt: index.builtAt, ready: true }
-      }))
+      return Promise.all((await vaults()).map(viewOf))
+    },
+
+    async saveVault(input, id) {
+      return await inLine(async () => {
+        const stored = await readable()
+        const root = normaliseRoot(input.path)
+        const label = input.label.trim()
+        if (root === '') throw new WikiError('invalid-input', '路径不能为空')
+        if (!/^(?:[A-Za-z]:[\\/]|[\\/]{1,2})/.test(root)) {
+          throw new WikiError('invalid-input',
+            `路径要写完整，从盘符或 / 开始（例如 D:/yon-bip-obsidian/yon-bip-obsidian）；收到的是「${input.path}」`)
+        }
+        if (label === '') throw new WikiError('invalid-input', '名称不能为空：列表里那一行就是它。')
+
+        const existing = id === undefined ? undefined : stored.find(vault => vault.id === id)
+        if (id !== undefined && existing === undefined) {
+          throw new WikiError('not-found', `没有登记这个知识库：${id}。已登记：${stored.map(v => v.id).join(', ')}`)
+        }
+
+        // One directory, one registration. Two rows over one vault would be two
+        // indexes of the same pages, and a lookup against both would return every
+        // hit twice under two different vault names.
+        const clash = stored.find(vault => vault.path === root && vault.id !== existing?.id)
+        if (clash !== undefined) {
+          throw new WikiError('invalid-input',
+            `这个目录已经登记过了：「${clash.label}」（${clash.id}）。一个目录只需要登记一次。`)
+        }
+
+        const updated: WikiVault = { id: existing?.id ?? uniqueId(stored, root), label, path: root }
+        // Rebuilt in place rather than appended-then-sorted: editing a row must not
+        // move it in the list, because the operator is looking at that list.
+        const next = existing === undefined
+          ? [...stored, updated]
+          : stored.map(vault => (vault.id === updated.id ? updated : vault))
+        await store.write(next)
+        // The caches are keyed by path, and a save can move one: an index left behind
+        // under the old root would be handed straight back if that directory were ever
+        // registered again, describing a vault nobody had looked at since.
+        if (existing !== undefined && existing.path !== updated.path) forget(existing.path)
+
+        // Reported rather than refused: a directory the operator picked and named is a
+        // real registration even when it is not yet a vault, and the row says 路径不可用
+        // until it is. What matters is that the answer does not claim it is ready.
+        return await viewOf(updated)
+      })
+    },
+
+    async removeVault(id) {
+      await inLine(async () => {
+        const stored = await readable()
+        const found = stored.find(vault => vault.id === id)
+        if (found === undefined) {
+          throw new WikiError('not-found',
+            `没有登记这个知识库：${id}。已登记：${stored.map(v => v.id).join(', ') || '（还没有）'}`)
+        }
+        await store.write(stored.filter(vault => vault.id !== id))
+        // Nothing is deleted from the vault itself — not the pages, not the index
+        // cache it carries. Only the cache held in memory here goes, so that
+        // re-registering the same directory cannot answer from an index built
+        // before it was unlisted.
+        forget(found.path)
+      })
     },
 
     async lookup(term, vaultId) {
@@ -685,8 +875,10 @@ export function createYonWikiService(
     async invalidate(vaultId) {
       const selected = await select(vaultId)
       for (const vault of selected) {
-        indexes.delete(vault.path)
-        graphs.delete(vault.path)
+        // The registered half of the pair above, which also drops the file: this is
+        // the one caller that means it (a page was written, so the cached index is
+        // known to be behind).
+        forget(vault.path)
         await rm(wikiIndexPath(vault.path), { force: true }).catch(() => undefined)
       }
     },

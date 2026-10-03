@@ -20,9 +20,9 @@
  */
 import type { WikiApi } from '../../src/client/wiki/api.ts'
 import type {
-  WikiCardPayload, WikiCardView, WikiCitersPayload, WikiGapView, WikiHealthPayload,
-  WikiHealthReport, WikiLevelStat, WikiListPayload, WikiLogEntry, WikiSearchHit,
-  WikiSearchPayload,
+  SaveVaultInput, WikiCardPayload, WikiCardView, WikiCitersPayload, WikiGapView,
+  WikiHealthPayload, WikiHealthReport, WikiLevelStat, WikiListPayload, WikiLogEntry,
+  WikiSearchHit, WikiSearchPayload, WikiVaultView,
 } from '../../src/shared/types.ts'
 
 /** 就绪的那个 vault。面板一进场就落在它身上，所以它必须是列表的第一个。 */
@@ -1058,66 +1058,130 @@ function hitOf(entry: WikiCardView, matchedBy: string): WikiSearchHit {
   }
 }
 
+/** 一台还没登记过任何 vault 的机器：面板的空态，也就是第一次打开时的样子。 */
+export const WIKI_NONE: WikiListPayload = { vaults: [] }
+
 /**
- * 面板要的七个方法，全部已经 resolve。
+ * 目录选择器在预览里"选中"的那个目录。
+ *
+ * 断言是「点一下按钮，只读框里出现了它」。框一开始是**空的**（而且只读），所以这条
+ * 断言验的是"选出来的值真的进去了"，而不是"框里本来就有这个字"。
+ */
+export const WIKI_PICKED_PATH = 'D:/yon-bip-obsidian/yon-ncc-obsidian'
+
+/**
+ * 把一次保存的输入折成列表读的那一行，形状照 `src/host/wiki-service.ts`。
+ *
+ * id 是派生的（目录名的 slug，`uniqueId`），因为真实的服务就是这么做的：保存请求里
+ * 只有名称和路径，返回的那一行却仍然有一个 id。
+ * @param input - 表单交上来的名称与路径。
+ * @returns 保存后列表会读到的行。
+ */
+function vaultOf(input: SaveVaultInput): WikiVaultView {
+  const last = input.path.replace(/\\/g, '/').split('/').filter(part => part !== '').pop() ?? ''
+  return {
+    id: last.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'vault',
+    label: input.label,
+    path: input.path,
+    pages: 0,
+    ready: true,
+  }
+}
+
+/**
+ * 造一份可注入的接口实现，全部立即 resolve，不碰网络。
  *
  * 只有一处会拒绝：`pageCard` 遇到不认识的页面名时，按宿主的原话抛
  * `没有名为「X」的页面。…` —— 面板会把它渲染成那条 `.error` 横幅和「重试」，
  * 所以点「引用者」里没预存卡片的页面时看到的失败态是真的，不是漏写。
+ *
+ * 写操作在预览里不落地：下一次 `listVaults` 读到的还是同一份 `payload`，所以保存出来
+ * 的行不会出现在列表里、移除掉的行会再回来。静态预览图要的正是这个确定性。
+ * @param payload - 每次 `listVaults` 都返回它；默认 {@link WIKI_VAULTS}。
+ * @returns 面板要的那几个方法。
  */
-export const wikiApi: WikiApi = {
-  listVaults(): Promise<WikiListPayload> {
-    return Promise.resolve(WIKI_VAULTS)
-  },
+export function wikiFixture(payload: WikiListPayload = WIKI_VAULTS): WikiApi {
+  return {
+    listVaults(): Promise<WikiListPayload> {
+      return Promise.resolve(payload)
+    },
 
-  rebuildVault(): Promise<WikiListPayload> {
-    // 重建后索引内容不变（这一版的时间戳由 `indexFor` 的缓存给），所以返回同一份列表；
-    // 面板那边「上次重建耗时」那一行是它自己掐的表，会照常多出来。
-    return Promise.resolve(WIKI_VAULTS)
-  },
+    rebuildVault(): Promise<WikiListPayload> {
+      // 重建后索引内容不变（这一版的时间戳由 `indexFor` 的缓存给），所以返回同一份列表；
+      // 面板那边「上次重建耗时」那一行是它自己掐的表，会照常多出来。
+      return Promise.resolve(payload)
+    },
 
-  recentWrites(vault?: string, limit?: number): Promise<readonly WikiLogEntry[]> {
-    if (vault === NOT_READY_ID) return Promise.resolve([])
-    return Promise.resolve(limit === undefined ? WIKI_RECENT : WIKI_RECENT.slice(0, limit))
-  },
+    recentWrites(vault?: string, limit?: number): Promise<readonly WikiLogEntry[]> {
+      if (vault === NOT_READY_ID) return Promise.resolve([])
+      return Promise.resolve(limit === undefined ? WIKI_RECENT : WIKI_RECENT.slice(0, limit))
+    },
 
-  health(vault?: string): Promise<WikiHealthPayload> {
-    if (vault !== undefined && vault !== READY_ID) return Promise.resolve({ reports: [] })
-    return Promise.resolve(WIKI_HEALTH)
-  },
+    health(vault?: string): Promise<WikiHealthPayload> {
+      if (vault !== undefined && vault !== READY_ID) return Promise.resolve({ reports: [] })
+      return Promise.resolve(WIKI_HEALTH)
+    },
 
-  search(term: string, vault?: string, limit?: number): Promise<WikiSearchPayload> {
-    const asked = term.trim()
-    const needle = asked.toLowerCase()
-    if (vault === NOT_READY_ID) return Promise.resolve({ term: asked, scanned: PAGES, hits: [] })
-    const hits = WIKI_CARDS
-      .map(entry => ({ entry, matchedBy: matchOf(entry, needle) }))
-      .filter((found): found is { entry: WikiCardView, matchedBy: string } => found.matchedBy !== undefined)
-      .map(({ entry, matchedBy }) => hitOf(entry, matchedBy))
-      .sort((a, b) => (MATCH_RANK[a.matchedBy] ?? 4) - (MATCH_RANK[b.matchedBy] ?? 4)
-        || a.page.localeCompare(b.page, 'zh'))
-    return Promise.resolve({
-      term: asked,
-      scanned: PAGES,
-      hits: limit === undefined ? hits : hits.slice(0, limit),
-    })
-  },
+    search(term: string, vault?: string, limit?: number): Promise<WikiSearchPayload> {
+      const asked = term.trim()
+      const needle = asked.toLowerCase()
+      if (vault === NOT_READY_ID) return Promise.resolve({ term: asked, scanned: PAGES, hits: [] })
+      const hits = WIKI_CARDS
+        .map(entry => ({ entry, matchedBy: matchOf(entry, needle) }))
+        .filter((found): found is { entry: WikiCardView, matchedBy: string } => found.matchedBy !== undefined)
+        .map(({ entry, matchedBy }) => hitOf(entry, matchedBy))
+        .sort((a, b) => (MATCH_RANK[a.matchedBy] ?? 4) - (MATCH_RANK[b.matchedBy] ?? 4)
+          || a.page.localeCompare(b.page, 'zh'))
+      return Promise.resolve({
+        term: asked,
+        scanned: PAGES,
+        hits: limit === undefined ? hits : hits.slice(0, limit),
+      })
+    },
 
-  pageCard(page: string, vault?: string): Promise<WikiCardPayload> {
-    const wanted = page.replace(/\.md$/, '')
-    const found = WIKI_CARDS.find(entry => entry.page === wanted)
-    if (found === undefined || (vault !== undefined && vault !== READY_ID)) {
-      return Promise.reject(new Error(
-        `没有名为「${wanted}」的页面。先用搜索按表名或中文名找到确切的页面名。`,
-      ))
-    }
-    return Promise.resolve({ card: found })
-  },
+    pageCard(page: string, vault?: string): Promise<WikiCardPayload> {
+      const wanted = page.replace(/\.md$/, '')
+      const found = WIKI_CARDS.find(entry => entry.page === wanted)
+      if (found === undefined || (vault !== undefined && vault !== READY_ID)) {
+        return Promise.reject(new Error(
+          `没有名为「${wanted}」的页面。先用搜索按表名或中文名找到确切的页面名。`,
+        ))
+      }
+      return Promise.resolve({ card: found })
+    },
 
-  citers(uri: string, vault?: string): Promise<WikiCitersPayload> {
-    if (vault === NOT_READY_ID) return Promise.resolve({ uri, pages: [] })
-    const listed = CITERS[uri]
-    if (listed !== undefined) return Promise.resolve({ uri, pages: listed })
-    return Promise.resolve({ uri, pages: WIKI_GAPS.find(gap => gap.uri === uri)?.citedBy ?? [] })
-  },
+    citers(uri: string, vault?: string): Promise<WikiCitersPayload> {
+      if (vault === NOT_READY_ID) return Promise.resolve({ uri, pages: [] })
+      const listed = CITERS[uri]
+      if (listed !== undefined) return Promise.resolve({ uri, pages: listed })
+      return Promise.resolve({ uri, pages: WIKI_GAPS.find(gap => gap.uri === uri)?.citedBy ?? [] })
+    },
+
+    saveVault: (_id, input) => Promise.resolve(vaultOf(input)),
+
+    // 移除不落地，理由同上面那段：下一次读到的还是同一份 payload。
+    removeVault: () => Promise.resolve(),
+
+    // 宿主报的是 `native`（本地桌面上就是这个）：点一下就是选中一个目录。
+    // 「这个宿主没有选择器」那条结论要另一个实现，见 {@link wikiWithoutPicker}。
+    pickPath: () => Promise.resolve({ kind: 'native', path: WIKI_PICKED_PATH }),
+  }
 }
+
+/**
+ * 一台没有本地目录选择器的宿主 —— 面板开在远程或局域网地址上时就是这样。
+ * 那条 `wiki.pickUnavailable` 提示只有这份实现画得出来。
+ * @returns 同一批数据，只有选择器换成了「没有」。
+ */
+export function wikiWithoutPicker(payload: WikiListPayload = WIKI_VAULTS): WikiApi {
+  return {
+    ...wikiFixture(payload),
+    pickPath: () => Promise.resolve({ kind: 'unavailable' }),
+  }
+}
+
+/**
+ * 直接摊给 spec 的那一份：
+ * `render(<WikiManager t={t} onClose={() => {}} {...wikiApi} />)`。
+ */
+export const wikiApi: WikiApi = wikiFixture()

@@ -36,6 +36,8 @@ import { registerYonWikiTools, WIKI_TOOL_NAMES } from './host/wiki-tools.ts'
 import { GBK_TOOL_NAMES, registerYonGbkTools } from './host/gbk-tool.ts'
 import { KNOWLEDGE_TOOL_NAMES, registerYonKnowledgeTools } from './host/knowledge-tools.ts'
 import { CLASS_TOOL_NAMES, registerYonClassTools } from './host/class-tools.ts'
+import { buildClassIndex, writeClassIndex } from './host/class-index.ts'
+import { createYonClassService, type YonClassService } from './host/class-service.ts'
 import { registerYonWikiWriteTools, WIKI_WRITE_TOOL_NAMES } from './host/wiki-write.ts'
 import { DIGEST_TOOL_NAMES, registerYonDigestTools } from './host/digest-tools.ts'
 import { createDigestLog, digestLogPath } from './host/digest-log.ts'
@@ -45,6 +47,7 @@ import { registerYonHomeTools } from './host/home-tools.ts'
 import { buildMetaIndex, writeMetaIndex } from './host/meta-index.ts'
 import { createYonMetaService, type YonMetaService } from './host/meta-service.ts'
 import { registerYonMetaTools } from './host/meta-tools.ts'
+import { registerYonBipMetaTools } from './host/bip-meta-tools.ts'
 import { registerYonPromptSection } from './host/prompt.ts'
 
 export { DOMAIN_NAME, YON_DOMAIN } from './host/domain.ts'
@@ -79,7 +82,9 @@ export {
 export { auditDigest } from './host/digest-audit.ts'
 export type { DigestAudit, CountRate, Verdicts } from './host/digest-audit.ts'
 export type { DigestConfig, DigestThresholds } from './host/digest-config.ts'
-export { classIndexDir, classIndexPath } from './host/class-index.ts'
+export { classIndexDir, classIndexPath, removeClassIndex, listClassIndexes, summaryOf } from './host/class-index.ts'
+export { createYonClassService } from './host/class-service.ts'
+export type { YonClassService, ClassBuildResult, ClassBuildHandle } from './host/class-service.ts'
 export { defaultWikiStorePath } from './host/wiki-store.ts'
 export { guessVaults } from './host/wiki-index.ts'
 export type {
@@ -96,13 +101,17 @@ export { mirrorHomes, mirrorPathOf } from './host/home-mirror.ts'
 export { HOME_TOOL_NAMES } from './host/home-tools.ts'
 export { decodeText, declaredEncoding, isBinary, redactSecrets, resolveInside } from './host/home-files.ts'
 export { META_TOOL_NAMES } from './host/meta-tools.ts'
+export { BIP_META_TOOL_NAMES } from './host/bip-meta-tools.ts'
+export { BIP_META_ROOT, BipMetaError, loadBipMetadata, clearBipMetadataCache } from './host/bip-meta.ts'
+export type { BipColumn, BipChild, BipCorpus, BipEntity } from './host/bip-meta.ts'
 export { buildMetaIndex, readMetaIndex, writeMetaIndex, metaIndexPath, metaIndexDir } from './host/meta-index.ts'
 export { createYonMetaService } from './host/meta-service.ts'
 export type { YonMetaService, MetaQueryAnswer, MetaDetailAnswer } from './host/meta-service.ts'
 export { parseBmf } from './host/meta-bmf.ts'
 export type { BmfComponent, BmfEntity, BmfEnum, BmfField } from './host/meta-bmf.ts'
 export type {
-  HomeFileView, HomeFindPayload, HomeIndexView, HomeKeyView, HomeListPayload, HomeMetaIndexView,
+  ClassBuildView, ClassIndexPayload, ClassIndexStatusView, HomeFileView, HomeFindPayload,
+  HomeIndexView, HomeKeyView, HomeListPayload, HomeMetaIndexView,
   HomeProduct, HomeProfileView, HomeReadPayload, HomeShape, HomeView, MetaBuildView, MetaCountsView,
   MetaFreshnessView, MetaIndexPayload, MetaIndexStatusView, SaveHomeInput,
 } from './shared/types.ts'
@@ -127,6 +136,8 @@ declare module '@deepseek-ai/cordis' {
     yonHomes: YonHomesService
     /** The metadata index over those installations' `.bmf` files. */
     yonMeta: YonMetaService
+    /** The class index over the same installations, built and reported on here. */
+    yonClass: YonClassService
   }
 }
 
@@ -225,17 +236,37 @@ export async function apply(ctx: Context): Promise<void> {
   ctx.effect(() => homes.dispose, 'yon-panel: home store')
   ctx.provide('yonHomes', homes.service)
 
+  // Look one registered Home up by id, for the two index services below. Neither
+  // imports `YonHomesService` for it: the Home list already carries each row's index
+  // summaries, so a direct import would be a cycle. One function is the seam either
+  // way, and this direction is the one with no cycle.
+  const resolveHome = async (id: string): Promise<{ id: string; path: string; version: string; product: string }> => {
+    const found = (await homes.service.list()).homes.find(home => home.id === id)
+    if (found === undefined) {
+      throw new HomesError('not-found', `没有登记这个 Home：${id}。先调 ncc_home_list 拿 id。`)
+    }
+    return { id: found.id, path: found.path, version: found.version, product: found.product }
+  }
+
   // The class index: build one over an installation, then ask it which jar holds a
   // class. The other half of "read the platform's own implementation" — the
   // reference documents cover what someone wrote down, this covers what did not
   // get written down.
   //
-  // The default Home is passed in because it is the only thing a registration
-  // changes about an existing tool: a search that names no version should mean
-  // "the installation I am working on", and without this it means "whichever
-  // index was built last".
+  // One service for both callers. The model builds and waits for its index; the panel
+  // starts one and watches it, because a 26.2 s walk is not something to hold a
+  // response open for. Sharing the service is what makes a build started on either side
+  // visible — and joined — on the other.
+  const classes = createYonClassService(resolveHome, buildClassIndex, writeClassIndex)
+  ctx.effect(() => classes.dispose, 'yon-panel: class index')
+  ctx.provide('yonClass', classes)
+
+  // The default Home is also passed in because it is the one thing a registration
+  // changes about an existing tool: a search that names no version should mean "the
+  // installation I am working on", and without this it means "whichever index was
+  // built last".
   ctx.effect(
-    () => registerYonClassTools(ctx, () => homes.service.defaultVersion()),
+    () => registerYonClassTools(ctx, classes, () => homes.service.defaultVersion()),
     'yon-panel: class index tools',
   )
 
@@ -245,23 +276,19 @@ export async function apply(ctx: Context): Promise<void> {
 
   // The metadata index: what the installation's `.bmf` files say, flattened so that
   // "which table is 报销单据类型" and "which entities have a 员工 field" are questions
-  // with answers. It resolves a Home through the registration above rather than
-  // holding its own copy — the seam is one function, and this direction is the one
-  // with no cycle.
-  const meta = createYonMetaService(
-    async id => {
-      const found = (await homes.service.list()).homes.find(home => home.id === id)
-      if (found === undefined) {
-        throw new HomesError('not-found', `没有登记这个 Home：${id}。先调 ncc_home_list 拿 id。`)
-      }
-      return { id: found.id, path: found.path, version: found.version, product: found.product }
-    },
-    buildMetaIndex,
-    writeMetaIndex,
-  )
+  // with answers. It resolves a Home through the same function the class index uses.
+  const meta = createYonMetaService(resolveHome, buildMetaIndex, writeMetaIndex)
   ctx.effect(() => meta.dispose, 'yon-panel: metadata index')
   ctx.provide('yonMeta', meta)
   ctx.effect(() => registerYonMetaTools(ctx, meta), 'yon-panel: metadata tools')
+
+  // The other metadata line. NCC's index is built from an installation the operator
+  // registered; the flagship edition's metadata is not on disk at all, so what answers
+  // for it is a set of snapshots shipped with the package. That difference is why this
+  // is a separate pair of tools rather than a `product` argument on the pair above: the
+  // two product lines share no table, entity or column name, and a switch would make
+  // crossing them a one-character mistake with a wrong answer as the result.
+  ctx.effect(() => registerYonBipMetaTools(ctx), 'yon-panel: flagship metadata tools')
 
   // The digestion auditor: the one tool that judges the other tools' output.
   //
@@ -299,7 +326,7 @@ export async function apply(ctx: Context): Promise<void> {
   ctx.inject(['webServer'], (web) => {
     web.effect(
       () => registerYonApi(web, service, skills.service, dataSources.service, wiki, digestLog,
-        homes.service, meta),
+        homes.service, meta, classes),
       'yon-panel: project api',
     )
   })

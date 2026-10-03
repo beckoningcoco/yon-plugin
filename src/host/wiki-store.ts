@@ -32,9 +32,22 @@ export interface WikiStore {
   readonly path: string
   /**
    * Read the document, seeding it from the guessed vaults on a first run.
-   * @returns the parsed document; `vaults` is always present.
+   * @returns the parsed document; `vaults` is always present, and `error` names the
+   *   reason when the document exists but could not be read.
    */
-  read(): Promise<{ readonly vaults: readonly WikiVault[]; readonly seeded: boolean }>
+  read(): Promise<{
+    readonly vaults: readonly WikiVault[]
+    readonly seeded: boolean
+    /**
+     * Why an existing document could not be parsed, when it could not.
+     *
+     * Carried out of here because the caller is the only place that can act on it:
+     * an empty list is the honest answer to "what is registered" for a document
+     * nobody can read, and it is a catastrophic answer to "what should I write
+     * back" — the two are one field apart, so the field is here.
+     */
+    readonly error?: string
+  }>
   /**
    * Replace the document, atomically.
    * @param vaults - the whole list to store.
@@ -102,10 +115,19 @@ export function createWikiStore(path: string = defaultWikiStorePath()): WikiStor
           const raw = Array.isArray(parsed.vaults) ? parsed.vaults : []
           const vaults = raw.map(asVault).filter((v): v is WikiVault => v !== undefined)
           return { vaults, seeded: false }
-        } catch {
+        } catch (cause: unknown) {
           // An unreadable document is left alone rather than overwritten: it is
           // the operator's file, and a typo in it should not cost them the list.
-          return { vaults: [], seeded: false }
+          // The reason travels with the empty list so the one caller that *would*
+          // overwrite it — a save, which reads the list and writes it back — can
+          // refuse instead. Reading is unchanged by this: a list that cannot be
+          // read still reports nothing registered.
+          return {
+            vaults: [],
+            seeded: false,
+            error: `登记文件读不出来（${path}）：${cause instanceof Error ? cause.message : String(cause)}`
+              + ' 这个文件没有被改动，修好后重试。',
+          }
         }
       }
 

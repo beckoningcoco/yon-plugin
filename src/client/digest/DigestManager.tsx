@@ -39,8 +39,15 @@ import { METRIC_ABOUT_KEYS, METRIC_LABELS, METRIC_ORDER, OUTCOME_LABELS, entryLi
 import base from '../panel.module.css'
 import css from './panel.module.css'
 
-/** How many entries the ledger is asked for; the host caps at 2000. */
-const LEDGER_LIMIT = 200
+/**
+ * How many recent entries the summary is asked for.
+ *
+ * Not "the ledger": this constant goes to `summary()`, which is `/digest/summary`
+ * — and the host caps that route's `recent` at 200 (`http.ts:689`), so asking for
+ * more would be silently clamped rather than honoured. The 2000 in the same file
+ * is `/digest/log`'s cap (`http.ts:697`), a route this surface never calls.
+ */
+const SUMMARY_RECENT = 200
 
 /** Which entries the list is showing. */
 type Filter = 'all' | 'fail' | 'pass'
@@ -118,7 +125,7 @@ export function DigestManager({ summary, onClose, t }: DigestManagerProps) {
       // One request, not two: the summary already carries the recent entries, so
       // asking for the tail separately would fetch the same rows twice and then
       // let one copy shadow the other.
-      setData(await summary(LEDGER_LIMIT))
+      setData(await summary(SUMMARY_RECENT))
       setFailure(undefined)
     } catch (error: unknown) {
       setFailure(error instanceof Error ? error.message : String(error))

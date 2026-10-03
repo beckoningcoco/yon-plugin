@@ -8,10 +8,22 @@
  *
  * ## Why building is a tool of its own
  *
- * Building walks an entire installation. It is slow, it is deliberate, and it is
- * done once per version rather than per question — so it is a call the operator
- * asks for, not something a search does behind their back when it finds no index.
- * A search over a missing index says which versions *are* indexed instead.
+ * Building walks an entire installation. It is slow — measured at 26.2 s on the
+ * reference Home — it is deliberate, and it is done once per version rather than per
+ * question. So it is a call the operator asks for, not something a search does behind
+ * their back when it finds no index: a search over a missing index says which versions
+ * *are* indexed instead.
+ *
+ * ## Why the build names a Home and not a path
+ *
+ * `knowledge_build_index` takes the id `ncc_home_list` returned, the same as every
+ * other call that reaches an installation. It used to take a raw path, and that is
+ * exactly how two indexes came to exist for `C:\Users\...\Documents` — a path the
+ * model offered, a build that obeyed, and an index stored under a version label that
+ * nothing else on the machine recognised. A path the operator registered cannot be
+ * that, and the version comes from the registration rather than from the caller, so
+ * the label under which an index is stored is decided once, by the person who owns
+ * the installation.
  *
  * ## Why neither tool is gated
  *
@@ -21,9 +33,10 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import {
-  buildClassIndex, classIndexPath, listClassIndexes, readClassIndex, searchClassIndex,
-  writeClassIndex, type ClassIndex, type ClassHit, type StoredIndex,
+  classIndexPath, listClassIndexes, readClassIndex, searchClassIndex,
+  type ClassIndex, type ClassHit, type StoredIndex,
 } from './class-index.ts'
+import type { YonClassService } from './class-service.ts'
 import type { YonTextBlock, YonToolCallView, YonToolDefinition } from './tools.ts'
 
 /** Every tool this module owns. */
@@ -86,13 +99,14 @@ function defineTool<V>(spec: {
 /** The JSON Schema of a build's answer. */
 const BUILD_VALUE = {
   type: 'object',
-  required: ['version', 'totalJars', 'totalClasses', 'path'],
+  required: ['home', 'version', 'totalJars', 'totalClasses', 'path', 'seconds'],
   properties: {
-    version: { type: 'string' },
     home: { type: 'string' },
+    version: { type: 'string' },
     totalJars: { type: 'number' },
     totalClasses: { type: 'number' },
     path: { type: 'string' },
+    seconds: { type: 'number' },
   },
 } as const
 
@@ -117,6 +131,9 @@ function mb(bytes: number): string {
 /**
  * Register the class index tools.
  * @param ctx - host context carrying the tool registry.
+ * @param classes - the service that builds and reports on indexes. It is where the
+ *   version label comes from: the caller names a Home, and the registration says
+ *   which version that Home is.
  * @param defaultVersion - the version of the Home the operator marked as default,
  *   consulted when a search names no version. This is the one place a registration
  *   changes what an existing tool does: without it, "which index did you mean"
@@ -126,6 +143,7 @@ function mb(bytes: number): string {
  */
 export function registerYonClassTools(
   ctx: Context,
+  classes: YonClassService,
   defaultVersion?: () => Promise<string | undefined>,
 ): () => void {
   const disposers: Array<() => void> = []
@@ -134,72 +152,60 @@ export function registerYonClassTools(
    * Indexes already read, keyed by version.
    *
    * An index is tens of megabytes of JSON; re-parsing one per search would
-   * dominate the call. Cleared when a build replaces one.
+   * dominate the call.
    */
   const loaded = new Map<string, ClassIndex>()
 
   disposers.push(ctx.tools.register(defineTool({
     name: 'knowledge_build_index',
     description: 'Build a class index for one YonBIP or NCC installation: walk its home directory, '
-      + 'read the class names out of every .jar, and store a lookup table mapping each class to the '
-      + 'jar that holds it. Only the class names are read — nothing is decompressed — so a run takes '
-      + 'minutes rather than hours, but it does walk the whole installation, so ask for it deliberately '
-      + 'rather than as a guess. The index lands under the plugin\'s own data directory, never inside '
-      + 'the installation. Build one per version; ncc_class_search then uses it.',
+      + 'read the class names out of every .jar, note the loose .class and .java files a module may '
+      + 'keep under its classes directory, and store a lookup table mapping each class to the file '
+      + 'that holds it. Only the class names are read — nothing is decompressed — so a run takes tens '
+      + 'of seconds rather than hours, but it does walk the whole installation, so ask for it '
+      + 'deliberately rather than as a guess. The index lands under the plugin\'s own data directory, '
+      + 'never inside the installation, and is stored under the Home\'s version — which is why the '
+      + 'only argument is the id ncc_home_list returned. Call ncc_home_list first for that id; do not '
+      + 'ask the operator for a path. ncc_class_search then uses the index.',
     parameters: {
       type: 'object',
       additionalProperties: false,
-      required: ['home', 'version'],
+      required: ['home'],
       properties: {
         home: {
           type: 'string',
-          description: 'The installation\'s home directory to scan, for example E:/NCProject/NCC2111/home.',
-        },
-        version: {
-          type: 'string',
-          description: 'A label to store the index under, matching the installation, for example "2111" or "BIP_V5".',
+          description: 'The id from ncc_home_list, exactly as returned — not a path. The index is '
+            + 'stored under that registration\'s version.',
         },
       },
     },
     outputSchema: BUILD_VALUE,
     async execute(args, signal) {
       const home = asString(args.home, 'home')
-      const version = asString(args.version, 'version')
-      const built = await buildClassIndex(home, version, (progress) => {
-        // Long runs need a heartbeat, or an operator watching sees nothing and
-        // assumes the call has hung.
-        console.error(`[yon-panel] 建索引 ${version}：已扫描 ${progress.jars} 个 jar，${progress.classes} 个类`)
-      })
       if (signal.aborted) throw new ClassIndexError('failed', '建索引已被取消')
-      if (built.totalJars === 0) {
-        throw new ClassIndexError(
-          'not-found',
-          `${home} 下没有找到任何 .jar —— 确认这是 NCC/BIP 的 home 目录（不是项目目录或 jar 存放目录）。`,
-        )
-      }
-      const written = await writeClassIndex(built)
-      loaded.set(version, built)
-      return {
-        version,
-        home,
-        totalJars: built.totalJars,
-        totalClasses: built.totalClasses,
-        path: written,
-      }
+      // Awaited, unlike the panel's: the model asked for this index and needs the answer,
+      // and the walk is seconds. The same service runs it, so a build the panel started is
+      // joined rather than duplicated.
+      const built = await classes.build(home)
+      if (signal.aborted) throw new ClassIndexError('failed', '建索引已被取消')
+      return built
     },
     render(value) {
-      const built = value as { version: string; totalJars: number; totalClasses: number; path: string }
+      const built = value as {
+        home: string; version: string; totalJars: number; totalClasses: number
+        path: string; seconds: number
+      }
       return [
-        `索引 ${built.version} 建好了：${built.totalJars} 个 jar，${built.totalClasses} 个类。`,
+        `索引 ${built.version} 建好了：${built.totalJars} 个 jar、${built.totalClasses} 个类，用了 ${built.seconds} 秒。`,
         `存放于 ${built.path}`,
         '',
-        '接下来用 ncc_class_search 传 version:' + built.version + ' 查类。',
+        `接下来用 ncc_class_search（version 传 ${built.version}，或不传也行）查类。`,
       ].join('\n')
     },
     presentCall(args) {
       return {
         card: 'generic',
-        title: `建类索引：${String(args.version ?? '')}（${String(args.home ?? '')}）—— 会扫描整个安装目录`,
+        title: `建类索引：${String(args.home ?? '')} —— 会扫描整个安装目录`,
         kind: 'other',
       }
     },
@@ -207,12 +213,14 @@ export function registerYonClassTools(
 
   disposers.push(ctx.tools.register(defineTool({
     name: 'ncc_class_search',
-    description: 'Find which jar holds a class, using an index built by knowledge_build_index. Pass a '
+    description: 'Find which file holds a class, using an index built by knowledge_build_index. Pass a '
       + 'class name copied out of a stack trace, a simple name, or a fragment: an exact match ranks '
       + 'first, then a match on the simple name, then anything containing the term. Use it when you '
       + 'need to read a platform implementation and the reference documents do not cover it — the '
-      + 'answer is the jar to look in. When no index exists for a version, the answer lists the '
-      + 'versions that are indexed rather than building one.',
+      + 'answer is the file to look in. That is usually a jar to decompile, but a module shipped '
+      + 'without one answers with the .java or .class file itself, which ncc_home_read can open '
+      + 'directly. When no index exists for a version, the answer lists the versions that are '
+      + 'indexed rather than building one.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -245,7 +253,8 @@ export function registerYonClassTools(
       if (stored.length === 0) {
         throw new ClassIndexError(
           'not-found',
-          '还没有任何类索引。先用 knowledge_build_index 传 home 和 version 建一个。',
+          '还没有任何类索引。先调 ncc_home_list 拿一个 Home 的 id，再用 knowledge_build_index 传那个 id 建一个'
+          + '（也可以在 Yon 面板的「Home 管理」里对某个 Home 点一次「建立类索引」）。',
         )
       }
 
@@ -261,7 +270,8 @@ export function registerYonClassTools(
       if (chosen === undefined) {
         throw new ClassIndexError(
           'not-found',
-          `没有 version 为「${requested}」的索引。现有：${stored.map(e => e.version).join(', ')}`,
+          `没有 version 为「${requested}」的索引。现有：${stored.map(e => e.version).join(', ')}。`
+          + '要建的话：先从 ncc_home_list 拿那个 Home 的 id，再 knowledge_build_index 传这个 id。',
         )
       }
 
@@ -291,9 +301,18 @@ export function registerYonClassTools(
         totalClasses: number
         indexed: readonly StoredIndex[]
       }
+      // Which directory this index describes. Without it a wrong-index answer reads
+      // exactly like a right one: a version label alone ("2111") does not say whose
+      // classes these are, and an omitted `version` falls back to the newest stored
+      // index (`:260`). That fallback was observed answering from an index of the
+      // operator's Documents folder, and nothing in the answer said so.
+      const home = result.indexed.find(entry => entry.version === result.version)?.home ?? ''
+      const source = home === '' ? [] : [`  该索引描述的目录：${home}`]
+
       if (result.hits.length === 0) {
         return [
           `索引 ${result.version}（${result.totalClasses} 个类）里没有匹配「${result.term}」的类。`,
+          ...source,
           '',
           '可以试试：换用更短的类名片段；确认查的是对这个版本建的索引'
             + `（现有：${result.indexed.map(e => e.version).join(', ')}）。`,
@@ -301,13 +320,32 @@ export function registerYonClassTools(
       }
       const lines = [
         `「${result.term}」在索引 ${result.version}（${result.totalClasses} 个类）里命中 ${result.hits.length} 个：`,
+        ...source,
         '',
       ]
       for (const hit of result.hits) {
         lines.push(`  ${hit.className}`)
-        lines.push(`      ${hit.jar}`)
+        lines.push(`      ${hit.path}`)
       }
-      lines.push('', '拿到 jar 之后可以用 cfr 反编译看实现（cfr-0.152.jar 随本包放在 resources/knowledge/ncc/）。')
+      // What to do next depends on what the path is, and the three kinds are not
+      // interchangeable: a jar has to be decompiled, a `.java` is the source itself,
+      // and a `.class` is a binary that `ncc_home_read` will refuse. Giving one
+      // blanket sentence would be wrong for two of them — and it was: measured, 216
+      // of the 762 loose entries are `.class` files.
+      const kinds = new Set(result.hits.map(hit =>
+        hit.path.endsWith('.jar') ? 'jar' : (hit.path.endsWith('.java') ? 'source' : 'compiled')))
+      const advice: string[] = []
+      if (kinds.has('jar')) {
+        advice.push('以 .jar 结尾的是 jar，用 cfr 反编译看实现'
+          + '（cfr-0.152.jar 随本包放在 resources/knowledge/ncc/）')
+      }
+      if (kinds.has('source')) {
+        advice.push('以 .java 结尾的是源码，路径相对这份索引的 Home，用 ncc_home_read 直接读')
+      }
+      if (kinds.has('compiled')) {
+        advice.push('以 .class 结尾的是编译产物（二进制，读不了），要反编译或找同名的 .java')
+      }
+      lines.push('', `${advice.join('；')}。`)
       return lines.join('\n')
     },
     presentCall(args) {
