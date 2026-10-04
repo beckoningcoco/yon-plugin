@@ -1,7 +1,7 @@
 /**
  * Yon panel, host half: opens the project, skill-switch and datasource domains,
  * publishes them as `ctx.yonProjects`, `ctx.yonSkills`, `ctx.yonDataSources`,
- * `ctx.yonWiki` and `ctx.yonHomes`,
+ * `ctx.yonWiki`, `ctx.yonHomes`, `ctx.yonIteration` and `ctx.yonBrowsers`,
  * offers the projects and the data sources to the agent as tools, contributes
  * this plugin's own skills to the skill registry, and — where a web server
  * exists — serves all three over `/yon/api`.
@@ -22,6 +22,8 @@ import { type YonSkillsService } from './host/skill-registry.ts';
 import { type YonDataSourcesService } from './host/datasource-service.ts';
 import { type YonWikiService } from './host/wiki-service.ts';
 import { type YonClassService } from './host/class-service.ts';
+import { type YonBrowsersService } from './host/browser-service.ts';
+import { type YonIterationService } from './host/iteration-service.ts';
 import { type YonHomesService } from './host/home-service.ts';
 import { type YonMetaService } from './host/meta-service.ts';
 export { DOMAIN_NAME, YON_DOMAIN } from './host/domain.ts';
@@ -69,6 +71,19 @@ export type { YonHomesService, HomeFindQuery } from './host/home-service.ts';
 export { probeHome } from './host/home-probe.ts';
 export { mirrorHomes, mirrorPathOf } from './host/home-mirror.ts';
 export { HOME_TOOL_NAMES } from './host/home-tools.ts';
+export { defaultIterationStorePath, createIterationStore } from './host/iteration-store.ts';
+export type { IterationStore, IterationRow } from './host/iteration-store.ts';
+export { createYonIterationService, IterationError } from './host/iteration-service.ts';
+export type { YonIterationService, IterationQuery, IterationCreated } from './host/iteration-service.ts';
+export { ITERATION_TOOL_NAMES } from './host/iteration-tools.ts';
+export { createBrowserConfigStore, createBrowserRunStore, defaultBrowserConfigPath, defaultBrowserProfileRoot, defaultBrowserRunsPath, pluginRoot, } from './host/browser-store.ts';
+export type { BrowserConfigStore, BrowserRunStore, JsonDocument, StoredBrowser, StoredRun } from './host/browser-store.ts';
+export { BrowserError, createYonBrowsersService } from './host/browser-service.ts';
+export type { BrowserDeps, BrowserErrorCode, YonBrowsersService } from './host/browser-service.ts';
+export { argvOf, createSystemPorts } from './host/browser-system.ts';
+export type { SystemPorts } from './host/browser-system.ts';
+export { BROWSER_RECIPES, scanBrowsers, toForwardSlashes } from './host/browser-scan.ts';
+export type { ScannedBrowser, ScanOutcome } from './host/browser-scan.ts';
 export { decodeText, declaredEncoding, isBinary, redactSecrets, resolveInside } from './host/home-files.ts';
 export { META_TOOL_NAMES } from './host/meta-tools.ts';
 export { BIP_META_TOOL_NAMES } from './host/bip-meta-tools.ts';
@@ -81,7 +96,10 @@ export { parseBmf } from './host/meta-bmf.ts';
 export type { BmfComponent, BmfEntity, BmfEnum, BmfField } from './host/meta-bmf.ts';
 export type { ClassBuildView, ClassIndexPayload, ClassIndexStatusView, HomeFileView, HomeFindPayload, HomeIndexView, HomeKeyView, HomeListPayload, HomeMetaIndexView, HomeProduct, HomeProfileView, HomeReadPayload, HomeShape, HomeView, MetaBuildView, MetaCountsView, MetaFreshnessView, MetaIndexPayload, MetaIndexStatusView, SaveHomeInput, } from './shared/types.ts';
 export { HOME_PRODUCTS } from './shared/types.ts';
+export { ITERATION_KINDS, ITERATION_SEVERITIES, ITERATION_STATUSES, } from './shared/types.ts';
+export type { IterationCreatedPayload, IterationKind, IterationListPayload, IterationRowView, IterationSeverity, IterationStatus, SaveIterationInput, UpdateIterationInput, } from './shared/types.ts';
 export type { CreateProjectInput, DataSourceBinding, DataSourceListPayload, DataSourceProbeResult, DataSourceView, JsonValue, ProjectDetail, ProjectSummary, ProjectStatus, SaveDataSourceInput, SkillDetail, SkillView, UpdateProjectInput, } from './shared/types.ts';
+export type { BrowserFamily, BrowserListPayload, BrowserRunLiveness, BrowserRunView, BrowserStopMethod, BrowserView, LaunchBrowserInput, SaveBrowserInput, ScanBrowsersPayload, StopBrowserResult, } from './shared/types.ts';
 declare module '@deepseek-ai/cordis' {
     interface Context {
         /** The project store, provided by this plugin while it is mounted. */
@@ -98,6 +116,10 @@ declare module '@deepseek-ai/cordis' {
         yonMeta: YonMetaService;
         /** The class index over the same installations, built and reported on here. */
         yonClass: YonClassService;
+        /** The ledger of this plugin's own shortcomings, as the model records them. */
+        yonIteration: YonIterationService;
+        /** The machine's browsers, and the debug instances this panel started. */
+        yonBrowsers: YonBrowsersService;
     }
 }
 /**

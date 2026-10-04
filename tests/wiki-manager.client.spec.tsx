@@ -21,8 +21,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactElement } from 'react'
 import {
-  WIKI_ENTITY_DIRS, type DirectoryPickResult, type WikiHealthPayload, type WikiListPayload,
-  type WikiLogEntry, type WikiVaultView,
+  WIKI_ENTITY_DIRS, type DirectoryPickResult, type WikiHealthPayload, type WikiHealthReport,
+  type WikiListPayload, type WikiLogEntry, type WikiVaultView,
 } from '../src/shared/types.ts'
 import type { WikiApi } from '../src/client/wiki/api.ts'
 import { WikiManager, type WikiManagerProps } from '../src/client/wiki/WikiManager.tsx'
@@ -70,6 +70,27 @@ function vault(overrides: Partial<WikiVaultView> & { readonly id: string }): Wik
 }
 
 /**
+ * One vault's health report, with everything a case does not care about filled in.
+ * @param overrides - the vault and whatever this case is about.
+ * @returns a report the pane will render.
+ */
+function report(overrides: Partial<WikiHealthReport> & { readonly vault: string }): WikiHealthReport {
+  return {
+    vaultLabel: overrides.vault.toUpperCase(),
+    pages: 0,
+    unindexed: [],
+    graph: {
+      pages: 0, withOutgoing: 0, withIncoming: 0, isolated: 0,
+      resolvedEdges: 0, danglingEdges: 0, missingEntities: 0,
+    },
+    levels: [],
+    gaps: [],
+    usage: { total: 0, misses: [], popular: [] },
+    ...overrides,
+  }
+}
+
+/**
  * A stand-in for the host: the reads answer, the writes are recorded.
  *
  * The list it hands back is its own — `removeVault` drops a row from it — because a
@@ -79,11 +100,14 @@ function vault(overrides: Partial<WikiVaultView> & { readonly id: string }): Wik
  *
  * @param rows - the registered vaults.
  * @param pick - what the host's chooser answers; `native` with {@link PICKED} by default.
+ * @param healthReport - what the overview is looking at; omitted means no case here
+ *   reaches `health`, so the stub stays loud.
  * @returns the API face.
  */
 function stubApi(
   rows: readonly WikiVaultView[],
   pick: () => Promise<DirectoryPickResult> = async () => ({ kind: 'native', path: PICKED }),
+  healthReport?: WikiHealthReport,
 ) {
   /** A member no case here exercises, present so the stand-in is the whole face. */
   const unused = <T,>(): T => vi.fn(async () => { throw new Error('this case does not call it') }) as T
@@ -92,11 +116,13 @@ function stubApi(
   const api: WikiApi = {
     listVaults: vi.fn(async (): Promise<WikiListPayload> => ({ vaults: left })),
     rebuildVault: vi.fn(async (): Promise<WikiListPayload> => ({ vaults: left })),
-    // The pane asks these two for a row that is ready, and every case below uses a
-    // row that is not — so a refusal here is the honest stub, and it stays loud if a
-    // case ever starts reaching them.
+    // The pane asks these two for a row that is ready. Most cases below use a row
+    // that is not, so a refusal is the honest stub and it stays loud if one starts
+    // reaching them — `healthReport` is for the cases that do reach it on purpose.
     recentWrites: unused<(vault?: string, limit?: number) => Promise<readonly WikiLogEntry[]>>(),
-    health: unused<(vault?: string, gaps?: number) => Promise<WikiHealthPayload>>(),
+    health: healthReport === undefined
+      ? unused<(vault?: string, gaps?: number) => Promise<WikiHealthPayload>>()
+      : vi.fn(async (): Promise<WikiHealthPayload> => ({ reports: [healthReport] })),
     search: unused(),
     pageCard: unused(),
     citers: unused(),
@@ -113,13 +139,16 @@ const Manager = WikiManager as unknown as (props: WikiManagerProps) => ReactElem
  * Render the surface over a fresh stand-in.
  * @param rows - the registered vaults; one BIP vault by default.
  * @param pick - what the host's chooser answers.
+ * @param healthReport - what the overview reads; omitted means the stub refuses,
+ *   which is correct for every case that never opens it.
  * @returns the render result and the recorded API.
  */
 function bench(
   rows: readonly WikiVaultView[] = [vault({ id: 'bip', label: 'BIP 知识库', path: 'D:/yon-bip-obsidian/yon-bip-obsidian' })],
   pick?: () => Promise<DirectoryPickResult>,
+  healthReport?: WikiHealthReport,
 ) {
-  const api = pick === undefined ? stubApi(rows) : stubApi(rows, pick)
+  const api = pick === undefined ? stubApi(rows, undefined, healthReport) : stubApi(rows, pick, healthReport)
   const view = render(<Manager {...api} t={seatOver(zh)} onClose={vi.fn()} />)
   return { ...view, api }
 }
@@ -247,5 +276,45 @@ describe('wiki surface registration', () => {
     // above the pane's branch so that it survives into the empty state.
     expect(await screen.findByText(at('wiki.removed').replace('{label}', 'BIP 知识库'))).toBeTruthy()
     expect(screen.queryByText('BIP 知识库')).toBeNull()
+  })
+})
+
+describe('wiki surface index scope', () => {
+  it('names the pages outside the index, right under the number that read as zero', async () => {
+    // The state the review read as 「NCC 知识库是空的」: a ready vault, an index that
+    // answered nothing, and 13 pages sitting in `wiki/topics`. The label and the note
+    // are what make the 0 mean 「我能读的页面里没有」 instead of 「没有」.
+    const { api } = bench(
+      [vault({ id: 'ncc', label: 'NCC 知识库', pages: 0, ready: true })],
+      undefined,
+      report({
+        vault: 'ncc',
+        vaultLabel: 'NCC 知识库',
+        unindexed: [{
+          vault: 'ncc',
+          dir: 'wiki/topics',
+          path: 'D:/yon-ncc-obsidian/yon-ncc-obsidian/wiki/topics',
+          pages: 13,
+        }],
+      }),
+    )
+
+    await waitFor(() => { expect(api.health).toHaveBeenCalledWith('ncc') })
+    expect(await screen.findByText(at('wiki.pages'))).toBeTruthy()
+    const note = await screen.findByText(/另有 13 个页面/)
+    expect(note.textContent).toContain('wiki/topics（13）')
+  })
+
+  it('says nothing about scope when the vault has nothing outside the index', async () => {
+    bench(
+      [vault({ id: 'bip', label: 'BIP 知识库', pages: 5374, ready: true })],
+      undefined,
+      report({ vault: 'bip', vaultLabel: 'BIP 知识库', pages: 5374 }),
+    )
+
+    // Wait for the overview itself, then assert the absence: a note that renders for
+    // every vault is the noise this disclosure is not allowed to become.
+    await screen.findByText(at('wiki.levels'))
+    expect(screen.queryByText(/不在索引范围内/)).toBeNull()
   })
 })

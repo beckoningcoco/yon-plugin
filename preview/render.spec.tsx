@@ -1,5 +1,5 @@
 /**
- * 把六个面板各渲染成一张可以直接看的静态页（亮色 + 暗色各一份）。
+ * 把八个面板各渲染成一张可以直接看的静态页（亮色 + 暗色各一份）。
  *
  * 为什么要这么绕：DSH Web 需要运行时签发的 token 才能打开，裸访问拿到的是
  * "authentication required"；而真实的 primitives 包 import 了 .css 与
@@ -348,6 +348,13 @@ const {
   HOME_FIXTURE, HOME_EMPTY, HOME_PICKED_PATH, homesFixture, homesWithoutPicker,
   homesWithClassFailure, homesWithVanishedIndex,
 } = await import('./fixtures/homes.ts')
+const { IterationManager } = await import('../src/client/iteration/IterationManager.tsx')
+const { ITERATION_FIXTURE, ITERATION_EMPTY, ITERATION_UNREADABLE } = await import('./fixtures/iteration.ts')
+const { BrowserManager } = await import('../src/client/browser/BrowserManager.tsx')
+const {
+  BROWSER_FIXTURE, BROWSER_FORM, BROWSER_UNSCANNED, BROWSER_EMPTY, BROWSER_UNREADABLE,
+  BROWSER_NOROW,
+} = await import('./fixtures/browser.ts')
 // 外壳与六个条目：面板的"行"这一层（批 1 重做的对象）。原先预览只画 Manager，
 // 于是"面板打开时长什么样"根本没有渲染途径，而它是最常被看到的那一屏。
 const { YonPanelRoot } = await import('../src/client/YonPanelRoot.tsx')
@@ -357,6 +364,8 @@ const { DataSourceItem } = await import('../src/client/DataSourceItem.tsx')
 const { WikiItem } = await import('../src/client/WikiItem.tsx')
 const { DigestItem } = await import('../src/client/DigestItem.tsx')
 const { HomeItem } = await import('../src/client/HomeItem.tsx')
+const { IterationItem } = await import('../src/client/IterationItem.tsx')
+const { BrowserItem } = await import('../src/client/BrowserItem.tsx')
 
 const t = ((key: string, params?: Record<string, unknown>): string => {
   let out = (zh as Record<string, string>)[key] ?? key
@@ -518,7 +527,7 @@ const filled = (key: string, params: Record<string, string>): string => {
 const releaseStub = (): (() => void) => noop
 
 /**
- * 六个内置条目的 inject face。与上面六页用的是同一份 fixtures，所以行里点开的东西
+ * 八个内置条目的 inject face。与上面八页用的是同一份 fixtures，所以行里点开的东西
  * 和面板页看到的是同一套数据——预览里造两份样本就等于给自己留一个对不上的机会。
  */
 const FACES: Record<string, Record<string, unknown>> = {
@@ -528,6 +537,8 @@ const FACES: Record<string, Record<string, unknown>> = {
   wiki: { ...wikiApi, pushOverlay: releaseStub },
   digest: { summary: () => Promise.resolve(FULL), pushOverlay: releaseStub },
   home: { ...HOME_FIXTURE, pushOverlay: releaseStub },
+  iteration: { ...ITERATION_FIXTURE, pushOverlay: releaseStub },
+  browser: { ...BROWSER_FIXTURE, pushOverlay: releaseStub },
 }
 
 /**
@@ -543,6 +554,8 @@ const ITEMS: Record<string, (props: ItemProps) => ReactElement> = {
   wiki: WikiItem as unknown as (props: ItemProps) => ReactElement,
   digest: DigestItem as unknown as (props: ItemProps) => ReactElement,
   home: HomeItem as unknown as (props: ItemProps) => ReactElement,
+  iteration: IterationItem as unknown as (props: ItemProps) => ReactElement,
+  browser: BrowserItem as unknown as (props: ItemProps) => ReactElement,
 }
 
 /** 外壳的一次派发：按 `only` 找到那条目，把名字交给它，行由它自己画。 */
@@ -584,14 +597,16 @@ function Popover({ rows }: { readonly rows: readonly YonPanelItemRow[] }): React
   return <Shell {...props} />
 }
 
-/** 面板给六个内置条目的名字，顺序即注册顺序。 */
-const SIX_ROWS: readonly YonPanelItemRow[] = [
+/** 面板给八个内置条目的名字，顺序即注册顺序（`src/client/index.ts` 的 order 10…80）。 */
+const EIGHT_ROWS: readonly YonPanelItemRow[] = [
   { id: 'project', label: name('item.project') },
   { id: 'skills', label: name('item.skills') },
   { id: 'datasources', label: name('item.datasource') },
   { id: 'wiki', label: name('item.wiki') },
   { id: 'digest', label: name('item.digest') },
   { id: 'home', label: name('item.home') },
+  { id: 'iteration', label: name('item.iteration') },
+  { id: 'browser', label: name('item.browser') },
 ]
 
 /**
@@ -602,7 +617,7 @@ const SIX_ROWS: readonly YonPanelItemRow[] = [
  * 而面板的行宽是固定的 280。
  */
 const MANY_ROWS: readonly YonPanelItemRow[] = [
-  ...SIX_ROWS,
+  ...EIGHT_ROWS,
   // 名字要长到**无论字体怎么回退都放不下**：第一版 20 个字，280 宽的面板里刚好
   // 卡在边界上，探针数出来的截断行数是 0——看着像"省略号没生效"，其实是名字还不够长。
   { id: 'third-party-connector', label: '第三方连接器：一个长到无论怎么排都放不下、必须走省略号的条目名称' },
@@ -619,8 +634,15 @@ const MANY_ROWS: readonly YonPanelItemRow[] = [
  *  @param sheets - 除 atom 与主题外要挂的样式表，**顺序即层叠顺序**（见 {@link Panel.sheets}）。
  *  @param dark - 挂宿主的暗色主题。宿主用 `body[data-ds-dark-theme]` 整表覆盖 token，
  *                并按 `color-scheme` 告诉浏览器这是深色——两件都照做，
- *                所以这一页不需要为暗色改任何其它东西——**预览里的暗色与真实客户端同源**。 */
-function page(inner: string, note: string, sheets: readonly string[], dark: boolean): string {
+ *                所以这一页不需要为暗色改任何其它东西——**预览里的暗色与真实客户端同源**。
+ *  @param after - 一段只在**预览页里**跑的内联脚本，插在探针写数之前（所以它能往 `out`
+ *                 里加自己的探针行）。用途只有一类：位置在滚动区以下的状态。面板的工作区
+ *                 高度由共享表定死（`.body` 的 `min(62vh, 520px)`，见 panel.module.css:46），
+ *                 内容比它高的面板**必然**有半屏在折线以下，静态页不滚就拍不到——而"这一屏
+ *                 长什么样"正是这些图存在的理由。滚动是**真滚**（改 `scrollTop`，让浏览器
+ *                 自己重排），不是把下面的节点抠出来贴到上面：图里仍然是那一页的真实布局，
+ *                 只是起点不在顶部。 */
+function page(inner: string, note: string, sheets: readonly string[], dark: boolean, after?: string): string {
   const parts: string[] = THEME_SHEETS.map(sheet => readFileSync(sheet, 'utf8'))
   for (const atom of ATOMS) parts.push(atomCss(atom))
   for (const sheet of sheets) parts.push(readFileSync(sheet, 'utf8'))
@@ -843,6 +865,7 @@ ${parts.map(css => `<style>${css}</style>`).join('\n')}
         + ' notes=' + notes.length + ' notesH=' + Math.round(notesH))
     }
   }
+${after ?? ''}
   document.getElementById('probe').textContent = 'PROBE ' + out.join(' | ')
 })()
 </script>
@@ -862,10 +885,40 @@ interface Panel {
    */
   readonly sheets: readonly string[]
   readonly node: () => ReactNode
+  /**
+   * 这一页要额外跑的预览脚本（见 {@link page} 的 `after`），只为默认页准备的那条。
+   *
+   * 状态页各自把自己的脚本写在调用处；默认页由上面的循环生成，没有调用处可写——而
+   * **第一眼看到的那一屏**恰恰是需要量的那一屏（动作行有没有被窗格下沿切掉就是它）。
+   */
+  readonly probe?: string
 }
 
-/** 六个面板共用的那份样式表；面板页一律排在面板自己那份之前。 */
+/** 面板共用的那份样式表；面板页一律排在面板自己那份之前。 */
 const SHARED = 'src/client/panel.module.css'
+
+/**
+ * 动作行此刻在正文列里的位置，打成一个标签 + 上下沿（相对滚动区顶，负数=已滚出上沿）。
+ *
+ * 浏览器面板的动作行不像数据源那一格那样排在最后（它下面还有一条分隔线、运行列表和两行
+ * 脚注），所以共享表那条「动作行粘底」（`.detailActions:last-child`，panel.module.css:609）
+ * 就没管到它。而「没管到」算不算问题只能量：滚到顶时它在不在折线以内、滚到底时还看不看得见。
+ * 实测（预览 900x820，窗格 450）：**修之前滚到顶读到 437..465**——28px 的按钮有 15px 落在
+ * 窗格之外，而这一屏每次打开都会看到；上了这一格自己的粘底之后是 422..450。这两个数就是
+ * `panel-browser-*` 图上那段注释的依据。
+ * @param tag - 打出来的标签，用来区分滚前滚后。
+ * @returns 预览页里跑的那段脚本。
+ */
+const actionsAt = (tag: string): string => `
+  ;(function () {
+    var pane = document.querySelector('[class*="detailPane"]')
+    var row = pane === null ? null : pane.querySelector('[class*="detailActions"]')
+    if (pane === null || row === null) { out.push('${tag}: missing'); return }
+    var pr = pane.getBoundingClientRect()
+    var rr = row.getBoundingClientRect()
+    out.push('${tag} ' + Math.round(rr.top - pr.top) + '..' + Math.round(rr.bottom - pr.top)
+      + ' pane=' + Math.round(pane.clientHeight) + '/' + Math.round(pane.scrollHeight))
+  })()`
 
 /**
  * 允许两份样式表声明同一个类名的例外。
@@ -911,10 +964,31 @@ const PANELS: readonly Panel[] = [
     node: () => <HomeManager t={t} onClose={noop} {...HOME_FIXTURE} />,
   },
   {
+    id: 'iteration',
+    // 这一份**不**改写共享表里的任何类：外壳容器另起了 `.scrollBody` 这个名字，正是
+    // 为了不挤进 {@link SAME_ELEMENT} 的豁免名单（那份名单只放"同一个元素挂两个类名"
+    // 的合法撞名）。
+    sheets: [SHARED, 'src/client/iteration/panel.module.css'],
+    node: () => <IterationManager t={t} onClose={noop} {...ITERATION_FIXTURE} />,
+  },
+  {
+    id: 'browser',
+    // 主图给的是**表单态**：一个实例都没起过，所以下半段问的是"这里会有谁"。带实例的
+    // 那一屏另出一页（见下面的 browser-running），两屏不挤在一张图里。
+    //
+    // 面板自己那份表不声明共享表里的任何类名（`.title`/`.mono`/`.select` 与数据源面板
+    // 重名，但那是两份不同的表，两个面板也永远不会同页）。
+    sheets: [SHARED, 'src/client/browser/panel.module.css'],
+    node: () => <BrowserManager t={t} onClose={noop} {...BROWSER_FORM} />,
+    // 动作行在不在折线以内，取决于它**上面**那些东西（说明、选择器、标题、表单），
+    // 与下面有没有实例无关——所以这一屏量到的数就是"每次打开面板"的那个数。
+    probe: actionsAt('actions@top'),
+  },
+  {
     id: 'items',
     // 外壳与行，两份都是它自己的：**不挂共享表**，理由见上面 {@link Panel.sheets}。
     sheets: ['src/client/YonPanelRoot.module.css', 'src/client/panel-item.module.css'],
-    node: () => <Popover rows={SIX_ROWS} />,
+    node: () => <Popover rows={EIGHT_ROWS} />,
   },
 ]
 
@@ -977,11 +1051,39 @@ function freezeSelects(body: HTMLElement): void {
   }
 }
 
+/**
+ * 把面板的滚动区推到底的那段预览页脚本（见 {@link page} 的 `after`）。
+ *
+ * 面板的正文列（`.detailPane`，panel.module.css:365-369）是整块滚动区，工作区高度由共享表
+ * 定死（`.body` 的 `min(62vh, 520px)`，:46）——所以内容比一屏高的面板，「下半屏」在静态页里
+ * 根本拍不到。这类页面要说的东西恰好就在下半屏（浏览器面板的连接地址就是），只能滚。
+ *
+ * `1e6` 而不是 `scrollHeight`：字体还没落地时读到的 `scrollHeight` 偏小，按它滚会差一截；
+ * 给一个必然超界的值，浏览器自己夹到最大，量到的就是底。滚完把 `scrollTop/scrollHeight`
+ * 打进探针——**没滚上**（选择器写错、这一页没有滚动区）在图上和"滚到底了"长得一样，只有
+ * 这个数能分辨。
+ */
+const SCROLL_TO_BOTTOM = `
+  ;(function () {
+    var pane = document.querySelector('[class*="detailPane"]')
+    if (pane === null) { out.push('scroll: no detailPane'); return }
+    pane.scrollTop = 1e6
+    out.push('scroll ' + Math.round(pane.scrollTop) + '/' + pane.scrollHeight
+      + ' client=' + pane.clientHeight)
+  })()`
+
 /** 渲染一份并落盘，返回落盘路径。
  *  @param note - 覆盖文件名里的状态段。同面板的多个状态必须各给一个名字：给成同一个
  *                的话后跑的那张会静默盖掉前一张，而"文件在、内容是别的状态"比缺文件
- *                更难发现。 */
-async function renderPanel(panel: Panel, dark: boolean, data?: ReactNode | undefined, note?: string): Promise<string> {
+ *                更难发现。
+ *  @param after - 给这一页的预览脚本尾（见 {@link page}）。 */
+async function renderPanel(
+  panel: Panel,
+  dark: boolean,
+  data?: ReactNode | undefined,
+  note?: string,
+  after?: string,
+): Promise<string> {
   const name = note ?? panel.id
   const label = `${name}-${dark ? 'dark' : 'light'}`
   const view = render(<>{data ?? panel.node()}</>)
@@ -990,7 +1092,7 @@ async function renderPanel(panel: Panel, dark: boolean, data?: ReactNode | undef
   // 按 body 取数对"挂在 container 里"和"portal 到 body"两种 mock 都成立。
   const inner = view.container.ownerDocument.body.innerHTML
   const file = `preview/panel-${label}.html`
-  writeFileSync(file, page(inner, label, panel.sheets, dark), 'utf8')
+  writeFileSync(file, page(inner, label, panel.sheets, dark, after), 'utf8')
   cleanup()
   return file
 }
@@ -1001,7 +1103,7 @@ describe('预览导出', () => {
   for (const panel of PANELS) {
     for (const dark of [false, true]) {
       it(`渲染 ${panel.id}（${dark ? '暗色' : '亮色'}）`, async () => {
-        const file = await renderPanel(panel, dark)
+        const file = await renderPanel(panel, dark, undefined, undefined, panel.probe)
         // 只断言"确实画出了东西"：这个 harness 的产物是给人看的，不是给断言看的。
         expect(readFileSync(file, 'utf8').length).toBeGreaterThan(2000)
       })
@@ -1023,7 +1125,7 @@ describe('预览导出', () => {
     await renderPanel(panel, false, <DigestManager summary={() => Promise.resolve(empty)} onClose={noop} t={t} />, 'digest-empty')
   })
 
-  // 错误块（`base.error`）是六个面板共用的一条，却是唯一一件一张图都没有的状态——
+  // 错误块（`base.error`）是面板共用的一条，却是唯一一件一张图都没有的状态——
   // 没有任何 fixture 会让面板失败。这里让摘要接口直接拒绝，把 role="alert" 那一块画出来。
   // 亮暗两份都要：这一块是靠**底色**表达的，而底色在两套主题里来自不同的取值，只出一份
   // 等于只验了一半。
@@ -1033,6 +1135,186 @@ describe('预览导出', () => {
     for (const dark of [false, true]) {
       await renderPanel(panel, dark, <DigestManager summary={failing} onClose={noop} t={t} />, 'digest-error')
     }
+  })
+
+  // 迭代表板的第一屏：一条都还没记过。这一屏要说清三件事——这里是什么、谁会写、
+  // 写完谁决定——而这个面板的整套设计都建立在第三句上，所以它必须有一张图。
+  it('渲染迭代表板的空账本（亮色）', async () => {
+    const panel = PANELS.find(candidate => candidate.id === 'iteration') as Panel
+    await renderPanel(panel, false, <IterationManager t={t} onClose={noop} {...ITERATION_EMPTY} />, 'iteration-empty')
+  })
+
+  // 台账文件坏掉：与"还没记过"是完全不同的两句话，而它们的版面几乎一样——差别只在
+  // 标题与两段解释在不在。图上是唯一看得出这个差别的地方，因为两者都是空的列表。
+  it('渲染迭代表板的读取失败（亮色）', async () => {
+    const panel = PANELS.find(candidate => candidate.id === 'iteration') as Panel
+    await renderPanel(panel, false,
+      <IterationManager t={t} onClose={noop} {...ITERATION_UNREADABLE} />, 'iteration-unreadable')
+  })
+
+  // 详情展开 + 删除的第二次询问。三件只有点开才看得到的东西：空字段的破折号（样本里
+  // 那条只写了症状的记录）、状态与优先级两个就地编辑的下拉、以及"再点一次才删"的那一对
+  // 按钮。预览页是静态的，点不动，所以在这里点开再落盘——与项目面板的点开态同一个做法。
+  it('渲染迭代表板的详情与删除确认（亮色）', async () => {
+    const panel = PANELS.find(candidate => candidate.id === 'iteration') as Panel
+    const view = render(<IterationManager t={t} onClose={noop} {...ITERATION_FIXTURE} />)
+    await settle(view.container.ownerDocument.body)
+    const doc = view.container.ownerDocument
+
+    const head = doc.querySelector('[class*="rowHead"]')
+    expect(head).not.toBeNull()
+    fireEvent.click(head as Element)
+    await settle(doc.body)
+
+    // 展开后那一行里唯一的删除按钮：点它只是问一句，所以这一页画的正是"问出口"的样子。
+    const buttons = [...doc.querySelectorAll('[class*="rowVerbs"] button')]
+    const ask = buttons.find(candidate => candidate.textContent === name('iteration.remove'))
+    expect(ask).toBeTruthy()
+    fireEvent.click(ask as Element)
+    await settle(doc.body)
+
+    const inner = doc.body.innerHTML
+    writeFileSync('preview/panel-iteration-detail.html', page(inner, 'iteration-detail', panel.sheets, false), 'utf8')
+    // 问句里的字，拿它当判据：只在第二次询问时出现，比"有个删除按钮"这件事具体得多。
+    expect(inner).toContain(name('iteration.removeAsk'))
+  })
+
+  // 手工记一条的表单：模型没记而人自己看见的那种情况走的就是它。七个字段一屏排开，
+  // 宽度分配成不成立只有图能回答。
+  it('渲染迭代表板的手工录入表单（亮色）', async () => {
+    const panel = PANELS.find(candidate => candidate.id === 'iteration') as Panel
+    const view = render(<IterationManager t={t} onClose={noop} {...ITERATION_FIXTURE} />)
+    await settle(view.container.ownerDocument.body)
+    const doc = view.container.ownerDocument
+
+    const open = [...doc.querySelectorAll('button')]
+      .find(candidate => candidate.textContent === name('iteration.formOpen'))
+    expect(open).toBeTruthy()
+    fireEvent.click(open as Element)
+    await settle(doc.body)
+
+    const inner = doc.body.innerHTML
+    writeFileSync('preview/panel-iteration-form.html', page(inner, 'iteration-form', panel.sheets, false), 'utf8')
+    expect(inner).toContain(name('iteration.formSymptom'))
+  })
+
+  // 扫描器够不着的平台（非 Windows）上第一次打开。这一屏与「扫过了、一台都没有」在
+  // 版面上一模一样，差别全在文字里，所以它是那种**只有图能回答**的问题；而这一页还锁着
+  // 一条行为：「重新扫描」在这里**不出现**（`BrowserManager` 的 `facts.scanSupported`），
+  // 因为按下去它也扫不了任何东西。宿主那句平台说明在 `note` 里，必须真的落在页面上——
+  // 预览页没有鼠标，挂在 `title` 上的解释在这套图里等于不存在。
+  it('渲染浏览器面板的未扫描态（非 Windows，亮色）', async () => {
+    const panel = PANELS.find(candidate => candidate.id === 'browser') as Panel
+    const file = await renderPanel(panel, false,
+      <BrowserManager t={t} onClose={noop} {...BROWSER_UNSCANNED} />, 'browser-unscanned')
+    const inner = readFileSync(file, 'utf8')
+
+    expect(inner).toContain('darwin')
+    expect(inner).toContain(name('browser.empty'))
+    expect(inner).not.toContain(name('browser.rescan'))
+    // 空态那句提示里写着「点『重新扫描』」——在这一屏上，它指的那颗按钮**不在页面上**。
+    // 一句指向不存在的东西的话，比不说更糟，所以这里连它一起锁掉。
+    expect(inner).not.toContain(name('browser.emptyHint'))
+    // 「还没扫过」那一句在这里是**错的**：不是没扫，是扫不了。两句都摆着就等于自相矛盾。
+    expect(inner).not.toContain(name('browser.neverScanned'))
+  })
+
+  // 扫过了，而这台机器上确实一个都没有。与上一屏的区别只在文字，所以两张图要成对看。
+  it('渲染浏览器面板的空态（扫过、没有，亮色）', async () => {
+    const panel = PANELS.find(candidate => candidate.id === 'browser') as Panel
+    const file = await renderPanel(panel, false,
+      <BrowserManager t={t} onClose={noop} {...BROWSER_EMPTY} />, 'browser-empty')
+    const inner = readFileSync(file, 'utf8')
+
+    // 与上一屏正相反：这一屏扫得了，所以按钮在；而"上次扫于何时"必须说得出一个时间，
+    // 否则使用者会以为是自己没扫到。（时刻本身随时区变，所以只锁标签那一段。）
+    //
+    // 按钮这一条要**认元素**：空态那句提示里本身就写着「点『重新扫描』」，只查文本
+    // 时它永远为真——第一版就是这么写的，而那时按钮根本不在页面上（它当时嵌在"选中了
+    // 某一行"那一支里）。所以判据取标签的收尾标记，只有真的有一颗按钮才会出现。
+    expect(inner).toContain(`${name('browser.rescan')}</button>`)
+    expect(inner).toContain(name('browser.scannedAt').split('{at}')[0] as string)
+    expect(inner).not.toContain(name('browser.neverScanned'))
+    expect(inner).toContain(name('browser.emptyHint'))
+  })
+
+  // 登记文件坏了：下拉是空的，但这一屏必须说清"是文件坏了"而不是"这台机器没有浏览器"。
+  it('渲染浏览器面板的读取失败（亮色）', async () => {
+    const panel = PANELS.find(candidate => candidate.id === 'browser') as Panel
+    const file = await renderPanel(panel, false,
+      <BrowserManager t={t} onClose={noop} {...BROWSER_UNREADABLE} />, 'browser-unreadable')
+    const inner = readFileSync(file, 'utf8')
+
+    // 这一屏的整个意思就是「说的是文件坏了，不是这台机器没装」——所以判据取那句
+    // 「读不出来」的句式本身（后半段是宿主给的原文，随真机而变，不锁）。
+    expect(inner).toContain(name('browser.readFailed').split('{message}')[0] as string)
+    expect(inner).toContain('browser_config.json')
+    expect(inner).not.toContain(name('browser.partial'))
+  })
+
+  // 正在运行的实例：两个都要在图上，因为它们的区别就是这一屏要说的事——一个答得上话
+  // （可复制的 http 端点），一个问不出来（Firefox 的 tcp 端点 + `alive:'unknown'` + note）。
+  // 只出一份的话，「未知」那一行的样式在整批图里就没有第二次机会被看到。
+  //
+  // 这一屏**必须滚**：登记表单一个人就占满了工作区的高度，而「正在运行」整段在它下面
+  // （上面两页「未扫描/空」没这个问题——那两页没有表单，撑高的是表单不是列表）。
+  it('渲染浏览器面板的正在运行（亮色，滚到运行列表）', async () => {
+    const panel = PANELS.find(candidate => candidate.id === 'browser') as Panel
+    const file = await renderPanel(panel, false,
+      <BrowserManager t={t} onClose={noop} {...BROWSER_FIXTURE} />, 'browser-running',
+      actionsAt('actions@top') + SCROLL_TO_BOTTOM + actionsAt('actions@bottom'))
+    const inner = readFileSync(file, 'utf8')
+
+    expect(inner).toContain('http://127.0.0.1:9223/json/version')
+    expect(inner).toContain('tcp://127.0.0.1:9230')
+    expect(inner).toContain(name('browser.alive.alive'))
+    expect(inner).toContain(name('browser.alive.unknown'))
+    expect(inner).toContain(name('browser.notReady'))
+    expect(inner).toContain(name('browser.stop'))
+    expect(inner).not.toContain(name('browser.runningEmpty'))
+  })
+
+  // 登记表空了，而台账里还有活的实例——批 4 之前这一屏是**空白**的：运行区嵌在「选中了
+  // 某一行」那一支里，而没有行可选时它整段不渲染，于是端口上有东西、面板上什么也没有。
+  // 这份图是那处结构修正的现场证据，所以它比别的状态页更该有人看。
+  it('渲染浏览器面板的运行实例与空登记表（亮色）', async () => {
+    const panel = PANELS.find(candidate => candidate.id === 'browser') as Panel
+    const file = await renderPanel(panel, false,
+      <BrowserManager t={t} onClose={noop} {...BROWSER_NOROW} />, 'browser-running-norow')
+    const inner = readFileSync(file, 'utf8')
+
+    expect(inner).toContain('http://127.0.0.1:9223/json/version')
+    expect(inner).toContain(name('browser.stop'))
+    expect(inner).not.toContain(name('browser.runningEmpty'))
+    // 没有一行可选，就没有能启动的东西；而「重新扫描」是面板自己的按钮，它必须在——
+    // 这一屏连的是"按钮属于谁"这件事，不是视觉。
+    expect(inner).not.toContain(`>${name('browser.start')}</button>`)
+    expect(inner).toContain(`${name('browser.rescan')}</button>`)
+  })
+
+  // 停止的第二次询问。这一屏是这一面板唯一会**结束进程**的动作，所以「问出口」那一瞬
+  // 的样子必须有人看过：预览页是静态的，点不动，所以在这里点开再落盘（与迭代表板的
+  // 删除确认同一做法）。点的是第一个实例那颗按钮，也就是答得上话的那个。
+  it('渲染浏览器面板的停止确认（亮色）', async () => {
+    const panel = PANELS.find(candidate => candidate.id === 'browser') as Panel
+    const view = render(<BrowserManager t={t} onClose={noop} {...BROWSER_FIXTURE} />)
+    await settle(view.container.ownerDocument.body)
+    const doc = view.container.ownerDocument
+
+    const stop = [...doc.querySelectorAll('button')]
+      .find(candidate => candidate.textContent?.trim() === name('browser.stop'))
+    expect(stop).toBeTruthy()
+    fireEvent.click(stop as Element)
+    await settle(doc.body)
+
+    const inner = doc.body.innerHTML
+    // 同样要滚：问句与那两颗按钮在整列的最底下，不滚这一页画的是登记表单。
+    writeFileSync('preview/panel-browser-stopask.html',
+      page(inner, 'browser-stopask', panel.sheets, false, SCROLL_TO_BOTTOM), 'utf8')
+    // 问句与两颗按钮：只在这一瞬同时出现，比"有个停止按钮"具体得多。
+    expect(inner).toContain(name('browser.stopAsk'))
+    expect(inner).toContain(name('browser.stopYes'))
+    expect(inner).toContain(name('browser.stopNo'))
   })
 
   // 一个值读出来长什么样：长文本要换行、JSON 文本要摊成键值列表、嵌套要退回 JSON，

@@ -564,6 +564,18 @@ export function WikiManager({
         )}
       </dl>
 
+      {/* 紧跟在数字下面，而不是页面末尾：它要说的是上面那几个数字的**口径**，
+          而一个读者在读到「实体页数 0」的当下就会得出结论，不会往后翻。
+          只在真有索引之外的页面时才出现——没有的话这句话是纯噪音。 */}
+      {report.unindexed.length > 0 && (
+        <p className={cn(base.note, css.unindexedNote)}>
+          {t('wiki.unindexedNote', {
+            count: report.unindexed.reduce((sum, entry) => sum + entry.pages, 0),
+            dirs: report.unindexed.map(entry => `${entry.dir}（${entry.pages}）`).join('、'),
+          })}
+        </p>
+      )}
+
       <h4 className={cn(css.subTitle)}>{t('wiki.levels')}</h4>
       <div className={cn(css.levelList)}>
         {report.levels.map(entry => (

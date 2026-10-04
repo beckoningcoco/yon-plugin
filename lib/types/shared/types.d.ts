@@ -618,6 +618,27 @@ export interface WikiUsageView {
     readonly since?: string;
 }
 /**
+ * A directory of pages this plugin's index does not read.
+ *
+ * The index covers entity pages and nothing else — the graph, the capability
+ * grades and every reader here are built on them. That is a decision; letting a
+ * count of entity pages stand for the whole vault is not. A vault whose prose
+ * lives in `wiki/topics`, as `yon-ncc-obsidian`'s own schema puts it, answers
+ * `0` to "how many pages did you scan", and read on its own that number says the
+ * knowledge base is empty. Naming what was skipped is the difference between
+ * "nothing here" and "13 pages here, none of which this tool can see".
+ */
+export interface WikiUnindexedDir {
+    /** Id of the vault the directory lives in. */
+    readonly vault: string;
+    /** Vault-relative, POSIX-joined: `wiki/topics`. */
+    readonly dir: string;
+    /** Absolute directory, forward-slashed, so a reader can go open the files. */
+    readonly path: string;
+    /** Markdown files directly inside it. */
+    readonly pages: number;
+}
+/**
  * One vault's health: the 概览 and 缺口 tabs, in one answer.
  *
  * One call rather than three because the panel needs all of it to draw one
@@ -627,7 +648,10 @@ export interface WikiUsageView {
 export interface WikiHealthReport {
     readonly vault: string;
     readonly vaultLabel: string;
+    /** Entity pages only — see {@link WikiUnindexedDir} for what this excludes. */
     readonly pages: number;
+    /** Page directories the index skipped, so `pages` is never read as the vault's size. */
+    readonly unindexed: readonly WikiUnindexedDir[];
     readonly indexedAt?: string;
     /** Size of the cached index on disk, so a slow rebuild has a visible cause. */
     readonly indexBytes?: number;
@@ -689,7 +713,10 @@ export interface WikiSearchHit {
 /** Body of `GET /yon/api/wiki/search`. */
 export interface WikiSearchPayload {
     readonly term: string;
+    /** Entity pages only, across the vaults searched. */
     readonly scanned: number;
+    /** Pages in those vaults the search could not have matched — see {@link WikiUnindexedDir}. */
+    readonly unindexed: readonly WikiUnindexedDir[];
     readonly hits: readonly WikiSearchHit[];
 }
 /** Body of `GET /yon/api/wiki/citers`. */
@@ -760,6 +787,274 @@ export interface DigestSummaryPayload {
 export interface DigestLogPayload {
     readonly entries: readonly DigestLogEntryView[];
     readonly path: string;
+}
+/**
+ * 一条记录说的是哪一类问题。
+ *
+ * `gap` 是「这套插件做不到 / 做得不够」，`improvement` 是「做得到，但可以更好」。
+ * 两者的处理方式不同——前者要补能力，后者只要改措辞或加一步——所以让记录的人
+ * 当场分一次，比事后由读的人猜要省事。
+ */
+export type IterationKind = 'gap' | 'improvement';
+/** 两种类型，按显示顺序。 */
+export declare const ITERATION_KINDS: readonly IterationKind[];
+/** 这条有多挡路。三档够用：要排序的是「先看哪条」，不是「精确到第几名」。 */
+export type IterationSeverity = 'high' | 'medium' | 'low';
+/** 三档，按显示顺序（由重到轻）。 */
+export declare const ITERATION_SEVERITIES: readonly IterationSeverity[];
+/**
+ * 这条现在处于什么状态。
+ *
+ * `open` → `accepted`（决定要做）→ `fixed`（做完了）；`dropped` 是决定不做。
+ * 只有人能改它——模型那侧没有改状态的工具，理由写在 `iteration-tools.ts` 的头注释里。
+ */
+export type IterationStatus = 'open' | 'accepted' | 'fixed' | 'dropped';
+/** 四种状态，按显示顺序。 */
+export declare const ITERATION_STATUSES: readonly IterationStatus[];
+/**
+ * 台账里的一行：模型在真实开发中察觉到的插件短板。
+ *
+ * 八个字段，分两半。**人给不了的那半**（`symptom`、`scene`、`context`）只有当时
+ * 在场的人写得出，而且过一会儿就忘了；**事后能补的那半**（`severity`、`status`、
+ * `suggestion`）留空也不影响这条成立。所以前者是模型记录的必填项，后者可以空着
+ * 等人在面板上补。
+ *
+ * 没有作者字段：记的来源只有一个（模型），加上「谁写的」只会多一个永远填同一个
+ * 值的格子。
+ */
+export interface IterationRowView {
+    /** 宿主生成的 id，形如 `it-<时间戳>-<随机>`。 */
+    readonly id: string;
+    /**
+     * ISO 时间戳，由宿主盖章。
+     *
+     * 不是模型传的参数：会话里没有可信的时钟，而一条记录「什么时候发生的」是它
+     * 唯一的排序依据，让调用方自己填等于允许它写错。
+     */
+    readonly at: string;
+    readonly kind: IterationKind;
+    readonly severity: IterationSeverity;
+    /** 在什么场景下遇到的：当时在做的任务。 */
+    readonly scene: string;
+    /** 当时实际发生了什么。写症状，不写诊断。 */
+    readonly symptom: string;
+    /** 期望它变成什么样。可以空着——察觉的时候未必想得到怎么改。 */
+    readonly suggestion: string;
+    /** 这条说的是哪件东西：工具名 / 面板名 / 文件名。 */
+    readonly target: string;
+    /** 复现上下文：命令、路径、报错、环境。 */
+    readonly context: string;
+    readonly status: IterationStatus;
+}
+/** Body of `GET /yon/api/iterations`. */
+export interface IterationListPayload {
+    readonly rows: readonly IterationRowView[];
+    /** 台账文件的位置，方便直接打开看。 */
+    readonly path: string;
+    /** 文件在，但读不出来时才有：空列表和「还没记过」长得一样，所以要分开。 */
+    readonly error?: string;
+}
+/** Body of `POST /yon/api/iterations` — also what the model's tool takes. */
+export interface SaveIterationInput {
+    readonly kind: IterationKind;
+    readonly symptom: string;
+    readonly severity?: IterationSeverity;
+    readonly scene?: string;
+    readonly suggestion?: string;
+    readonly target?: string;
+    readonly context?: string;
+}
+/**
+ * Body of `PATCH /yon/api/iterations/<id>`.
+ *
+ * Two fields, and deliberately not the text: rewriting someone's account of what
+ * happened is how a record of the past becomes a record of the present. A row can
+ * be re-triaged and re-prioritised; what it says stays as it was written.
+ */
+export interface UpdateIterationInput {
+    readonly status?: IterationStatus;
+    readonly severity?: IterationSeverity;
+}
+/** Body of `POST /yon/api/iterations` as the route answers it. */
+export interface IterationCreatedPayload {
+    readonly row: IterationRowView;
+    /** False when an identical open row already existed and nothing was appended. */
+    readonly created: boolean;
+}
+/**
+ * 一个浏览器属于哪一套调试协议。
+ *
+ * 这一栏不是给人看的分类，它决定**启动参数**和**怎么确认它起来了**：Chromium 系
+ * 用 `--remote-debugging-port`，起来之后 `http://127.0.0.1:<端口>/json/version`
+ * 会应答；Firefox 用 `-start-debugger-server`，那套协议**根本没有这个 HTTP 端点**，
+ * 只能靠 TCP 能不能连上来判断。所以它必须存在，且必须一栏到底。
+ */
+export type BrowserFamily = 'chromium' | 'firefox';
+/** 两个家族。 */
+export declare const BROWSER_FAMILIES: readonly BrowserFamily[];
+/**
+ * 调试端口的默认值与合法区间。
+ *
+ * 9222 是 Chromium 系那个约定俗成的端口，也是本仓 `preview/shots.mjs` 之外唯一一个
+ * 使用者一眼认得的数字。下限取 1024 而不是 1：低于它的端口需要特权，而这件事没有
+ * 任何需要特权的理由。三处共用一份——宿主校验、客户端当场拦、以及界面上的提示，
+ * 各写一遍迟早就对不上。
+ */
+export declare const DEFAULT_BROWSER_PORT = 9222;
+/** @see DEFAULT_BROWSER_PORT */
+export declare const MIN_BROWSER_PORT = 1024;
+/** @see DEFAULT_BROWSER_PORT */
+export declare const MAX_BROWSER_PORT = 65535;
+/**
+ * 一个登记在册的浏览器。
+ *
+ * `id` 与 `path` 分开，是因为它们**变的频率不同**：`id` 来自扫描表，装在哪儿都一样
+ * （换目录、升级、重装都不会改它），而 `path` 会变。调试用的用户数据目录是**按 id
+ * 命名**的（`<profile 根>/<id>/`），所以 id 稳定等于使用者登录过的那个 profile 不会
+ * 因为重扫一次就被换掉——这是这一对字段分开的全部理由。
+ */
+export interface BrowserView {
+    /** 稳定且不可编辑，形如 `chrome`、`edge`、`firefox`。 */
+    readonly id: string;
+    readonly family: BrowserFamily;
+    /** 产品名，如 `Google Chrome`、`Microsoft Edge`。 */
+    readonly product: string;
+    /** exe 的绝对路径。存正斜杠形式，读起来两个平台一样。 */
+    readonly path: string;
+    /** 这个浏览器的用户数据目录。默认在插件根目录下，可改。 */
+    readonly profileDir: string;
+    /** 上次用过的端口，按行记住。 */
+    readonly port: number;
+    /** 上次用过的起始网址；空串表示开新标签页。 */
+    readonly startUrl: string;
+    /** 最近一次检查时这个路径还在不在。 */
+    readonly pathExists: boolean;
+    /** 找到过、现在不在了。**不会被自动删掉**——删了它的 profile 就成了孤儿。 */
+    readonly stale: boolean;
+    /** 启动日志的位置，就在 profile 目录里。 */
+    readonly logPath: string;
+    /** 最后一次扫到它的时间。 */
+    readonly lastFoundAt?: string;
+}
+/** 一个实例还活着吗。`unknown` 表示问不出来（探测超时），不是「没了」。 */
+export type BrowserRunLiveness = 'alive' | 'gone' | 'unknown';
+/**
+ * 本面板启动过的一个实例。
+ *
+ * 存下来是为了**跨 DSH 重启**仍然成立：浏览器是 detached 起的，DSH 退出它还在跑。
+ * 不落盘的话，重启后的面板既看不到它、也停不掉它，而使用者的浏览器还占着那个端口。
+ */
+export interface BrowserRunView {
+    readonly runId: string;
+    readonly browserId: string;
+    readonly label: string;
+    readonly family: BrowserFamily;
+    /**
+     * `spawn` 返回的进程号，**只作线索**。
+     *
+     * 它可能只是浏览器的一个 stub：已经有一个同 profile 的实例在跑时，新进程会把请求
+     * 转交给旧实例然后自己退出，所以这个号未必是真正占着端口的那个进程。停止的时候认的
+     * 是端点身份，不是它。
+     */
+    readonly pid?: number;
+    readonly port: number;
+    readonly profileDir: string;
+    readonly startedAt: string;
+    /**
+     * 怎么连它。
+     *
+     * Chromium 系是 `http://127.0.0.1:<端口>/json/version`；Firefox 是
+     * `tcp://127.0.0.1:<端口>` —— 后者不是个能点开的地址，只是把「它监听在这儿」这件事
+     * 说清楚，因为 Firefox 那套协议没有 HTTP 端点可给。
+     */
+    readonly endpoint: string;
+    /** 端口探测通了吗。**false 不等于失败**，只是没能在时限内确认。 */
+    readonly ready: boolean;
+    readonly alive: BrowserRunLiveness;
+    /** Chromium 的身份令牌，停止时用来确认端口上那个还是不是本面板起的。 */
+    readonly debuggerUrl?: string;
+    readonly note?: string;
+}
+/** Body of `GET /yon/api/browsers`. */
+export interface BrowserListPayload {
+    readonly browsers: readonly BrowserView[];
+    readonly runs: readonly BrowserRunView[];
+    /** 登记文件的位置，方便直接打开看。 */
+    readonly configPath: string;
+    /** 实例台账的位置。 */
+    readonly runsPath: string;
+    readonly platform: string;
+    /** 当前平台支不支持自动扫描。false 时面板不显示扫描按钮。 */
+    readonly scanSupported: boolean;
+    /** 上一次扫描的时间；没有过就是「还没扫过」。 */
+    readonly scannedAt?: string;
+    /**
+     * 这份清单是不是完整的。
+     *
+     * false 只可能是两个文档里有一个读不出来（手改坏了）。此时 `browsers`/`runs` 是空的
+     * ——但它们**不代表本机没有浏览器**，所以必须有个字段把「读不出来」和「确实没有」分开，
+     * 否则面板会把一个坏文件显示成一台干净的机器。
+     */
+    readonly complete: boolean;
+    /** 读不出来时的原话，直接给使用者看。 */
+    readonly error?: string;
+    /** 平台不支持等说明，不是错误。 */
+    readonly note?: string;
+}
+/** Body of `POST /yon/api/browsers/scan`. */
+export interface ScanBrowsersPayload {
+    readonly browsers: readonly BrowserView[];
+    /** 这次新扫到的 id。 */
+    readonly added: readonly string[];
+    /** 这次路径有变化的 id。 */
+    readonly updated: readonly string[];
+    /** 登记过、这次没扫到的 id。保留着，只是标了 stale。 */
+    readonly stale: readonly string[];
+    readonly scannedAt: string;
+    /** 扫描没做成时的说明，例如平台不支持。 */
+    readonly note?: string;
+}
+/**
+ * Body of `PUT /yon/api/browsers/<id>`。
+ *
+ * 只能改这四项。`id`/`family`/`product` 不给改：它们决定启动参数与探测方式，改了
+ * 就等于把这一行偷偷换成了另一个东西，而它的 profile 目录还挂在那儿。
+ */
+export interface SaveBrowserInput {
+    readonly path?: string;
+    readonly profileDir?: string;
+    readonly port?: number;
+    readonly startUrl?: string;
+}
+/** Body of `POST /yon/api/browsers/<id>/launch`。三项缺省即用该行记住的值。 */
+export interface LaunchBrowserInput {
+    readonly port?: number;
+    readonly startUrl?: string;
+    readonly profileDir?: string;
+}
+/** 刚才那个实例是怎么结束的。`none` 表示没有动手。 */
+export type BrowserStopMethod = 'cdp' | 'taskkill' | 'none';
+/** Body of `POST /yon/api/browsers/runs/<runId>/stop`. */
+export interface StopBrowserResult {
+    /** 处理的哪一条。 */
+    readonly runId: string;
+    /**
+     * 这条记录从台账里清掉了没有。
+     *
+     * **和 `stopped` 不是一回事**：端口上已经是别人的东西时，本面板不动手，但也**不会**
+     * 把这条记录清掉——那条记录正是「本面板起过一个浏览器、现在不知道它去哪了」的唯一在案
+     * 记录。
+     */
+    readonly removed: boolean;
+    readonly stopped: boolean;
+    readonly method: BrowserStopMethod;
+    /**
+     * 没停成、或停得不寻常时的说明。
+     *
+     * 「无法确认端口上那个还是不是本面板起的」会走到这里——那时候**不动手**比猜着杀
+     * 一个进程重要得多。
+     */
+    readonly note?: string;
 }
 /**
  * Build the identity both halves address one connection by.

@@ -5,10 +5,12 @@
  * plugin owns the surface and its open state only; what a button does belongs
  * to the package that adds it.
  *
- * Six buttons ship here: project management, the skills this plugin
+ * Eight buttons ship here: project management, the skills this plugin
  * contributes, the operator's database connections, the knowledge base, the
- * digestion ledger, and the installation directories. None of them is a second
- * kind of seat — all six take the same one, which is the point of the seat
+ * digestion ledger, the installation directories, the iteration ledger, and the
+ * debug browser.
+ * None of them is a second
+ * kind of seat — all eight take the same one, which is the point of the seat
  * existing. Each declares its own
  * `label`, so the panel names its rows from the seat rather than from what the
  * entries happen to draw. The datasource entry is the one that also borrows an
@@ -26,15 +28,19 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { createYonPanelStore } from './panel-store.ts'
 import { createYonPanelItemRows } from './item-rows.ts'
+import { createBrowserApi } from './browser/api.ts'
 import { createDataSourceApi } from './datasource/api.ts'
 import { createDigestApi } from './digest/api.ts'
 import { createHomeApi } from './home/api.ts'
+import { createIterationApi } from './iteration/api.ts'
 import { createProjectApi } from './project/api.ts'
 import { createSkillApi } from './skill/api.ts'
 import { createWikiApi } from './wiki/api.ts'
+import { BrowserItem } from './BrowserItem.tsx'
 import { DataSourceItem } from './DataSourceItem.tsx'
 import { DigestItem } from './DigestItem.tsx'
 import { HomeItem } from './HomeItem.tsx'
+import { IterationItem } from './IterationItem.tsx'
 import { ProjectItem } from './ProjectItem.tsx'
 import { SkillItem } from './SkillItem.tsx'
 import { WikiItem } from './WikiItem.tsx'
@@ -43,7 +49,7 @@ import { en, zh, type YonPanelKey } from './locales.ts'
 
 export type { YonPanelItemOwnerProps, YonPanelRootFace, YonPanelSnapshot } from './slots.ts'
 export type { DataSourceItemFace, ProjectItemFace, SkillItemFace, WikiItemFace } from './slots.ts'
-export type { DigestItemFace, HomeItemFace } from './slots.ts'
+export type { BrowserItemFace, DigestItemFace, HomeItemFace, IterationItemFace } from './slots.ts'
 export type { YonPanelKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -83,6 +89,8 @@ export function apply(ctx: ClientContext): void {
   const wikiApi = createWikiApi()
   const digestApi = createDigestApi()
   const homeApi = createHomeApi()
+  const iterationApi = createIterationApi()
+  const browserApi = createBrowserApi()
 
   // A fresh list id adds this action beside the shipped footer actions, above
   // the settings row; the children table declares (and thereby authorizes) the
@@ -191,4 +199,34 @@ export function apply(ctx: ClientContext): void {
     label: () => t('item.home'),
     inject: () => ({ ...homeApi, pushOverlay: () => panel.pushOverlay() }),
   }, HomeItem))
+
+  // The iteration ledger, seventh — the second cell that reports on the model's own
+  // work, and the only one the model writes to. It is here rather than in the
+  // transcript because a shortcoming noticed mid-session and forgotten at its end
+  // is a shortcoming nobody can act on; the model appends, the operator reads and
+  // decides, and this surface is where the deciding happens.
+  ctx.slots.inject('yon.panel.item', () => ctx.slots.register({
+    name: 'yon.panel.item',
+    id: 'iteration',
+    order: 70,
+    locale: NS,
+    label: () => t('item.iteration'),
+    inject: () => ({ ...iterationApi, pushOverlay: () => panel.pushOverlay() }),
+  }, IterationItem))
+
+  // The debug browser, eighth, and the only cell in this panel that starts a process.
+  //
+  // It is here because the alternative is a shell command someone has to remember: the
+  // front-end automation line needs a browser on a debug port with its own user-data
+  // directory, and this surface is where that browser is picked, remembered and watched.
+  // Its stop button is the only thing in this panel that ends something on the machine,
+  // and it only ever ends an instance whose ledger row is on this screen.
+  ctx.slots.inject('yon.panel.item', () => ctx.slots.register({
+    name: 'yon.panel.item',
+    id: 'browser',
+    order: 80,
+    locale: NS,
+    label: () => t('item.browser'),
+    inject: () => ({ ...browserApi, pushOverlay: () => panel.pushOverlay() }),
+  }, BrowserItem))
 }

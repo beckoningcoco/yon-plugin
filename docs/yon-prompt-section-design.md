@@ -103,11 +103,12 @@ user-role 快照，落在 system 前缀之后；放进 `section()` 会让每一�
 
 ## 七、已经漂了两处（未修）
 
-静态串的断言和插件的真实状态之间**没有任何运行时连接**，所以它已经在说两件不成立的事：
+静态串的断言和插件的真实状态之间**没有任何运行时连接**，所以它已经在说两件不成立的事
+（第一条 2026-10-04 已修，第二条仍在）：
 
 | 文案 | 实际情况 | 数字的出处 |
 |---|---|---|
-| 「约 450 篇」 | `resources/knowledge/` 下是 **389 个 markdown 文档**（bip 320 + ncc 69）。450 是那个目录的**文件**总数：389 篇文档 + 61 个 json / java / js / py / sql / png / jar / bat。 | 这个口径在五处写着：`src/index.ts:182`、`src/host/knowledge-tools.ts:6,16,75,228`、`src/host/prompt.ts:103`。也就是说模型读得到的 `knowledge_search` 描述里也是错的——**不是本次引入的**。 |
+| 「约 450 篇」 —— **已修（2026-10-04）**：模型读得到的散文改成「400 余篇」/ `"over 400 documents"`，源码注释改成实测的 **415** | 450 是那个目录的**文件**总数（当时 389 md + 61 别的），既不是文档数，**到修的那天也已经对不上任何口径**：目录现在是 **427 个文件 / 415 个文档**（415 = `knowledge_search` 走目录实际收的那套扩展名：388 md + 9 js + 8 java + 5 py + 4 sql + 1 json，也正是它运行时打印的 `已扫描 N 个文档`）。 | 旧口径在六处：`src/index.ts:241`、`src/host/knowledge-tools.ts:6,16,75,228`、`src/host/prompt.ts:104`——模型读得到的 `knowledge_search` 描述里也是错的，**不是本次引入的**。修法上刻意不一：散文用下界「400 余」（写死精确数会随下一批文档入包悄悄变假，这正是 450 活到今天的方式），精确的 415 只留在源码注释里，下界由 `tests/knowledge-corpus.spec.ts` 的「is at least the size the tool text claims」钉住。 |
 | `wiki_lookup` "实体 URI、物理表名、显示名都能传" | 源码里是**五种**：`'uri' \| 'table' \| 'page' \| 'name' \| 'contains'`（`src/host/wiki-service.ts:58`）。少说的 `page` 是页面名，`contains` 是子串兜底。 | 第二种正是"少说了已有的能力"，模型因此不知道页面名也能直接查。 |
 
 `tests/prompt.spec.ts` 只保证**每个工具族都被提到**，上面两条它都不查。这不是漏写测试——这是

@@ -42,7 +42,7 @@ async function bench() {
   const dir = await mkdtemp(join(tmpdir(), 'yon-home-service-'))
   temporary.push(dir)
   const skillsRoot = join(dir, 'skills')
-  await mkdir(join(skillsRoot, 'yon-ncc-dev'), { recursive: true })
+  await mkdir(join(skillsRoot, 'ncc-asset-hawk'), { recursive: true })
   const store = createHomeStore(join(dir, 'home_config.json'))
   return { service: createYonHomesService(store, skillsRoot).service, store, skillsRoot, dir }
 }

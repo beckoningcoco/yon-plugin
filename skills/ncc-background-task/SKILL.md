@@ -1,6 +1,6 @@
 ---
 name: ncc-background-task
-description: NCC（用友NC Cloud）后台任务开发技能。当用户需要编写、生成、审查 NCC 后台任务插件代码时使用此技能。 触发场景包括但不限于：写一个后台任务、定时任务、计划任务、定时执行、后台任务插件、 IBackgroundWorkPlugin、executeTask、PreAlertContext、PreAlertObject、阈值配置、 后台任务注册、后台任务部署、NCC客开、NCC二开、用友NC Cloud后台任务开发、NCC定制开发。
+description: NCC（用友 NC Cloud）的后台任务 / 调度任务开发。要写或审查「定时、计划执行的插件」时用本技能：IBackgroundWorkPlugin、executeTask、PreAlertContext / PreAlertObject、后台任务类型注册、阈值配置、触发与消息接收配置、返回类型 RETURNFORMATMSG、部署与监控。写业务插件 / 事件监听器请用 ncc-plugin-dev；写资产包接口、配置集成规则 pub_interule、接第三方 OpenAPI 请用 ncc-asset-hawk；要查 VO 字段、事件码、单据类型、编码规范或 NCC 数据库查询规则，用 ncc-dev（NCC 总入口）。旗舰版（BIP / YonBIP）是另一条产品线，用 yonyou-bip-dev，表结构、实体名与类名互不相通。
 ---
 
 # NCC 后台任务开发指南
@@ -14,7 +14,7 @@ description: NCC（用友NC Cloud）后台任务开发技能。当用户需要�
 
 本技能服务于 **用友 NCC（NC Cloud）**（非旗舰版 BIP）。
 
-> **版本区分**：旗舰版（BIP）→ `yon-bip-dev` | NCC → `yon-ncc-dev`
+> **版本区分**：旗舰版（BIP）→ `yonyou-bip-dev` | NCC → `ncc-dev`（入口）
 >
 > 收到问题时务必先判断版本。记录问题时注意路由到对应的技能目录。
 

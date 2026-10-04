@@ -10,8 +10,167 @@ import type { YonBundledSkill } from './skill-catalog.ts'
 /** Every skill this plugin ships, in name order. */
 export const YON_BUNDLED_SKILLS: readonly YonBundledSkill[] = [
   {
+    name: 'ncc-asset-hawk',
+    description: 'NCC（NC Cloud）的资产包接口专用技能。要写或排查资产包接口（开发指南、实战 9 步流程）、配置集成规则 pub_interule 与对照表 pub_intecontrast、接第三方 OpenAPI（签名机制、路由注册、REST API Resource 继承 AbstractRestResource）、用华科客开模式时用本技能；NCC 源码走查（Home 目录结构、GBK 源码编辑）与历史问题处理记录也在这里。NCC 的业务插件、事件监听器、后台任务、VO 参考、事件码、编码规范属于 ncc-dev（NCC 总入口）及其子技能，不在本技能；不确定 NCC 问题该走哪条路时先加载 ncc-dev。旗舰版（BIP / YonBIP）是另一条产品线，用 yonyou-bip-dev，表结构、实体名与类名互不相通。',
+    content: `# NCC（NC Cloud）客开技能
+
+> **本技能引用的文档**都在插件的参考库里，路径形如 \`ncc/references/xxx.md\`。
+> 用 \`knowledge_read\` 传该路径读全文，或先用 \`knowledge_search\` 按关键词搜索；
+> **不要**按相对路径去猜文件位置——内联的正文里没有路径可解析。
+
+
+## 版本定位
+
+本技能服务于 **用友 NCC（NC Cloud）**（非旗舰版 BIP）。
+
+> **🔴 强制规则：版本区分**
+>
+> 用友有两个主要产品线，**表结构、实体名、数据字典完全不同**，绝不能混用：
+> - **NCC（NC Cloud）** ← 本技能服务的产品线；NCC 的总入口是 \`ncc-dev\` 技能，本技能只负责它里面的资产包接口与集成规则那一块
+> - **旗舰版（BIP / YonBIP）** → 对应技能 \`yonyou-bip-dev\`（与本技能同级目录）
+>
+> **收到问题时，第一步必须是判断版本**：
+> 1. 用户问题中包含 "NCC" → NCC 侧由 \`ncc-dev\` 总入口分发；资产包接口 / 集成规则 / OpenAPI 签名这一路用本技能
+> 2. 用户问题中包含 "旗舰版" / "BIP" → 查 \`../yonyou-bip-dev/\`
+> 3. 用户问题中版本不明确 → 主动询问是 NCC 还是旗舰版
+>
+> 违反此规则的后果：给用户提供错误的表名/字段名/VO类名，导致代码编译失败或数据错误。
+
+---
+
+## 兄弟技能
+
+**NCC 的总入口是 \`ncc-dev\`**，不是本技能：本技能只覆盖资产包接口那一路，与 \`ncc-dev\` 是分工关系而非从属关系。
+
+| 技能 | 用途 |
+|------|------|
+| \`ncc-dev\` | **NCC 总入口**：场景路由，以及 VO参考、事件码、单据类型、编码规范、通用 API 这些共享素材 |
+| \`ncc-plugin-dev\` | NCC 业务插件 / 事件监听器开发（IBusinessListener、doAction） |
+| \`ncc-background-task\` | NCC 后台任务 / 调度任务开发 |
+| 本技能 \`ncc-asset-hawk\` | 资产包接口、集成规则 pub_interule、三方 OpenAPI、源码走查与历史问题记录 |
+
+---
+
+## 参考文档
+
+### 资产包接口开发（最重要）
+
+| 文档 | 路径 | 内容 |
+|------|------|------|
+| 资产包接口开发指南 | \`ncc/references/NCC资产包接口开发指南.md\` | 框架类、集成规则、代码模板、报销单流程、常见问题 |
+| 资产包接口实战流程 | \`ncc/references/NCC资产包接口实战开发流程.md\` | 完整 9 步开发流程（需求→代码→SQL脚本→API注册→测试） |
+| **🆕 集成规则字段速查卡** | \`ncc/references/集成规则字段速查卡.md\` | **一页纸速查**：14 字段含义、VFIELDTYPE SQL模板、配置策略表（含按名称翻译）、**易漏两条**、常见 docId |
+| 集成规则配置参考示例 | \`ncc/references/集成规则配置参考示例.json\` | 差旅费报销单完整 JSON 配置模板（AI 用，结构化） |
+| **🆕 集成规则配置模板（可读版）** | \`ncc/references/集成规则配置模板-可读版.md\` | **人类审核用**：Markdown表格格式，规则主表+表头+表体+陷阱一览 |
+| OpenAPI 开发指南 | \`ncc-dev/references/common/openapi-dev.md\` | 标准 OpenAPI 注册流程（.rest 文件 + opm_apimanager） |
+| FIP 外部接口单模式 | \`ncc-dev/references/common/openapi-fip-txbill-pattern.md\` | 资产包专用模式（\`AbstractRestResource\` + \`IFipMessageService.sendMessage()\`） |
+| 集成规则配置方法 | \`ncc/references/问题处理/NCC资产包集成规则配置方法.md\` | bmf 前缀查询流程、常见配置问题 |
+| 集成规则字段截断bug | \`ncc/references/问题处理/集成规则参照类型保存报错-字符串截断.md\` | 历史问题记录（已合并到开发指南 §11.5） |
+| **🆕 补丁后前台看不到菜单** | \`ncc/references/问题处理/打上资产包补丁后前台看不到应用菜单.md\` | 资产包补丁打上后看不到集成规则/集成日志等节点：权限逐级授权 + 内置菜单 vs 自定义菜单主键 |
+| 缓存查询方法模板 | \`ncc/references/NCC缓存查询方法模板.md\` | 4 种编码→ID 查询方法 + IBDMetaDataIDConst 速查表 |
+| **🆕 审核代理 Prompt 模板** | \`ncc/references/审核代理-prompt-模板.md\` | 步骤4/5 质量审核代理的验证清单和输出格式 |
+| **🆕 常见参照 VFIELDTYPE 速查** | \`ncc/references/常见参照VFIELDTYPE速查.md\` | **VFIELDTYPE 权威源**：40+ 条目按分类组织，优先查此文档再查库 |
+| **🆕 OpenAPI 签名机制详解** | \`ncc/references/NCC-OpenAPI-签名机制详解.md\` | Token 获取、OAEP 加密、加盐签名、API 调用、常见错误速查、完整 Python 代码 |
+| **🆕 三方应用配置读取** | \`ncc/references/NCC三方应用配置读取.md\` | **读外系统配置的权威源**：\`pub_thirdsys\`/\`pub_thirdparam\` 表结构、\`IThirdSysVOService\` 用法、可粘贴工具类、8 条陷阱、实测样本 |
+| **🆕 GBK 文件编辑** | \`ncc/references/GBK文件编辑.md\` | **改 NCC 源码前必读**：源码树是 GBK 而工具链是 UTF-8，直接编辑会静默损坏；三种正确姿势 + \`ncc/tools/gbk_edit.py\` 用法与 5 条陷阱 |
+
+#### 🧭 读者导航：我想做 X → 看 Y 文档
+
+| 我想... | 看这份文档 |
+|---------|-----------|
+| 快速理解资产包接口是什么 | \`ncc/references/NCC资产包接口开发指南.md\` §1-§3 |
+| 从头做一个新接口（按步骤走） | \`ncc/references/NCC资产包接口实战开发流程.md\`（跟随 9 步） |
+| 写集成规则 SQL（pub_interuleitem） | \`ncc/references/NCC资产包接口实战开发流程.md\` §4（先写 JSON）→ §5（生成 SQL）|
+| 查某个字段的 VFIELDTYPE 怎么取 | \`ncc/references/NCC资产包接口实战开发流程.md\` §5.3（标准实体/自定义档案/业务VO 三种 SQL 模板） |
+| 查集成规则子表字段含义 | \`ncc/references/NCC资产包接口开发指南.md\` §4.3（14 个字段逐个说明） |
+| 查 bmf 文件中的表体字段前缀 | \`ncc/references/问题处理/NCC资产包集成规则配置方法.md\`（4 步查询流程 + grep 命令） |
+| 补丁打上了但前台看不到菜单节点 | \`ncc/references/问题处理/打上资产包补丁后前台看不到应用菜单.md\`（集团管理员 → 超级管理员逐级查） |
+| 写 REST Resource 代码 | \`ncc/references/NCC资产包接口开发指南.md\` §6.1（代码骨架） |
+| 注册 OpenAPI 路由/授权 | \`ncc/references/NCC资产包接口实战开发流程.md\` §7（opm_apimanager + opm_relateapi） |
+| 在代码中做编码→ID 翻译 | \`ncc/references/NCC缓存查询方法模板.md\`（4 种方法按场景选用） |
+| 读三方应用（外系统）配置 / 取外系统地址 | \`ncc/references/NCC三方应用配置读取.md\`（表结构 + 工具类 + 陷阱） |
+| 排查 transferBill 失败 | \`ncc/references/NCC资产包接口开发指南.md\` §11 + \`ncc/references/NCC资产包接口实战开发流程.md\` §9.3 |
+| 配置集成规则报错（vfieldtype 截断） | \`ncc/references/NCC资产包接口开发指南.md\` §11.5（Oracle / 达梦 / PostgreSQL 三版 SQL） |
+| 外系统传了字段但 NCC 单据上是空的 | \`ncc/references/NCC资产包接口开发指南.md\` §11.6（transfer 只映射已配置项；验重键必须单独配） |
+| 报文里表体数组 key 该叫什么 | \`ncc/references/NCC资产包接口开发指南.md\` §11.6 末段（前缀≠数组 key） |
+| **要读/改 NCC 源码文件（中文乱码、搜索搜不到）** | \`ncc/references/GBK文件编辑.md\`（\`ncc/tools/gbk_edit.py --read / --grep / --edits\`） |
+
+### 通用参考资料
+
+| 文档 | 路径 | 内容 |
+|------|------|------|
+| 通用 API 手册 | \`ncc-dev/references/common/common-api.md\` | 自定义档案、持久化查询、批量操作、服务定位 |
+| 编码规范 | \`ncc-dev/references/common/coding-standard.md\` | 命名、注释、异常处理规范 |
+| 事件码表 | \`ncc-dev/references/common/event-codes.md\` | NCC 业务事件码速查 |
+| 单据类型代码 | \`ncc-dev/references/common/bill-types.md\` | NCC 单据类型代码速查 |
+| 模块VO参考 | \`ncc-dev/references/common/\` | 各模块 VO 与表名对照（so/pu/ic/arap/gl/bd等） |
+
+---
+
+## 开发流程速查
+
+### 资产包接口开发（9步 + 2个审核门）
+
+采用**三步角色工作流**：
+
+\`\`\`
+开发者（我）      →    审核代理（QA）    →    用户（你）
+完成任务            独立验证 + 报告        最终拍板
+\`\`\`
+
+\`\`\`
+1. 确认需求（单据类型、接口文档、端点列表）
+2. 准备资产包模块
+3. 注册三方应用（如需要）
+   ───────────────────────────────────────────
+4. 生成集成规则配置文件（JSON）
+   🚪 审核门 ①：审核代理独立验证 VFIELDTYPE/scope/prefix/字段覆盖
+   → 审核报告 + JSON → 用户终审
+   ───────────────────────────────────────────
+5. 根据 JSON 生成 SQL 脚本（集成规则 + 路由注册 + 授权 + 回滚）
+   🚪 审核门 ②：审核代理验证表列存在/主键唯一/SQL方言/回滚完整性
+   → 审核报告 + SQL → 用户终审
+   ───────────────────────────────────────────
+6. 编写 REST Resource 类（继承 BaseResource → AbstractRestResource）
+7. 补充路由注册 SQL（如步骤5未包含）
+8. 配置对照表（如需要值映射）
+9. 测试与调试
+\`\`\`
+
+> **审核代理说明**：
+> - 审核代理只在**高风险步骤 4 和 5** 启用（这两个步骤依赖数据库查询，错误率高）
+> - 审核代理 Prompt 模板见 \`ncc/references/审核代理-prompt-模板.md\`
+> - 审核代理具有独立数据库访问权限，会重新执行开发者的 SQL 进行交叉验证
+> - 审核报告直接提交给用户，⚠️ 警告和 ❌ 错误由用户最终判断
+
+> **强制规则**：任何时候不得直接在数据库执行 INSERT/UPDATE/DELETE/CREATE/ALTER 等变更语句。
+> 必须在项目根目录或桌面生成统一 SQL 脚本文件，由用户执行。
+> **脚本内必须包含对应的还原/回滚脚本**，每条变更语句都要有对应的逆向操作：
+> - INSERT → DELETE（按主键精确删除）
+> - UPDATE → 逆向 UPDATE（恢复原值）
+> - DELETE → INSERT（恢复被删数据）
+> - CREATE TABLE/VIEW → DROP TABLE/VIEW
+> - ALTER TABLE ADD → ALTER TABLE DROP
+> 还原脚本集中放在文件末尾，按依赖顺序排列（先删子表/外键关联，再删主表）。
+
+## 编码/翻译查询方法
+
+**当需要编写档案翻译、编码→ID 查询等代码时，必须使用 [NCC 缓存查询方法模板](references/NCC缓存查询方法模板.md)**，4 种方法按场景选用。
+**旗舰版（BIP/YonBIP）禁止使用此模板。**
+
+| 方法 | 场景 | 代码量 |
+|------|------|--------|
+| GeneralAccessorFactory | 单条编码→ID | 1 行 |
+| CacheVOQuery | 单条编码+组织→ID | ~20 行 |
+| Caffeine + 批量 | 高频批量查询 | ~40 行 |
+| Guava LoadingCache | 高频单条查询 | ~15 行 |
+
+IBDMetaDataIDConst 元数据 ID 速查表见模板文档。
+`,
+  },
+  {
     name: 'ncc-background-task',
-    description: 'NCC（用友NC Cloud）后台任务开发技能。当用户需要编写、生成、审查 NCC 后台任务插件代码时使用此技能。 触发场景包括但不限于：写一个后台任务、定时任务、计划任务、定时执行、后台任务插件、 IBackgroundWorkPlugin、executeTask、PreAlertContext、PreAlertObject、阈值配置、 后台任务注册、后台任务部署、NCC客开、NCC二开、用友NC Cloud后台任务开发、NCC定制开发。',
+    description: 'NCC（用友 NC Cloud）的后台任务 / 调度任务开发。要写或审查「定时、计划执行的插件」时用本技能：IBackgroundWorkPlugin、executeTask、PreAlertContext / PreAlertObject、后台任务类型注册、阈值配置、触发与消息接收配置、返回类型 RETURNFORMATMSG、部署与监控。写业务插件 / 事件监听器请用 ncc-plugin-dev；写资产包接口、配置集成规则 pub_interule、接第三方 OpenAPI 请用 ncc-asset-hawk；要查 VO 字段、事件码、单据类型、编码规范或 NCC 数据库查询规则，用 ncc-dev（NCC 总入口）。旗舰版（BIP / YonBIP）是另一条产品线，用 yonyou-bip-dev，表结构、实体名与类名互不相通。',
     content: `# NCC 后台任务开发指南
 
 > **本技能引用的文档**都在插件的参考库里，路径形如 \`ncc/ncc-background-task/references/xxx.md\`。
@@ -23,7 +182,7 @@ export const YON_BUNDLED_SKILLS: readonly YonBundledSkill[] = [
 
 本技能服务于 **用友 NCC（NC Cloud）**（非旗舰版 BIP）。
 
-> **版本区分**：旗舰版（BIP）→ \`yon-bip-dev\` | NCC → \`yon-ncc-dev\`
+> **版本区分**：旗舰版（BIP）→ \`yonyou-bip-dev\` | NCC → \`ncc-dev\`（入口）
 >
 > 收到问题时务必先判断版本。记录问题时注意路由到对应的技能目录。
 
@@ -442,7 +601,7 @@ import nc.vo.bd.meta.BatchOperateVO;
   },
   {
     name: 'ncc-dev',
-    description: 'NCC（用友NC Cloud）定制开发总技能，涵盖业务插件、后台任务、参照、业务扩展等多种开发场景。 触发场景包括但不限于：NCC客开、NCC二开、用友NC Cloud插件开发、NCC定制开发、 写一个业务插件、写一个事件监听、NCC事件监听、IBusinessListener、doAction、 后台任务、计划任务、定时任务、NCC后台任务开发、 参照、NCC参照开发、自定义参照、 业务扩展、扩展点、NCC扩展开发、 单据转换 runChangeDataAry、saveCommit 保存提交、 编码规则、单据编号、编码规则开发、 自定义档案、DefdocVO、档案同步、 采购发票/销售订单/库存单据的业务插件开发、 审批后/新增后/修改后的事件监听。',
+    description: 'NCC（用友 NC Cloud）开发的总入口。问题里出现 NCC、NC Cloud、NCC2111、NCC2312、NCC2207 时先用本技能，由本技能的场景路由分发。自带跨场景复用的共享素材：各模块 VO 参考（应收应付、总账、库存、采购、销售、基础档案等）、通用 API、事件码、单据类型、编码规范、元数据与 bmf 对应、单据主子表、前端开发，以及 NCC 数据库查询与 SQL 自验证；参照 / 自定义参照 / F7、业务扩展 / 扩展点、编码规则 / 单据编号这几类场景也在本技能。写业务插件 / 事件监听器（IBusinessListener、doAction）请用 ncc-plugin-dev；写后台任务 / 调度任务请用 ncc-background-task；写资产包接口、配置集成规则 pub_interule、接第三方 OpenAPI 请用 ncc-asset-hawk。旗舰版（BIP / YonBIP）是另一条产品线，用 yonyou-bip-dev，表结构、实体名与类名互不相通。',
     content: `# NCC 定制开发总指南
 
 > **本技能引用的文档**都在插件的参考库里，路径形如 \`ncc/ncc-dev/references/xxx.md\`。
@@ -473,15 +632,26 @@ import nc.vo.bd.meta.BatchOperateVO;
 > **通用素材（事件码、单据类型、编码规范、通用 API）** 所有场景共享，存放在 \`ncc/ncc-dev/references/common/\` 下。
 > **场景素材（各开发模式的示例代码和模式说明）** 存放在 \`ncc/ncc-dev/references/scenarios/\` 下。
 
+### 子技能
+
+| 子技能 | 用途 | 什么时候去它那里 |
+|--------|------|------------------|
+| \`ncc-plugin-dev\` | 业务插件 / 事件监听器（IBusinessListener、doAction） | 要写的是「挂到单据事件上的类」 |
+| \`ncc-background-task\` | 后台任务 / 调度任务 | 要写的是「定时/计划执行的插件」 |
+| \`ncc-asset-hawk\` | 资产包接口、集成规则 pub_interule、三方 OpenAPI 签名、NCC 源码走查与问题记录 | 要对接第三方系统 / 配集成规则 / 查 NCC 源码 |
+
+> 这三条都要回过头来读本技能的 \`ncc/ncc-dev/references/common/\`（VO 参考、事件码、单据类型、编码规范、通用 API），所以走它们时**本技能也一起加载**。
+
 ## 场景路由
 
 根据用户描述自动判断开发场景，读取对应的参考文件：
 
 | 场景 | 触发关键词 | 参考文件 |
 |------|-----------|----------|
-| **业务插件** | 事件监听、审批后/新增后/修改后、IBusinessListener、doAction、单据转换、自动生成、回写字段、审批后协同、自动生单 | \`ncc/ncc-dev/references/scenarios/plugin-dev.md\` + \`ncc/ncc-dev/references/scenarios/ncc-coding-patterns.md\`（未随包提供） |
+| **业务插件** | 事件监听、审批后/新增后/修改后、IBusinessListener、doAction、单据转换、自动生成、回写字段、审批后协同、自动生单 | \`ncc-plugin-dev\` 子技能（其素材是 \`ncc/ncc-dev/references/scenarios/plugin-dev.md\`）+ \`ncc/ncc-dev/references/scenarios/ncc-coding-patterns.md\`（未随包提供） |
 | **审批后自动协同** | 协同、购销协同、自动生单、IPfExchangeService、ISCMPubSaveCommitService、CloudPFlowContext、用户模拟、跨公司 | \`ncc/ncc-dev/references/scenarios/ncc-coding-patterns.md\`（未随包提供） §2 + \`ncc/ncc-dev/references/scenarios/project-ztxx.md\`（未随包提供） §1 |
 | **后台任务** | 后台任务、计划任务、定时任务、定时执行、调度、IBackgroundWorkPlugin、executeTask | \`ncc-background-task\` 子技能 |
+| **资产包接口 / 集成规则** | 资产包接口、第三方系统对接、集成规则、pub_interule、pub_intecontrast、OpenAPI 签名、REST Resource、AbstractRestResource、华科客开 | \`ncc-asset-hawk\` 子技能 |
 | **参照** | 参照、下拉参照、自定义参照、参照过滤、F7 | \`ncc/ncc-dev/references/scenarios/ref-model.md\`（待建） |
 | **业务扩展** | 业务扩展、扩展点、扩展注册、处理器 | \`ncc/ncc-dev/references/scenarios/biz-extension.md\`（待建） |
 | **编码规则** | 编码规则、单据编号、自动编号、编码生成 | \`ncc/ncc-dev/references/scenarios/coding-rule.md\`（待建） |
@@ -841,7 +1011,7 @@ import nc.vo.pp.util.StringUtils;
   },
   {
     name: 'ncc-plugin-dev',
-    description: 'NCC（用友NC Cloud）业务插件（事件监听器）开发技能。当用户需要编写、生成、审查 NCC 业务插件代码时使用此技能。 触发场景包括但不限于：写一个审批后/新增后/修改后的事件监听、销售订单审批后自动生成采购入库单、 单据审批后自动回写字段、写一个业务插件、NCC事件监听、IBusinessListener、doAction、 单据转换 runChangeDataAry、saveCommit 保存提交、采购发票/销售订单/库存单据的业务插件开发、 NCC客开、NCC二开、用友NC Cloud插件开发、NCC定制开发。',
+    description: 'NCC（用友 NC Cloud）的业务插件 / 事件监听器开发。要写或审查「挂到单据事件上的类」时用本技能：审批后、新增后、修改后、保存提交（IBusinessListener、doAction）、单据转换 runChangeDataAry、saveCommit、审批后自动生单或回写字段、购销协同。写后台任务 / 调度任务请用 ncc-background-task；写资产包接口、配置集成规则 pub_interule、接第三方 OpenAPI 请用 ncc-asset-hawk；要查 VO 字段、事件码、单据类型、编码规范或 NCC 数据库查询规则，用 ncc-dev（NCC 总入口）。旗舰版（BIP / YonBIP）是另一条产品线，用 yonyou-bip-dev，表结构、实体名与类名互不相通。',
     content: `# NCC 业务插件开发指南
 
 > **本技能引用的文档**都在插件的参考库里，路径形如 \`ncc/ncc-plugin-dev/references/xxx.md\`。
@@ -853,7 +1023,7 @@ import nc.vo.pp.util.StringUtils;
 
 本技能服务于 **用友 NCC（NC Cloud）**（非旗舰版 BIP）。
 
-> **版本区分**：旗舰版（BIP）→ \`yon-bip-dev\` | NCC → \`yon-ncc-dev\`
+> **版本区分**：旗舰版（BIP）→ \`yonyou-bip-dev\` | NCC → \`ncc-dev\`（入口）
 >
 > 收到问题时务必先判断版本。记录问题时注意路由到对应的技能目录。
 
@@ -1127,7 +1297,7 @@ public void doAction(IBusinessEvent event) throws BusinessException {
   },
   {
     name: 'yon-db-query',
-    description: '查用友客开环境的数据。先用 datasource_list 看插件里登记了哪些库，再用 datasource_query 执行 SQL；连接信息、驱动与密码都由插件宿主处理，不需要你去拼连接串或找脚本。',
+    description: '查用友客开环境的数据。使用者要求查某个项目/环境的数据、验证一条 SQL、核对表结构或数据是否符合预期时，用本技能：先用 datasource_list 看插件里登记了哪些库，再用 datasource_query 执行 SQL；连接信息、驱动与密码都由插件宿主处理，不需要你去拼连接串或找脚本。',
     whenToUse: '使用者要求查某个项目/环境的数据、验证一条 SQL、核对表结构或数据是否符合预期时。',
     content: `# 查用友环境的数据
 
@@ -1176,7 +1346,7 @@ public void doAction(IBusinessEvent event) throws BusinessException {
   },
   {
     name: 'yon-devkit',
-    description: '用友客开项目的配置入口。先用 Yon 面板登记的项目信息读取环境地址、账号、部署路径、版本号，再去查代码或连环境，避免重复询问使用者。',
+    description: '用友客开项目的配置入口。使用者提到某个用友客开项目（NCC/BIP）的环境、地址、账号、部署路径、版本号，或说「接着上次那个项目继续」时，用本技能：先用 Yon 面板登记的项目信息读取这些内容，再去查代码或连环境，避免重复询问使用者。',
     whenToUse: '使用者提到某个用友客开项目（NCC/BIP）的环境、地址、账号、部署路径、版本号，或说"接着上次那个项目继续"时。',
     content: `# Yon 用友客开工作台
 
@@ -1215,12 +1385,12 @@ public void doAction(IBusinessEvent event) throws BusinessException {
 ## 边界
 
 - 本技能只负责**读取已登记的配置**，不包含任何数据库或服务器凭据。
-- 具体的产品开发规范不在这里：NCC 客开查 \`yon-ncc-dev\`，BIP 旗舰版查 \`yonyou-bip-dev\`，两者与本技能是"规范"与"项目配置"的分工，不要互相替代。
+- 具体的产品开发规范不在这里：NCC 客开查 \`ncc-dev\`（NCC 总入口），BIP 旗舰版查 \`yonyou-bip-dev\`，两者与本技能是"规范"与"项目配置"的分工，不要互相替代。
 `,
   },
   {
     name: 'yon-digest',
-    description: '把源素材（PDF 抽取文本、文档、网页转成的文本）消化成知识库页面。四步流程：先跑重叠门禁判断值不值得做，再用 digest_plan 摸底拿分段范围，按页面规范写主题页，最后用 digest_audit 验收。当用户要求"消化这份文档/PDF/资料进知识库"、"把这份资料整理成知识页"、"把红皮书/手册入库"时使用。注意：只是"读一下这份 PDF 说说写了什么"不需要这个技能。',
+    description: '把源素材（PDF 抽取文本、文档、网页转成的文本）消化成知识库页面。四步流程：先跑重叠门禁判断值不值得做，再用 digest_plan 摸底拿分段范围，按页面规范写主题页，最后用 digest_audit 验收。当用户要求"消化这份文档/PDF/资料进知识库"、"把这份资料整理成知识页"、"把红皮书/手册入库"时使用；只问"这份素材值不值得入库"也用它，那就只跑第一步的重叠门禁。注意：只是"读一下这份 PDF 说说写了什么"不需要这个技能。',
     whenToUse: '当需要把一份源素材变成知识库页面时——用户说"消化"、"入库"、"整理进知识库"，或要求把一份长文档变成可查的页面。也适用于判断一份素材值不值得消化。',
     content: `# 消化一份素材
 
@@ -1523,164 +1693,8 @@ topics/xxx-第2章.md 28.9 KB
 `,
   },
   {
-    name: 'yon-ncc-dev',
-    description: 'NCC（用友 NC Cloud）客开技能。当用户提到 NCC、NC Cloud、NCC2111、NCC2312、NCC2207、 或 NCC 特有的开发模式（资产包接口开发、业务插件/事件监听器 IBusinessListener、 单据转换 IPfExchangeService、集成规则 pub_interule、对照表 pub_intecontrast、 REST API Resource 继承 AbstractRestResource、华科客开模式、OpenAPI 路由注册等）时， 必须使用此技能。也包括 NCC 数据库问题、NCC 服务器问题等。',
-    content: `# NCC（NC Cloud）客开技能
-
-> **本技能引用的文档**都在插件的参考库里，路径形如 \`ncc/references/xxx.md\`。
-> 用 \`knowledge_read\` 传该路径读全文，或先用 \`knowledge_search\` 按关键词搜索；
-> **不要**按相对路径去猜文件位置——内联的正文里没有路径可解析。
-
-
-## 版本定位
-
-本技能服务于 **用友 NCC（NC Cloud）**（非旗舰版 BIP）。
-
-> **🔴 强制规则：版本区分**
->
-> 用友有两个主要产品线，**表结构、实体名、数据字典完全不同**，绝不能混用：
-> - **NCC（NC Cloud）** ← 本技能 \`yon-ncc-dev\`
-> - **旗舰版（BIP / YonBIP）** → 对应技能 \`yonyou-bip-dev\`（与本技能同级目录）
->
-> **收到问题时，第一步必须是判断版本**：
-> 1. 用户问题中包含 "NCC" → 用本技能
-> 2. 用户问题中包含 "旗舰版" / "BIP" → 查 \`../yonyou-bip-dev/\`
-> 3. 用户问题中版本不明确 → 主动询问是 NCC 还是旗舰版
->
-> 违反此规则的后果：给用户提供错误的表名/字段名/VO类名，导致代码编译失败或数据错误。
-
----
-
-## 子技能
-
-| 子技能 | 目录 | 用途 |
-|--------|------|------|
-| \`ncc-dev\` | \`ncc-dev/\` | NCC 通用开发（VO参考、事件码、单据类型、编码规范、通用API） |
-| \`ncc-plugin-dev\` | \`ncc-plugin-dev/\` | NCC 业务插件/事件监听器开发（IBusinessListener、doAction） |
-| \`ncc-background-task\` | \`ncc-background-task/\` | NCC 后台任务/调度任务开发 |
-
----
-
-## 参考文档
-
-### 资产包接口开发（最重要）
-
-| 文档 | 路径 | 内容 |
-|------|------|------|
-| 资产包接口开发指南 | \`ncc/references/NCC资产包接口开发指南.md\` | 框架类、集成规则、代码模板、报销单流程、常见问题 |
-| 资产包接口实战流程 | \`ncc/references/NCC资产包接口实战开发流程.md\` | 完整 9 步开发流程（需求→代码→SQL脚本→API注册→测试） |
-| **🆕 集成规则字段速查卡** | \`ncc/references/集成规则字段速查卡.md\` | **一页纸速查**：14 字段含义、VFIELDTYPE SQL模板、配置策略表（含按名称翻译）、**易漏两条**、常见 docId |
-| 集成规则配置参考示例 | \`ncc/references/集成规则配置参考示例.json\` | 差旅费报销单完整 JSON 配置模板（AI 用，结构化） |
-| **🆕 集成规则配置模板（可读版）** | \`ncc/references/集成规则配置模板-可读版.md\` | **人类审核用**：Markdown表格格式，规则主表+表头+表体+陷阱一览 |
-| OpenAPI 开发指南 | \`ncc-dev/references/common/openapi-dev.md\` | 标准 OpenAPI 注册流程（.rest 文件 + opm_apimanager） |
-| FIP 外部接口单模式 | \`ncc-dev/references/common/openapi-fip-txbill-pattern.md\` | 资产包专用模式（\`AbstractRestResource\` + \`IFipMessageService.sendMessage()\`） |
-| 集成规则配置方法 | \`ncc/references/问题处理/NCC资产包集成规则配置方法.md\` | bmf 前缀查询流程、常见配置问题 |
-| 集成规则字段截断bug | \`ncc/references/问题处理/集成规则参照类型保存报错-字符串截断.md\` | 历史问题记录（已合并到开发指南 §11.5） |
-| **🆕 补丁后前台看不到菜单** | \`ncc/references/问题处理/打上资产包补丁后前台看不到应用菜单.md\` | 资产包补丁打上后看不到集成规则/集成日志等节点：权限逐级授权 + 内置菜单 vs 自定义菜单主键 |
-| 缓存查询方法模板 | \`ncc/references/NCC缓存查询方法模板.md\` | 4 种编码→ID 查询方法 + IBDMetaDataIDConst 速查表 |
-| **🆕 审核代理 Prompt 模板** | \`ncc/references/审核代理-prompt-模板.md\` | 步骤4/5 质量审核代理的验证清单和输出格式 |
-| **🆕 常见参照 VFIELDTYPE 速查** | \`ncc/references/常见参照VFIELDTYPE速查.md\` | **VFIELDTYPE 权威源**：40+ 条目按分类组织，优先查此文档再查库 |
-| **🆕 OpenAPI 签名机制详解** | \`ncc/references/NCC-OpenAPI-签名机制详解.md\` | Token 获取、OAEP 加密、加盐签名、API 调用、常见错误速查、完整 Python 代码 |
-| **🆕 三方应用配置读取** | \`ncc/references/NCC三方应用配置读取.md\` | **读外系统配置的权威源**：\`pub_thirdsys\`/\`pub_thirdparam\` 表结构、\`IThirdSysVOService\` 用法、可粘贴工具类、8 条陷阱、实测样本 |
-| **🆕 GBK 文件编辑** | \`ncc/references/GBK文件编辑.md\` | **改 NCC 源码前必读**：源码树是 GBK 而工具链是 UTF-8，直接编辑会静默损坏；三种正确姿势 + \`ncc/tools/gbk_edit.py\` 用法与 5 条陷阱 |
-
-#### 🧭 读者导航：我想做 X → 看 Y 文档
-
-| 我想... | 看这份文档 |
-|---------|-----------|
-| 快速理解资产包接口是什么 | [开发指南](./references/NCC资产包接口开发指南.md) §1-§3 |
-| 从头做一个新接口（按步骤走） | [实战流程](./references/NCC资产包接口实战开发流程.md)（跟随 9 步） |
-| 写集成规则 SQL（pub_interuleitem） | [实战流程](./references/NCC资产包接口实战开发流程.md) §4（先写 JSON）→ §5（生成 SQL）|
-| 查某个字段的 VFIELDTYPE 怎么取 | [实战流程](./references/NCC资产包接口实战开发流程.md) §5.3（标准实体/自定义档案/业务VO 三种 SQL 模板） |
-| 查集成规则子表字段含义 | [开发指南](./references/NCC资产包接口开发指南.md) §4.3（14 个字段逐个说明） |
-| 查 bmf 文件中的表体字段前缀 | [集成规则配置方法](./references/问题处理/NCC资产包集成规则配置方法.md)（4 步查询流程 + grep 命令） |
-| 补丁打上了但前台看不到菜单节点 | [补丁后前台看不到应用菜单](./references/问题处理/打上资产包补丁后前台看不到应用菜单.md)（集团管理员 → 超级管理员逐级查） |
-| 写 REST Resource 代码 | [开发指南](./references/NCC资产包接口开发指南.md) §6.1（代码骨架） |
-| 注册 OpenAPI 路由/授权 | [实战流程](./references/NCC资产包接口实战开发流程.md) §7（opm_apimanager + opm_relateapi） |
-| 在代码中做编码→ID 翻译 | [缓存查询方法模板](./references/NCC缓存查询方法模板.md)（4 种方法按场景选用） |
-| 读三方应用（外系统）配置 / 取外系统地址 | [三方应用配置读取](./references/NCC三方应用配置读取.md)（表结构 + 工具类 + 陷阱） |
-| 排查 transferBill 失败 | [开发指南](./references/NCC资产包接口开发指南.md) §11 + [实战流程](./references/NCC资产包接口实战开发流程.md) §9.3 |
-| 配置集成规则报错（vfieldtype 截断） | [开发指南](./references/NCC资产包接口开发指南.md) §11.5（Oracle / 达梦 / PostgreSQL 三版 SQL） |
-| 外系统传了字段但 NCC 单据上是空的 | [开发指南](./references/NCC资产包接口开发指南.md) §11.6（transfer 只映射已配置项；验重键必须单独配） |
-| 报文里表体数组 key 该叫什么 | [开发指南](./references/NCC资产包接口开发指南.md) §11.6 末段（前缀≠数组 key） |
-| **要读/改 NCC 源码文件（中文乱码、搜索搜不到）** | [GBK 文件编辑](./references/GBK文件编辑.md)（\`tools/gbk_edit.py --read / --grep / --edits\`） |
-
-### 通用参考资料
-
-| 文档 | 路径 | 内容 |
-|------|------|------|
-| 通用 API 手册 | \`ncc-dev/references/common/common-api.md\` | 自定义档案、持久化查询、批量操作、服务定位 |
-| 编码规范 | \`ncc-dev/references/common/coding-standard.md\` | 命名、注释、异常处理规范 |
-| 事件码表 | \`ncc-dev/references/common/event-codes.md\` | NCC 业务事件码速查 |
-| 单据类型代码 | \`ncc-dev/references/common/bill-types.md\` | NCC 单据类型代码速查 |
-| 模块VO参考 | \`ncc-dev/references/common/\` | 各模块 VO 与表名对照（so/pu/ic/arap/gl/bd等） |
-
----
-
-## 开发流程速查
-
-### 资产包接口开发（9步 + 2个审核门）
-
-采用**三步角色工作流**：
-
-\`\`\`
-开发者（我）      →    审核代理（QA）    →    用户（你）
-完成任务            独立验证 + 报告        最终拍板
-\`\`\`
-
-\`\`\`
-1. 确认需求（单据类型、接口文档、端点列表）
-2. 准备资产包模块
-3. 注册三方应用（如需要）
-   ───────────────────────────────────────────
-4. 生成集成规则配置文件（JSON）
-   🚪 审核门 ①：审核代理独立验证 VFIELDTYPE/scope/prefix/字段覆盖
-   → 审核报告 + JSON → 用户终审
-   ───────────────────────────────────────────
-5. 根据 JSON 生成 SQL 脚本（集成规则 + 路由注册 + 授权 + 回滚）
-   🚪 审核门 ②：审核代理验证表列存在/主键唯一/SQL方言/回滚完整性
-   → 审核报告 + SQL → 用户终审
-   ───────────────────────────────────────────
-6. 编写 REST Resource 类（继承 BaseResource → AbstractRestResource）
-7. 补充路由注册 SQL（如步骤5未包含）
-8. 配置对照表（如需要值映射）
-9. 测试与调试
-\`\`\`
-
-> **审核代理说明**：
-> - 审核代理只在**高风险步骤 4 和 5** 启用（这两个步骤依赖数据库查询，错误率高）
-> - 审核代理 Prompt 模板见 \`ncc/references/审核代理-prompt-模板.md\`
-> - 审核代理具有独立数据库访问权限，会重新执行开发者的 SQL 进行交叉验证
-> - 审核报告直接提交给用户，⚠️ 警告和 ❌ 错误由用户最终判断
-
-> **强制规则**：任何时候不得直接在数据库执行 INSERT/UPDATE/DELETE/CREATE/ALTER 等变更语句。
-> 必须在项目根目录或桌面生成统一 SQL 脚本文件，由用户执行。
-> **脚本内必须包含对应的还原/回滚脚本**，每条变更语句都要有对应的逆向操作：
-> - INSERT → DELETE（按主键精确删除）
-> - UPDATE → 逆向 UPDATE（恢复原值）
-> - DELETE → INSERT（恢复被删数据）
-> - CREATE TABLE/VIEW → DROP TABLE/VIEW
-> - ALTER TABLE ADD → ALTER TABLE DROP
-> 还原脚本集中放在文件末尾，按依赖顺序排列（先删子表/外键关联，再删主表）。
-
-## 编码/翻译查询方法
-
-**当需要编写档案翻译、编码→ID 查询等代码时，必须使用 [NCC 缓存查询方法模板](references/NCC缓存查询方法模板.md)**，4 种方法按场景选用。
-**旗舰版（BIP/YonBIP）禁止使用此模板。**
-
-| 方法 | 场景 | 代码量 |
-|------|------|--------|
-| GeneralAccessorFactory | 单条编码→ID | 1 行 |
-| CacheVOQuery | 单条编码+组织→ID | ~20 行 |
-| Caffeine + 批量 | 高频批量查询 | ~40 行 |
-| Guava LoadingCache | 高频单条查询 | ~15 行 |
-
-IBDMetaDataIDConst 元数据 ID 速查表见模板文档。
-`,
-  },
-  {
     name: 'yon-wiki',
-    description: '查用友知识库里的实体、物理表与字段。写 SQL 或写代码要落到具体表名/列名之前，先用 wiki_lookup 找到实体页，再用 wiki_read 读它的字段清单；不要凭记忆编造表名或列名。',
+    description: '查用友知识库里的实体、物理表与字段。需要确认某个用友单据/实体/业务对象对应哪张物理表、有哪些数据库列、domain 与 schema 是什么，或看到报错里的表名、代码里的实体 URI 想弄清它是什么时，用本技能。写 SQL 或写代码要落到具体表名/列名之前，先用 wiki_lookup 找到实体页，再用 wiki_read 读它的字段清单；不要凭记忆编造表名或列名。',
     whenToUse: '需要确认某个用友单据/实体/业务对象对应的物理表名、数据库列名、domain/schema，或看到报错里的表名、代码里的实体 URI 想弄清它是什么时。',
     content: `# 查用友知识库
 
@@ -1792,7 +1806,7 @@ IBDMetaDataIDConst 元数据 ID 速查表见模板文档。
   },
   {
     name: 'yonyou-bip-dev',
-    description: '用友 BIP 旗舰版客开技能（YonBIP / 旗舰版 / BIP）。 触发场景：BIP 平台开发、SuperDO/BPO 实体扩展、YMS 异步任务、 单据模板/元数据/字段名查询、OpenAPI、MDF 前端扩展、 旗舰版数据库问题、旗舰版环境配置、Arthas 诊断。 注意：NCC / NC Cloud 产品线请使用 yon-ncc-dev 技能，勿混用。',
+    description: '用友 BIP 旗舰版（YonBIP / 旗舰版 / BIP）客开技能。触发场景：BIP 平台开发、SuperDO/BPO 实体扩展、YMS 异步任务、单据模板与元数据查询、字段名与表名查询、OpenAPI、MDF 前端扩展、旗舰版数据库问题、旗舰版环境配置、Arthas 诊断。本技能只服务旗舰版：NCC / NC Cloud 是另一条产品线，表结构、实体名、数据字典、VO 类名互不相通，遇到 NCC 请用 ncc-dev（NCC 总入口）及其 ncc-plugin-dev / ncc-background-task / ncc-asset-hawk，不要把两边混用。',
     content: `# 用友 BIP 客开技能
 
 > **本技能引用的文档**都在插件的参考库里，路径形如 \`bip/references/xxx.md\`。
@@ -1808,16 +1822,16 @@ IBDMetaDataIDConst 元数据 ID 速查表见模板文档。
 >
 > 用友有两个主要产品线，**表结构、实体名、数据字典完全不同**，绝不能混用：
 > - **旗舰版（BIP / YonBIP）** ← 本技能 \`yonyou-bip-dev\`
-> - **NCC（NC Cloud）** → 对应技能 \`yon-ncc-dev\`（与本技能同级目录）
+> - **NCC（NC Cloud）** → 入口技能 \`ncc-dev\`（它再分出 \`ncc-plugin-dev\` / \`ncc-background-task\` / \`ncc-asset-hawk\`）
 >
 > **收到问题时，第一步必须是判断版本**：
-> 1. 用户问题中包含 "NCC" → 查 \`yon-ncc-dev\` 技能，不要用本技能的参考资料
+> 1. 用户问题中包含 "NCC" → 查 \`ncc-dev\` 技能，不要用本技能的参考资料
 > 2. 用户问题中包含 "旗舰版" / "BIP" → 用本技能
 > 3. 用户问题中版本不明确 → 主动询问是 NCC 还是旗舰版
 >
 > **查表名/字段名/数据字典时尤其容易犯错**，因为两个产品线可能有同名的业务概念（如"坏账损失"），但底层表完全不同。
 >
-> ⚠️ **NCC 的 \`GeneralAccessorFactory\`、\`CacheVOQuery\`、\`Caffeine\`/\`Guava\` 缓存查询模板（\`../yon-ncc-dev/references/NCC缓存查询方法模板.md\`）禁止在旗舰版使用。** 旗舰版有自己的查询 API，两者完全不兼容。
+> ⚠️ **NCC 的 \`GeneralAccessorFactory\`、\`CacheVOQuery\`、\`Caffeine\`/\`Guava\` 缓存查询模板（\`ncc/references/NCC缓存查询方法模板.md\`）禁止在旗舰版使用。** 旗舰版有自己的查询 API，两者完全不兼容。
 >
 > 违反此规则的后果：给用户提供错误的表名/字段名，导致 SQL 执行失败或数据错误。**这是不可接受的**。
 
@@ -1839,7 +1853,7 @@ IBDMetaDataIDConst 元数据 ID 速查表见模板文档。
 |----------|----------|------|
 | \`bip_home_path.json.template\` | \`bip_home_path.json\` | 本机 BIP home 路径和版本 |
 | \`../path_config.json.template\` | \`../path_config.json\` | 集中路径配置（用户目录、NCC/BIP Home、知识库、Chrome 调试等），仓库根目录 |
-| \`../yon-ncc-dev/ncc_home_path.json.template\` | \`../yon-ncc-dev/ncc_home_path.json\` | 本机 NCC home 路径和版本 |
+| \`../ncc-asset-hawk/ncc_home_path.json.template\` | \`../ncc-asset-hawk/ncc_home_path.json\` | 本机 NCC home 路径和版本 |
 
 检查时机：收到用户第一条消息后，在查找资料之前执行。如果目标文件不存在：
 1. 告知用户缺少哪个配置文件
@@ -1893,7 +1907,7 @@ IBDMetaDataIDConst 元数据 ID 速查表见模板文档。
 | 用户问题 | 处理 |
 |----------|------|
 | 涉及 BIP / 旗舰版 / YonBIP / 用友框架 | → 用本技能，继续第二步 |
-| 涉及 NCC / NC Cloud | → 切换到 \`yon-ncc-dev\` 技能 |
+| 涉及 NCC / NC Cloud | → 切换到 \`ncc-dev\` 技能（NCC 总入口） |
 | 代码/数据库/服务器等后端问题，但未指定产品 | → 视为旗舰版开发问题，用本技能 |
 | 明显非用友产品问题 | → 自行作答，无需参考 skill 文档 |
 

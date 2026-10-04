@@ -1,7 +1,7 @@
 /**
  * Yon panel, host half: opens the project, skill-switch and datasource domains,
  * publishes them as `ctx.yonProjects`, `ctx.yonSkills`, `ctx.yonDataSources`,
- * `ctx.yonWiki` and `ctx.yonHomes`,
+ * `ctx.yonWiki`, `ctx.yonHomes`, `ctx.yonIteration` and `ctx.yonBrowsers`,
  * offers the projects and the data sources to the agent as tools, contributes
  * this plugin's own skills to the skill registry, and — where a web server
  * exists — serves all three over `/yon/api`.
@@ -17,6 +17,7 @@
  * why that trade is worth making.
  */
 
+import { existsSync } from 'node:fs'
 import type { Context } from '@deepseek-ai/cordis'
 import { DOMAIN_NAME, YON_DOMAIN } from './host/domain.ts'
 import { createYonProjectsService, type YonProjectsService } from './host/service.ts'
@@ -41,6 +42,16 @@ import { createYonClassService, type YonClassService } from './host/class-servic
 import { registerYonWikiWriteTools, WIKI_WRITE_TOOL_NAMES } from './host/wiki-write.ts'
 import { DIGEST_TOOL_NAMES, registerYonDigestTools } from './host/digest-tools.ts'
 import { createDigestLog, digestLogPath } from './host/digest-log.ts'
+import {
+  createBrowserConfigStore, createBrowserRunStore, pluginRoot,
+} from './host/browser-store.ts'
+import {
+  createYonBrowsersService, BrowserError, type YonBrowsersService,
+} from './host/browser-service.ts'
+import { createSystemPorts } from './host/browser-system.ts'
+import { createIterationStore } from './host/iteration-store.ts'
+import { createYonIterationService, type YonIterationService } from './host/iteration-service.ts'
+import { ITERATION_TOOL_NAMES, registerYonIterationTools } from './host/iteration-tools.ts'
 import { createHomeStore } from './host/home-store.ts'
 import { createYonHomesService, HomeError as HomesError, type YonHomesService } from './host/home-service.ts'
 import { registerYonHomeTools } from './host/home-tools.ts'
@@ -99,6 +110,23 @@ export type { YonHomesService, HomeFindQuery } from './host/home-service.ts'
 export { probeHome } from './host/home-probe.ts'
 export { mirrorHomes, mirrorPathOf } from './host/home-mirror.ts'
 export { HOME_TOOL_NAMES } from './host/home-tools.ts'
+export { defaultIterationStorePath, createIterationStore } from './host/iteration-store.ts'
+export type { IterationStore, IterationRow } from './host/iteration-store.ts'
+export { createYonIterationService, IterationError } from './host/iteration-service.ts'
+export type { YonIterationService, IterationQuery, IterationCreated } from './host/iteration-service.ts'
+export { ITERATION_TOOL_NAMES } from './host/iteration-tools.ts'
+export {
+  createBrowserConfigStore, createBrowserRunStore, defaultBrowserConfigPath,
+  defaultBrowserProfileRoot, defaultBrowserRunsPath, pluginRoot,
+} from './host/browser-store.ts'
+export type { BrowserConfigStore, BrowserRunStore, JsonDocument, StoredBrowser, StoredRun }
+  from './host/browser-store.ts'
+export { BrowserError, createYonBrowsersService } from './host/browser-service.ts'
+export type { BrowserDeps, BrowserErrorCode, YonBrowsersService } from './host/browser-service.ts'
+export { argvOf, createSystemPorts } from './host/browser-system.ts'
+export type { SystemPorts } from './host/browser-system.ts'
+export { BROWSER_RECIPES, scanBrowsers, toForwardSlashes } from './host/browser-scan.ts'
+export type { ScannedBrowser, ScanOutcome } from './host/browser-scan.ts'
 export { decodeText, declaredEncoding, isBinary, redactSecrets, resolveInside } from './host/home-files.ts'
 export { META_TOOL_NAMES } from './host/meta-tools.ts'
 export { BIP_META_TOOL_NAMES } from './host/bip-meta-tools.ts'
@@ -116,10 +144,21 @@ export type {
   MetaFreshnessView, MetaIndexPayload, MetaIndexStatusView, SaveHomeInput,
 } from './shared/types.ts'
 export { HOME_PRODUCTS } from './shared/types.ts'
+export {
+  ITERATION_KINDS, ITERATION_SEVERITIES, ITERATION_STATUSES,
+} from './shared/types.ts'
+export type {
+  IterationCreatedPayload, IterationKind, IterationListPayload, IterationRowView, IterationSeverity,
+  IterationStatus, SaveIterationInput, UpdateIterationInput,
+} from './shared/types.ts'
 export type {
   CreateProjectInput, DataSourceBinding, DataSourceListPayload, DataSourceProbeResult,
   DataSourceView, JsonValue, ProjectDetail, ProjectSummary, ProjectStatus,
   SaveDataSourceInput, SkillDetail, SkillView, UpdateProjectInput,
+} from './shared/types.ts'
+export type {
+  BrowserFamily, BrowserListPayload, BrowserRunLiveness, BrowserRunView, BrowserStopMethod,
+  BrowserView, LaunchBrowserInput, SaveBrowserInput, ScanBrowsersPayload, StopBrowserResult,
 } from './shared/types.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -138,6 +177,10 @@ declare module '@deepseek-ai/cordis' {
     yonMeta: YonMetaService
     /** The class index over the same installations, built and reported on here. */
     yonClass: YonClassService
+    /** The ledger of this plugin's own shortcomings, as the model records them. */
+    yonIteration: YonIterationService
+    /** The machine's browsers, and the debug instances this panel started. */
+    yonBrowsers: YonBrowsersService
   }
 }
 
@@ -221,7 +264,7 @@ export async function apply(ctx: Context): Promise<void> {
   // silently rather than failing.
   ctx.effect(() => registerYonGbkTools(ctx), 'yon-panel: gbk tools')
 
-  // The reference library: the 450 documents migrated out of the operator's skill
+  // The reference library: the 415 documents migrated out of the operator's skill
   // directories. A bundled skill body cannot name a runtime path, so without these
   // two tools the documents would ship and stay unreachable.
   ctx.effect(() => registerYonKnowledgeTools(ctx), 'yon-panel: knowledge tools')
@@ -303,6 +346,37 @@ export async function apply(ctx: Context): Promise<void> {
   const digestLog = createDigestLog()
   ctx.effect(() => registerYonDigestTools(ctx, wiki, digestLog), 'yon-panel: digest audit tool')
 
+  // The iteration ledger: the model's notes about this plugin's own shortcomings.
+  //
+  // The one place in this package where the model writes something that outlives
+  // its session about the *plugin* rather than about the operator's material. It
+  // gets two tools and no gate, because the entire value of the feature is that
+  // recording costs nothing and bothers nobody — an approval step would teach the
+  // model not to bother, which is the only way this can fail. What keeps it honest
+  // is on the other side: the model can append and nothing else, and the triage
+  // (accept / fix / drop / delete) lives in the panel, where a person does it.
+  const iteration = createYonIterationService(createIterationStore())
+  ctx.provide('yonIteration', iteration)
+  ctx.effect(() => registerYonIterationTools(ctx, iteration), 'yon-panel: iteration tools')
+
+  // The debug browser: which browsers this machine has, the path and profile directory
+  // each one is remembered by, and the instances this panel started.
+  //
+  // The only place in this package that starts a process (`browser-system.ts` says why
+  // the harness's subprocess service could not be used for a browser that has to outlive
+  // the request that opened it), and the one service here with nothing to release: no
+  // timer, no listener, and both of its documents are opened per call. So there is no
+  // `ctx.effect` for it, deliberately. The browsers it starts are not ended when this
+  // plugin unmounts — they are spawned detached precisely so that closing a panel, or
+  // upgrading the plugin, cannot close a browser somebody is in the middle of debugging.
+  // Ending one is something the panel asks for by name, on the runs list.
+  const browsers = createYonBrowsersService(
+    createBrowserConfigStore(),
+    createBrowserRunStore(),
+    { ...createSystemPorts(), exists: existsSync, hostRoot: pluginRoot() },
+  )
+  ctx.provide('yonBrowsers', browsers)
+
   // The one paragraph the model reads before it ever calls a tool: what this
   // panel brings, and the rules that no single tool description can state. It
   // is global (the profile loads this plugin, not an agent scope), so every
@@ -326,7 +400,7 @@ export async function apply(ctx: Context): Promise<void> {
   ctx.inject(['webServer'], (web) => {
     web.effect(
       () => registerYonApi(web, service, skills.service, dataSources.service, wiki, digestLog,
-        homes.service, meta, classes),
+        homes.service, meta, classes, iteration, browsers),
       'yon-panel: project api',
     )
   })

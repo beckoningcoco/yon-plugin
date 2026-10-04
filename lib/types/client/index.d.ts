@@ -5,10 +5,12 @@
  * plugin owns the surface and its open state only; what a button does belongs
  * to the package that adds it.
  *
- * Six buttons ship here: project management, the skills this plugin
+ * Eight buttons ship here: project management, the skills this plugin
  * contributes, the operator's database connections, the knowledge base, the
- * digestion ledger, and the installation directories. None of them is a second
- * kind of seat — all six take the same one, which is the point of the seat
+ * digestion ledger, the installation directories, the iteration ledger, and the
+ * debug browser.
+ * None of them is a second
+ * kind of seat — all eight take the same one, which is the point of the seat
  * existing. Each declares its own
  * `label`, so the panel names its rows from the seat rather than from what the
  * entries happen to draw. The datasource entry is the one that also borrows an
@@ -20,7 +22,7 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis';
 import { type YonPanelKey } from './locales.ts';
 export type { YonPanelItemOwnerProps, YonPanelRootFace, YonPanelSnapshot } from './slots.ts';
 export type { DataSourceItemFace, ProjectItemFace, SkillItemFace, WikiItemFace } from './slots.ts';
-export type { DigestItemFace, HomeItemFace } from './slots.ts';
+export type { BrowserItemFace, DigestItemFace, HomeItemFace, IterationItemFace } from './slots.ts';
 export type { YonPanelKey } from './locales.ts';
 declare module '@deepseek-ai/dsh-client-ui-slots' {
     interface LocaleNamespaceMap {

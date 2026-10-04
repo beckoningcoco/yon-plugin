@@ -1,6 +1,6 @@
 ---
 name: yonyou-bip-dev
-description: 用友 BIP 旗舰版客开技能（YonBIP / 旗舰版 / BIP）。 触发场景：BIP 平台开发、SuperDO/BPO 实体扩展、YMS 异步任务、 单据模板/元数据/字段名查询、OpenAPI、MDF 前端扩展、 旗舰版数据库问题、旗舰版环境配置、Arthas 诊断。 注意：NCC / NC Cloud 产品线请使用 yon-ncc-dev 技能，勿混用。
+description: 用友 BIP 旗舰版（YonBIP / 旗舰版 / BIP）客开技能。触发场景：BIP 平台开发、SuperDO/BPO 实体扩展、YMS 异步任务、单据模板与元数据查询、字段名与表名查询、OpenAPI、MDF 前端扩展、旗舰版数据库问题、旗舰版环境配置、Arthas 诊断。本技能只服务旗舰版：NCC / NC Cloud 是另一条产品线，表结构、实体名、数据字典、VO 类名互不相通，遇到 NCC 请用 ncc-dev（NCC 总入口）及其 ncc-plugin-dev / ncc-background-task / ncc-asset-hawk，不要把两边混用。
 ---
 
 # 用友 BIP 客开技能
@@ -18,16 +18,16 @@ description: 用友 BIP 旗舰版客开技能（YonBIP / 旗舰版 / BIP）。 �
 >
 > 用友有两个主要产品线，**表结构、实体名、数据字典完全不同**，绝不能混用：
 > - **旗舰版（BIP / YonBIP）** ← 本技能 `yonyou-bip-dev`
-> - **NCC（NC Cloud）** → 对应技能 `yon-ncc-dev`（与本技能同级目录）
+> - **NCC（NC Cloud）** → 入口技能 `ncc-dev`（它再分出 `ncc-plugin-dev` / `ncc-background-task` / `ncc-asset-hawk`）
 >
 > **收到问题时，第一步必须是判断版本**：
-> 1. 用户问题中包含 "NCC" → 查 `yon-ncc-dev` 技能，不要用本技能的参考资料
+> 1. 用户问题中包含 "NCC" → 查 `ncc-dev` 技能，不要用本技能的参考资料
 > 2. 用户问题中包含 "旗舰版" / "BIP" → 用本技能
 > 3. 用户问题中版本不明确 → 主动询问是 NCC 还是旗舰版
 >
 > **查表名/字段名/数据字典时尤其容易犯错**，因为两个产品线可能有同名的业务概念（如"坏账损失"），但底层表完全不同。
 >
-> ⚠️ **NCC 的 `GeneralAccessorFactory`、`CacheVOQuery`、`Caffeine`/`Guava` 缓存查询模板（`../yon-ncc-dev/references/NCC缓存查询方法模板.md`）禁止在旗舰版使用。** 旗舰版有自己的查询 API，两者完全不兼容。
+> ⚠️ **NCC 的 `GeneralAccessorFactory`、`CacheVOQuery`、`Caffeine`/`Guava` 缓存查询模板（`ncc/references/NCC缓存查询方法模板.md`）禁止在旗舰版使用。** 旗舰版有自己的查询 API，两者完全不兼容。
 >
 > 违反此规则的后果：给用户提供错误的表名/字段名，导致 SQL 执行失败或数据错误。**这是不可接受的**。
 
@@ -49,7 +49,7 @@ description: 用友 BIP 旗舰版客开技能（YonBIP / 旗舰版 / BIP）。 �
 |----------|----------|------|
 | `bip_home_path.json.template` | `bip_home_path.json` | 本机 BIP home 路径和版本 |
 | `../path_config.json.template` | `../path_config.json` | 集中路径配置（用户目录、NCC/BIP Home、知识库、Chrome 调试等），仓库根目录 |
-| `../yon-ncc-dev/ncc_home_path.json.template` | `../yon-ncc-dev/ncc_home_path.json` | 本机 NCC home 路径和版本 |
+| `../ncc-asset-hawk/ncc_home_path.json.template` | `../ncc-asset-hawk/ncc_home_path.json` | 本机 NCC home 路径和版本 |
 
 检查时机：收到用户第一条消息后，在查找资料之前执行。如果目标文件不存在：
 1. 告知用户缺少哪个配置文件
@@ -103,7 +103,7 @@ description: 用友 BIP 旗舰版客开技能（YonBIP / 旗舰版 / BIP）。 �
 | 用户问题 | 处理 |
 |----------|------|
 | 涉及 BIP / 旗舰版 / YonBIP / 用友框架 | → 用本技能，继续第二步 |
-| 涉及 NCC / NC Cloud | → 切换到 `yon-ncc-dev` 技能 |
+| 涉及 NCC / NC Cloud | → 切换到 `ncc-dev` 技能（NCC 总入口） |
 | 代码/数据库/服务器等后端问题，但未指定产品 | → 视为旗舰版开发问题，用本技能 |
 | 明显非用友产品问题 | → 自行作答，无需参考 skill 文档 |
 

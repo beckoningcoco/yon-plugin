@@ -22,7 +22,7 @@ import type { WikiApi } from '../../src/client/wiki/api.ts'
 import type {
   SaveVaultInput, WikiCardPayload, WikiCardView, WikiCitersPayload, WikiGapView,
   WikiHealthPayload, WikiHealthReport, WikiLevelStat, WikiListPayload, WikiLogEntry,
-  WikiSearchHit, WikiSearchPayload, WikiVaultView,
+  WikiSearchHit, WikiSearchPayload, WikiUnindexedDir, WikiVaultView,
 } from '../../src/shared/types.ts'
 
 /** 就绪的那个 vault。面板一进场就落在它身上，所以它必须是列表的第一个。 */
@@ -230,6 +230,19 @@ export const WIKI_USAGE = {
 } as const
 
 /**
+ * 索引读不到的页面，按 vault 与目录列出。
+ *
+ * 不是编的样本，是这台机器上的实测值（2026-10-04）：`wiki-index.ts` 只读
+ * `wiki/entities`，而这两个目录就在它旁边，7634 篇素材摘要与 112 篇主题页对
+ * 搜索、引用图和上面的每一个数字都不存在。「实体页 0」被读成「知识库是空的」，
+ * 就是这几个数字缺席时发生的事 —— 所以它们要出现在界面上，哪怕只是当个分母。
+ */
+export const WIKI_UNINDEXED: readonly WikiUnindexedDir[] = [
+  { vault: READY_ID, dir: 'wiki/sources', path: 'D:/yon-bip-obsidian/yon-bip-obsidian/wiki/sources', pages: 7634 },
+  { vault: READY_ID, dir: 'wiki/topics', path: 'D:/yon-bip-obsidian/yon-bip-obsidian/wiki/topics', pages: 112 },
+]
+
+/**
  * 一本 vault 的健康报告：概览与缺口两个页签的全部数据。
  *
  * 连通度是这一节的要点：「没有链接」曾经是测量的错，不是 vault 的性质 ——
@@ -239,6 +252,7 @@ export const WIKI_REPORT: WikiHealthReport = {
   vault: READY_ID,
   vaultLabel: 'yon-bip-obsidian',
   pages: PAGES,
+  unindexed: WIKI_UNINDEXED,
   indexedAt: '2026-09-29T01:44:30.089Z',
   indexBytes: 4989141,
   graph: {
@@ -1125,7 +1139,9 @@ export function wikiFixture(payload: WikiListPayload = WIKI_VAULTS): WikiApi {
     search(term: string, vault?: string, limit?: number): Promise<WikiSearchPayload> {
       const asked = term.trim()
       const needle = asked.toLowerCase()
-      if (vault === NOT_READY_ID) return Promise.resolve({ term: asked, scanned: PAGES, hits: [] })
+      if (vault === NOT_READY_ID) {
+        return Promise.resolve({ term: asked, scanned: PAGES, hits: [], unindexed: [] })
+      }
       const hits = WIKI_CARDS
         .map(entry => ({ entry, matchedBy: matchOf(entry, needle) }))
         .filter((found): found is { entry: WikiCardView, matchedBy: string } => found.matchedBy !== undefined)
@@ -1135,6 +1151,7 @@ export function wikiFixture(payload: WikiListPayload = WIKI_VAULTS): WikiApi {
       return Promise.resolve({
         term: asked,
         scanned: PAGES,
+        unindexed: WIKI_UNINDEXED,
         hits: limit === undefined ? hits : hits.slice(0, limit),
       })
     },

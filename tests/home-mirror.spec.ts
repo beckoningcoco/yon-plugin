@@ -34,7 +34,7 @@ async function scratch(): Promise<string> {
  */
 async function skillsTree(product: 'ncc' | 'bip' = 'ncc'): Promise<string> {
   const root = await scratch()
-  await mkdir(join(root, product === 'ncc' ? 'yon-ncc-dev' : 'yonyou-bip-dev'), { recursive: true })
+  await mkdir(join(root, product === 'ncc' ? 'ncc-asset-hawk' : 'yonyou-bip-dev'), { recursive: true })
   return root
 }
 
@@ -184,7 +184,7 @@ describe('mirrorHomes', () => {
   it('declines to write when the skills directory is not there', async () => {
     const root = await scratch()
     const result = await mirrorHomes('ncc', [home()], root)
-    expect(result.warning).toContain('yon-ncc-dev')
+    expect(result.warning).toContain('ncc-asset-hawk')
     // No directory tree invented: a skills tree that is not installed must not
     // appear to be one.
     await expect(readFile(result.path, 'utf8')).rejects.toThrow()
@@ -216,5 +216,45 @@ describe('mirrorHomes', () => {
     const document = await read(root)
     expect(entry(document, '2312').path).toBe('E:/h')
     expect(entry(document, '2111').path).toBe('E:/NCProject/NCC/jixieyuan/home')
+  })
+
+  // The NCC skills directory was `yon-ncc-dev` until 2026-10-03. A tree that has
+  // not been renamed yet is a normal installed tree, not an error, and the mirror
+  // has to follow it there — otherwise the panel reports "技能目录不在" at someone
+  // looking straight at the directory.
+  describe('a skills tree that still carries the old directory name', () => {
+    /** A scratch root holding only the pre-rename directory. */
+    async function legacyTree(): Promise<string> {
+      const root = await scratch()
+      await mkdir(join(root, 'yon-ncc-dev'), { recursive: true })
+      return root
+    }
+
+    it('writes there rather than at a path that does not exist', async () => {
+      const root = await legacyTree()
+      const result = await mirrorHomes('ncc', [home()], root)
+
+      expect(result.warning).toBeUndefined()
+      expect(result.path).toBe(join(root, 'yon-ncc-dev', 'ncc_home_path.json'))
+      const document = JSON.parse(await readFile(result.path, 'utf8')) as Record<string, unknown>
+      expect(entry(document, '2111').path).toBe('E:/NCProject/NCC/jixieyuan/home')
+    })
+
+    it('prefers the new directory once both are there', async () => {
+      const root = await legacyTree()
+      await mkdir(join(root, 'ncc-asset-hawk'), { recursive: true })
+
+      const result = await mirrorHomes('ncc', [home()], root)
+
+      expect(result.path).toBe(mirrorPathOf('ncc', root))
+      await expect(readFile(join(root, 'yon-ncc-dev', 'ncc_home_path.json'), 'utf8')).rejects.toThrow()
+    })
+
+    it('leaves BIP alone — only the NCC directory was ever renamed', async () => {
+      const root = await legacyTree()
+      const result = await mirrorHomes('bip', [home({ product: 'bip', version: '5.0' })], root)
+      // No `yonyou-bip-dev` either, so this is the ordinary missing-tree answer.
+      expect(result.warning).toContain('yonyou-bip-dev')
+    })
   })
 })

@@ -1,6 +1,6 @@
 ---
-name: yon-ncc-dev
-description: NCC（用友 NC Cloud）客开技能。当用户提到 NCC、NC Cloud、NCC2111、NCC2312、NCC2207、 或 NCC 特有的开发模式（资产包接口开发、业务插件/事件监听器 IBusinessListener、 单据转换 IPfExchangeService、集成规则 pub_interule、对照表 pub_intecontrast、 REST API Resource 继承 AbstractRestResource、华科客开模式、OpenAPI 路由注册等）时， 必须使用此技能。也包括 NCC 数据库问题、NCC 服务器问题等。
+name: ncc-asset-hawk
+description: NCC（NC Cloud）的资产包接口专用技能。要写或排查资产包接口（开发指南、实战 9 步流程）、配置集成规则 pub_interule 与对照表 pub_intecontrast、接第三方 OpenAPI（签名机制、路由注册、REST API Resource 继承 AbstractRestResource）、用华科客开模式时用本技能；NCC 源码走查（Home 目录结构、GBK 源码编辑）与历史问题处理记录也在这里。NCC 的业务插件、事件监听器、后台任务、VO 参考、事件码、编码规范属于 ncc-dev（NCC 总入口）及其子技能，不在本技能；不确定 NCC 问题该走哪条路时先加载 ncc-dev。旗舰版（BIP / YonBIP）是另一条产品线，用 yonyou-bip-dev，表结构、实体名与类名互不相通。
 ---
 
 # NCC（NC Cloud）客开技能
@@ -17,11 +17,11 @@ description: NCC（用友 NC Cloud）客开技能。当用户提到 NCC、NC Clo
 > **🔴 强制规则：版本区分**
 >
 > 用友有两个主要产品线，**表结构、实体名、数据字典完全不同**，绝不能混用：
-> - **NCC（NC Cloud）** ← 本技能 `yon-ncc-dev`
+> - **NCC（NC Cloud）** ← 本技能服务的产品线；NCC 的总入口是 `ncc-dev` 技能，本技能只负责它里面的资产包接口与集成规则那一块
 > - **旗舰版（BIP / YonBIP）** → 对应技能 `yonyou-bip-dev`（与本技能同级目录）
 >
 > **收到问题时，第一步必须是判断版本**：
-> 1. 用户问题中包含 "NCC" → 用本技能
+> 1. 用户问题中包含 "NCC" → NCC 侧由 `ncc-dev` 总入口分发；资产包接口 / 集成规则 / OpenAPI 签名这一路用本技能
 > 2. 用户问题中包含 "旗舰版" / "BIP" → 查 `../yonyou-bip-dev/`
 > 3. 用户问题中版本不明确 → 主动询问是 NCC 还是旗舰版
 >
@@ -29,13 +29,16 @@ description: NCC（用友 NC Cloud）客开技能。当用户提到 NCC、NC Clo
 
 ---
 
-## 子技能
+## 兄弟技能
 
-| 子技能 | 目录 | 用途 |
-|--------|------|------|
-| `ncc-dev` | `ncc-dev/` | NCC 通用开发（VO参考、事件码、单据类型、编码规范、通用API） |
-| `ncc-plugin-dev` | `ncc-plugin-dev/` | NCC 业务插件/事件监听器开发（IBusinessListener、doAction） |
-| `ncc-background-task` | `ncc-background-task/` | NCC 后台任务/调度任务开发 |
+**NCC 的总入口是 `ncc-dev`**，不是本技能：本技能只覆盖资产包接口那一路，与 `ncc-dev` 是分工关系而非从属关系。
+
+| 技能 | 用途 |
+|------|------|
+| `ncc-dev` | **NCC 总入口**：场景路由，以及 VO参考、事件码、单据类型、编码规范、通用 API 这些共享素材 |
+| `ncc-plugin-dev` | NCC 业务插件 / 事件监听器开发（IBusinessListener、doAction） |
+| `ncc-background-task` | NCC 后台任务 / 调度任务开发 |
+| 本技能 `ncc-asset-hawk` | 资产包接口、集成规则 pub_interule、三方 OpenAPI、源码走查与历史问题记录 |
 
 ---
 
@@ -66,22 +69,22 @@ description: NCC（用友 NC Cloud）客开技能。当用户提到 NCC、NC Clo
 
 | 我想... | 看这份文档 |
 |---------|-----------|
-| 快速理解资产包接口是什么 | [开发指南](./references/NCC资产包接口开发指南.md) §1-§3 |
-| 从头做一个新接口（按步骤走） | [实战流程](./references/NCC资产包接口实战开发流程.md)（跟随 9 步） |
-| 写集成规则 SQL（pub_interuleitem） | [实战流程](./references/NCC资产包接口实战开发流程.md) §4（先写 JSON）→ §5（生成 SQL）|
-| 查某个字段的 VFIELDTYPE 怎么取 | [实战流程](./references/NCC资产包接口实战开发流程.md) §5.3（标准实体/自定义档案/业务VO 三种 SQL 模板） |
-| 查集成规则子表字段含义 | [开发指南](./references/NCC资产包接口开发指南.md) §4.3（14 个字段逐个说明） |
-| 查 bmf 文件中的表体字段前缀 | [集成规则配置方法](./references/问题处理/NCC资产包集成规则配置方法.md)（4 步查询流程 + grep 命令） |
-| 补丁打上了但前台看不到菜单节点 | [补丁后前台看不到应用菜单](./references/问题处理/打上资产包补丁后前台看不到应用菜单.md)（集团管理员 → 超级管理员逐级查） |
-| 写 REST Resource 代码 | [开发指南](./references/NCC资产包接口开发指南.md) §6.1（代码骨架） |
-| 注册 OpenAPI 路由/授权 | [实战流程](./references/NCC资产包接口实战开发流程.md) §7（opm_apimanager + opm_relateapi） |
-| 在代码中做编码→ID 翻译 | [缓存查询方法模板](./references/NCC缓存查询方法模板.md)（4 种方法按场景选用） |
-| 读三方应用（外系统）配置 / 取外系统地址 | [三方应用配置读取](./references/NCC三方应用配置读取.md)（表结构 + 工具类 + 陷阱） |
-| 排查 transferBill 失败 | [开发指南](./references/NCC资产包接口开发指南.md) §11 + [实战流程](./references/NCC资产包接口实战开发流程.md) §9.3 |
-| 配置集成规则报错（vfieldtype 截断） | [开发指南](./references/NCC资产包接口开发指南.md) §11.5（Oracle / 达梦 / PostgreSQL 三版 SQL） |
-| 外系统传了字段但 NCC 单据上是空的 | [开发指南](./references/NCC资产包接口开发指南.md) §11.6（transfer 只映射已配置项；验重键必须单独配） |
-| 报文里表体数组 key 该叫什么 | [开发指南](./references/NCC资产包接口开发指南.md) §11.6 末段（前缀≠数组 key） |
-| **要读/改 NCC 源码文件（中文乱码、搜索搜不到）** | [GBK 文件编辑](./references/GBK文件编辑.md)（`tools/gbk_edit.py --read / --grep / --edits`） |
+| 快速理解资产包接口是什么 | `ncc/references/NCC资产包接口开发指南.md` §1-§3 |
+| 从头做一个新接口（按步骤走） | `ncc/references/NCC资产包接口实战开发流程.md`（跟随 9 步） |
+| 写集成规则 SQL（pub_interuleitem） | `ncc/references/NCC资产包接口实战开发流程.md` §4（先写 JSON）→ §5（生成 SQL）|
+| 查某个字段的 VFIELDTYPE 怎么取 | `ncc/references/NCC资产包接口实战开发流程.md` §5.3（标准实体/自定义档案/业务VO 三种 SQL 模板） |
+| 查集成规则子表字段含义 | `ncc/references/NCC资产包接口开发指南.md` §4.3（14 个字段逐个说明） |
+| 查 bmf 文件中的表体字段前缀 | `ncc/references/问题处理/NCC资产包集成规则配置方法.md`（4 步查询流程 + grep 命令） |
+| 补丁打上了但前台看不到菜单节点 | `ncc/references/问题处理/打上资产包补丁后前台看不到应用菜单.md`（集团管理员 → 超级管理员逐级查） |
+| 写 REST Resource 代码 | `ncc/references/NCC资产包接口开发指南.md` §6.1（代码骨架） |
+| 注册 OpenAPI 路由/授权 | `ncc/references/NCC资产包接口实战开发流程.md` §7（opm_apimanager + opm_relateapi） |
+| 在代码中做编码→ID 翻译 | `ncc/references/NCC缓存查询方法模板.md`（4 种方法按场景选用） |
+| 读三方应用（外系统）配置 / 取外系统地址 | `ncc/references/NCC三方应用配置读取.md`（表结构 + 工具类 + 陷阱） |
+| 排查 transferBill 失败 | `ncc/references/NCC资产包接口开发指南.md` §11 + `ncc/references/NCC资产包接口实战开发流程.md` §9.3 |
+| 配置集成规则报错（vfieldtype 截断） | `ncc/references/NCC资产包接口开发指南.md` §11.5（Oracle / 达梦 / PostgreSQL 三版 SQL） |
+| 外系统传了字段但 NCC 单据上是空的 | `ncc/references/NCC资产包接口开发指南.md` §11.6（transfer 只映射已配置项；验重键必须单独配） |
+| 报文里表体数组 key 该叫什么 | `ncc/references/NCC资产包接口开发指南.md` §11.6 末段（前缀≠数组 key） |
+| **要读/改 NCC 源码文件（中文乱码、搜索搜不到）** | `ncc/references/GBK文件编辑.md`（`ncc/tools/gbk_edit.py --read / --grep / --edits`） |
 
 ### 通用参考资料
 

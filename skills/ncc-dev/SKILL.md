@@ -1,6 +1,6 @@
 ---
 name: ncc-dev
-description: NCC（用友NC Cloud）定制开发总技能，涵盖业务插件、后台任务、参照、业务扩展等多种开发场景。 触发场景包括但不限于：NCC客开、NCC二开、用友NC Cloud插件开发、NCC定制开发、 写一个业务插件、写一个事件监听、NCC事件监听、IBusinessListener、doAction、 后台任务、计划任务、定时任务、NCC后台任务开发、 参照、NCC参照开发、自定义参照、 业务扩展、扩展点、NCC扩展开发、 单据转换 runChangeDataAry、saveCommit 保存提交、 编码规则、单据编号、编码规则开发、 自定义档案、DefdocVO、档案同步、 采购发票/销售订单/库存单据的业务插件开发、 审批后/新增后/修改后的事件监听。
+description: NCC（用友 NC Cloud）开发的总入口。问题里出现 NCC、NC Cloud、NCC2111、NCC2312、NCC2207 时先用本技能，由本技能的场景路由分发。自带跨场景复用的共享素材：各模块 VO 参考（应收应付、总账、库存、采购、销售、基础档案等）、通用 API、事件码、单据类型、编码规范、元数据与 bmf 对应、单据主子表、前端开发，以及 NCC 数据库查询与 SQL 自验证；参照 / 自定义参照 / F7、业务扩展 / 扩展点、编码规则 / 单据编号这几类场景也在本技能。写业务插件 / 事件监听器（IBusinessListener、doAction）请用 ncc-plugin-dev；写后台任务 / 调度任务请用 ncc-background-task；写资产包接口、配置集成规则 pub_interule、接第三方 OpenAPI 请用 ncc-asset-hawk。旗舰版（BIP / YonBIP）是另一条产品线，用 yonyou-bip-dev，表结构、实体名与类名互不相通。
 ---
 
 # NCC 定制开发总指南
@@ -33,15 +33,26 @@ description: NCC（用友NC Cloud）定制开发总技能，涵盖业务插件�
 > **通用素材（事件码、单据类型、编码规范、通用 API）** 所有场景共享，存放在 `ncc/ncc-dev/references/common/` 下。
 > **场景素材（各开发模式的示例代码和模式说明）** 存放在 `ncc/ncc-dev/references/scenarios/` 下。
 
+### 子技能
+
+| 子技能 | 用途 | 什么时候去它那里 |
+|--------|------|------------------|
+| `ncc-plugin-dev` | 业务插件 / 事件监听器（IBusinessListener、doAction） | 要写的是「挂到单据事件上的类」 |
+| `ncc-background-task` | 后台任务 / 调度任务 | 要写的是「定时/计划执行的插件」 |
+| `ncc-asset-hawk` | 资产包接口、集成规则 pub_interule、三方 OpenAPI 签名、NCC 源码走查与问题记录 | 要对接第三方系统 / 配集成规则 / 查 NCC 源码 |
+
+> 这三条都要回过头来读本技能的 `ncc/ncc-dev/references/common/`（VO 参考、事件码、单据类型、编码规范、通用 API），所以走它们时**本技能也一起加载**。
+
 ## 场景路由
 
 根据用户描述自动判断开发场景，读取对应的参考文件：
 
 | 场景 | 触发关键词 | 参考文件 |
 |------|-----------|----------|
-| **业务插件** | 事件监听、审批后/新增后/修改后、IBusinessListener、doAction、单据转换、自动生成、回写字段、审批后协同、自动生单 | `ncc/ncc-dev/references/scenarios/plugin-dev.md` + `ncc/ncc-dev/references/scenarios/ncc-coding-patterns.md`（未随包提供） |
+| **业务插件** | 事件监听、审批后/新增后/修改后、IBusinessListener、doAction、单据转换、自动生成、回写字段、审批后协同、自动生单 | `ncc-plugin-dev` 子技能（其素材是 `ncc/ncc-dev/references/scenarios/plugin-dev.md`）+ `ncc/ncc-dev/references/scenarios/ncc-coding-patterns.md`（未随包提供） |
 | **审批后自动协同** | 协同、购销协同、自动生单、IPfExchangeService、ISCMPubSaveCommitService、CloudPFlowContext、用户模拟、跨公司 | `ncc/ncc-dev/references/scenarios/ncc-coding-patterns.md`（未随包提供） §2 + `ncc/ncc-dev/references/scenarios/project-ztxx.md`（未随包提供） §1 |
 | **后台任务** | 后台任务、计划任务、定时任务、定时执行、调度、IBackgroundWorkPlugin、executeTask | `ncc-background-task` 子技能 |
+| **资产包接口 / 集成规则** | 资产包接口、第三方系统对接、集成规则、pub_interule、pub_intecontrast、OpenAPI 签名、REST Resource、AbstractRestResource、华科客开 | `ncc-asset-hawk` 子技能 |
 | **参照** | 参照、下拉参照、自定义参照、参照过滤、F7 | `ncc/ncc-dev/references/scenarios/ref-model.md`（待建） |
 | **业务扩展** | 业务扩展、扩展点、扩展注册、处理器 | `ncc/ncc-dev/references/scenarios/biz-extension.md`（待建） |
 | **编码规则** | 编码规则、单据编号、自动编号、编码生成 | `ncc/ncc-dev/references/scenarios/coding-rule.md`（待建） |

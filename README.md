@@ -4,7 +4,7 @@ DSH（DeepSeek Harness）Web GUI 的 **Yon 按钮面板** 插件，带一个**�
 
 | 半边 | 做什么 |
 |---|---|
-| 浏览器半 | 侧栏底部、设置按钮**上方**一个 `Y` 图标 → 点开是按钮面板，里面两个内建格子：**项目管理** 与 **YONSKILL**；面板里的按钮由任意插件通过 `yon.panel.item` 席位贡献 |
+| 浏览器半 | 侧栏底部、设置按钮**上方**一个 `Y` 图标 → 点开是按钮面板，里面八个内建格子：**项目管理**、**技能**、**数据源**、**知识库**、**消化检查**、**Home 管理**、**迭代**、**浏览器**；面板里的按钮由任意插件通过 `yon.panel.item` 席位贡献 |
 | Host 半 | 「项目」存储（主表 + 动态字段子表），以三种方式对外开放：`ctx.yonProjects` 服务（同进程插件）、`project_*` agent 工具（在对话里说人话改配置）、`/yon/api` HTTP 路由（任何前端） |
 | Host 半 | 插件**自带技能**：`skills/*/SKILL.md` 在构建时内联，插件挂载时注册进 DSH 的技能目录，**卸载时自动消失**；开关存在 `yon_skills` 领域里 |
 
@@ -197,7 +197,7 @@ lib/host/skill-catalog.generated.js   ← 随包发布
 
 也就是说自带技能**压过你装在 `~/.agents/skills` 里的同名技能，但压不过某个项目仓库里 pin 住的版本**。本插件因此刻意只用新名字，不碰你现有的通用技能。
 
-当前只带一个占位技能 `yon-devkit`（用友客开项目的配置入口，正文里划清了与 `yon-ncc-dev` / `yonyou-bip-dev` 的分工）。
+当前只带一个占位技能 `yon-devkit`（用友客开项目的配置入口，正文里划清了与 `ncc-dev` / `yonyou-bip-dev` 的分工）。
 
 **开关**：`YONSKILL` 面板里可以单独停用某个自带技能，状态存在 `yon_skills` 领域（`$DSH_HOME/storages/yon_skills/skill_preferences/*.json`），下次启动按它决定注册哪些。停用只是不注册，不删任何东西。
 
@@ -205,12 +205,16 @@ lib/host/skill-catalog.generated.js   ← 随包发布
 
 ## 按钮面板（浏览器半）
 
-侧栏底部的 `Y` 图标点开是 280px 的小面板。面板内有两个内建格子（悬停显示名字）：
+侧栏底部的 `Y` 图标点开是 280px 的小面板。面板内有八个内建格子（悬停显示名字）：
 
 | 格子 | 名字 | 打开什么 |
 |---|---|---|
 | 文件夹图标 | 项目管理 | 项目列表 + 字段编辑 |
 | 文档图标 | **YONSKILL** | 技能面板 |
+| 其余六个 | 数据源 / 知识库 / 消化检查 / Home 管理 / 迭代 / 浏览器 | 各自的面板 |
+
+> 「浏览器」是**调试浏览器**（起一个带 `--remote-debugging-port` 的 Chrome/Edge/Firefox，交给 Playwright 之类的工具接管），
+> 与上文「浏览器半」（插件跑在客户端的那半边）不是一回事。设计说明见 [`docs/yon-browser-design.md`](docs/yon-browser-design.md)。
 
 ### 项目管理界面怎么用
 
@@ -279,7 +283,7 @@ ctx.slots.inject('yon.panel.item', () => ctx.slots.register({
 ```sh
 pnpm install
 pnpm typecheck   # tsc --noEmit（host + client + tests）
-pnpm test        # vitest（116 个用例）
+pnpm test        # vitest（699 个用例 / 50 个文件）
 pnpm build       # 先把 skills/*.md 内联成 TS，再 tsc 出 host 半，最后 tsdown 出浏览器半
 pnpm verify      # 产物自检（loader 契约、externals、样式注入、host ESM、patch 层、技能目录）
 pnpm pack        # 打包，prepack 会先 build
@@ -319,10 +323,10 @@ pnpm pack        # 打包，prepack 会先 build
 
 ## 源码地图
 
-六个面板，每个的形状都一样：`src/client/<X>Item.tsx` 一个内建条目、`src/client/<X>/` 一组界面文件、
+八个面板，每个的形状都一样：`src/client/<X>Item.tsx` 一个内建条目、`src/client/<X>/` 一组界面文件、
 `src/host/<X>-*.ts` 一组 host 模块。下面按这层结构列 —— 想找某个文件时，`find src/client src/host -type f` 仍是权威。
 
-### 基础层（六个面板共用）
+### 基础层（八个面板共用）
 
 | 文件 | 职责 |
 |---|---|
@@ -331,16 +335,16 @@ pnpm pack        # 打包，prepack 会先 build
 | `src/host/http.ts` | `/yon/api` 全部路由与错误映射（没有 web server 的部署下不挂载） |
 | `src/host/prompt.ts` | 注入给模型的工具说明。**组数是写下来的**，新增一组工具要同步改 |
 | `src/shared/types.ts` | 前后端共用的数据契约 |
-| `src/client/index.ts` | 浏览器半入口：席位注册、面板 store、**六个**内建条目、API 客户端注入面 |
+| `src/client/index.ts` | 浏览器半入口：席位注册、面板 store、**八个**内建条目、API 客户端注入面 |
 | `src/client/YonPanelRoot.tsx` | 侧栏底部触发按钮、面板外壳、分层后的关闭行为 |
 | `src/client/panel-store.ts` | 面板开合状态 + 覆盖层层数（一次 Esc 只关一层） |
-| `src/client/panel.module.css` / `panel-item.module.css` | 六个面板共用的对话框样式 / 六个内建格共用的图标格样式 |
+| `src/client/panel.module.css` / `panel-item.module.css` | 八个面板共用的对话框样式 / 八个内建格共用的图标格样式 |
 | `src/client/request.ts` | 各 API 客户端共用的 `/yon/api` JSON 调用与错误类型 |
 | `src/client/slots.ts` / `locales.ts` / `cn.ts` / `item-rows.ts` | 席位与 inject face 类型 / 词典（**zh 与 en 两份**）/ 类名拼接 / 条目行 |
 | `scripts/build-skills.mjs` | 把 `skills/*/SKILL.md` 内联成 TS；`--check` 用来抓漂移 |
 | `skills/<名字>/SKILL.md` | 插件自带技能的**源文件**（普通技能 bundle，你编辑这个） |
 
-### 六个面板
+### 八个面板
 
 | 面板 | 界面（`src/client/`） | host 半（`src/host/`） | 职责 |
 |---|---|---|---|
@@ -350,6 +354,8 @@ pnpm pack        # 打包，prepack 会先 build
 | 安装目录 `home` | `home/{HomeManager.tsx,api.ts,panel.module.css}` | `home-store.ts`、`home-probe.ts`、`home-mirror.ts`、`home-service.ts`、`home-tools.ts`、`home-files.ts` | 登记本机 NCC/BIP Home，探测它是什么（不打开 jar）、镜像回技能侧；`home-files.ts` 管包含性检查、编码与凭据打码 |
 | 知识库 `wiki` | `wiki/{WikiManager.tsx,api.ts,panel.module.css}` | `wiki-store.ts`、`wiki-index.ts`、`wiki-graph.ts`、`wiki-usage.ts`、`wiki-service.ts`、`wiki-tools.ts`、`wiki-write.ts` | 页与页之间的引用图、被问过什么 / 答不上什么的日志。两条写入路径互不相干：**页**走 `wiki-write.ts`（三种模式，不能覆盖已有页），**登记**（`wiki-service.ts` 的 `saveVault`/`removeVault`，面板的三个动词）只改 `wiki_config.json`，不写页也不在 vault 里删东西 |
 | 消化 `digest` | `digest/{DigestManager.tsx,api.ts,panel.module.css}` | `digest-log.ts`、`digest-audit.ts`、`digest-plan.ts`、`digest-sweep.ts`、`digest-config.ts`、`digest-tools.ts` | 判断一份「源素材 → 知识页」消化得够不够：配置阈值与词表、批量按源文档分组验收、每次验收留一条流水 |
+| 迭代 `iteration` | `iteration/{IterationManager.tsx,api.ts,panel.module.css}` | `iteration-store.ts`、`iteration-service.ts`、`iteration-tools.ts` | 模型在使用这套插件时记下的短板（能力不足 / 优化建议）与使用者的处理（状态 / 优先级 / 删除）。模型**只能追加**（`iteration_add` / `iteration_list`，没有改与删的工具），改状态、调优先级、删除都在面板里由人做；台账在 `~/.dsh/yon-panel/iteration.json`。设计记录见 `docs/yon-iteration-design.md` |
+| 浏览器 `browser` | `browser/{BrowserManager.tsx,api.ts,panel.module.css}` | `browser-scan.ts`、`browser-store.ts`、`browser-system.ts`、`browser-service.ts` | **调试浏览器**：扫一遍本机（Chrome / Edge / Chromium / Firefox）并记住路径，填端口点「启动」起一个带调试端口的浏览器，面板报出连接地址，能停掉**本面板起过**的实例。全仓唯一一处 `node:child_process`（进程必须活过这次调用并活过 DSH 重启），也是唯一会结束进程的面板；登记在 `~/.dsh/yon-panel/browser_config.json`、台账在 `browser_runs.json`，用户数据目录默认在插件根目录的 `.browser-profile/<id>/`。设计记录见 `docs/yon-browser-design.md` |
 
 ### 不属于任何面板的读取层
 

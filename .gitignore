@@ -15,3 +15,8 @@ lib/client/
 # 中间产物不进。
 preview/*.html
 preview/*.png
+
+# 浏览器面板默认的用户数据目录：面板起调试浏览器时按浏览器分开建在插件根目录下。
+# 里面有 cookie 与登录态，既不进仓库，也不进发布物——发布物的白名单另有一道
+# 门禁（scripts/verify-artifact.mjs 里对着 package.json 的 `files` 断言）。
+.browser-profile/

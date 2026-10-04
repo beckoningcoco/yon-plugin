@@ -24,7 +24,7 @@
 import { listClassIndexes, type StoredIndex } from './class-index.ts'
 import { listMetaIndexes, type StoredMetaIndex } from './meta-index.ts'
 import { clampFindLimit, findIn, HomeError, readIn, type ReadOptions } from './home-files.ts'
-import { mirrorHomes, mirrorPathOf } from './home-mirror.ts'
+import { mirrorHomes, resolveMirrorPath } from './home-mirror.ts'
 import { isDir, probeHome } from './home-probe.ts'
 import type { HomeStore, StoredHome } from './home-store.ts'
 import {
@@ -214,12 +214,20 @@ export function createYonHomesService(store: HomeStore, skillsRoot?: string): Yo
         complete: read.error === undefined,
         ...read.error === undefined ? {} : { error: read.error },
         // Wrapped rather than passed directly: `map` would hand the mapping
-        // function's second argument — the index — to `mirrorPathOf`, whose second
+        // function's second argument — the index — to the resolver, whose second
         // argument is the skills root. Naming this service's root there keeps the
-        // path the panel shows identical to the file `mirror` actually writes.
+        // path the panel shows identical to the file `mirror` actually writes —
+        // including the legacy-directory preference, which is why this goes through
+        // `resolveMirrorPath` and not `mirrorPathOf`: an installed tree that still
+        // carries the old directory name is written there, and a panel that showed
+        // the new name would be pointing at a file nobody wrote.
         ...products.length === 0
           ? {}
-          : { mirrorPath: products.map(product => mirrorPathOf(product, skillsRoot)).join('  ·  ') },
+          : {
+              mirrorPath: (await Promise.all(
+                products.map(product => resolveMirrorPath(product, skillsRoot)),
+              )).join('  ·  '),
+            },
         ...mirrorWarning === undefined ? {} : { mirrorWarning },
       }
     },

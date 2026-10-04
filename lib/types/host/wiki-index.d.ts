@@ -1,3 +1,4 @@
+import { type WikiUnindexedDir } from '../shared/types.ts';
 /**
  * How one page points at another entity.
  *
@@ -84,6 +85,24 @@ export interface WikiVault {
 }
 /** Whether a directory looks like a vault this module can read. */
 export declare function isVault(root: string): boolean;
+/**
+ * The page directories this index skips, with how many pages each holds.
+ *
+ * Entity pages are the whole of what every reader here can answer from, so a
+ * bare count of them is not the vault's size — and read as one it says a vault
+ * holding 13 pages under `wiki/topics` is an empty knowledge base. Skipping
+ * those directories is the decision; leaving the skip invisible is what produced
+ * that reading, so they are counted and named instead.
+ *
+ * One level deep, beside the entity directory: that is where the layouts put
+ * them (`wiki/topics` next to `wiki/entities`), and a deeper walk would traverse
+ * a whole vault to describe pages this module is not going to open anyway.
+ *
+ * @param vault - the registration.
+ * @returns one entry per sibling directory holding at least one page, most pages
+ * first; empty when the vault has no entity directory or nothing beside it.
+ */
+export declare function unindexedDirsOf(vault: WikiVault): Promise<WikiUnindexedDir[]>;
 /**
  * The directory holding a vault's entity pages.
  * @param root - absolute vault root.

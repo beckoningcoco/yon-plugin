@@ -14,6 +14,16 @@ export interface MirrorResult {
  */
 export declare function mirrorPathOf(product: HomeProduct, skillsRoot?: string): string;
 /**
+ * The file to write, preferring a legacy directory when only that one exists.
+ *
+ * @param product - which product line.
+ * @param skillsRoot - the skills tree to look in.
+ * @returns the canonical path if its directory is there, else the first legacy
+ *   directory that is, else the canonical path (so the caller's own missing-tree
+ *   warning names where the plugin expects the tree to be).
+ */
+export declare function resolveMirrorPath(product: HomeProduct, skillsRoot?: string): Promise<string>;
+/**
  * Write the panel's registrations for one product into the skills' file.
  *
  * @param product - which product line, and therefore which file.

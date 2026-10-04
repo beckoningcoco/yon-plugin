@@ -24,7 +24,7 @@
 import { existsSync } from 'node:fs'
 import { readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { WIKI_ENTITY_DIRS } from '../shared/types.ts'
+import { WIKI_ENTITY_DIRS, type WikiUnindexedDir } from '../shared/types.ts'
 
 /**
  * How one page points at another entity.
@@ -144,6 +144,63 @@ const GUESSED: readonly WikiVault[] = [
 /** Whether a directory looks like a vault this module can read. */
 export function isVault(root: string): boolean {
   return entityDirOf(root) !== undefined
+}
+
+/** Markdown files directly inside one directory; 0 when it cannot be read. */
+async function countPages(dir: string): Promise<number> {
+  const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
+  let pages = 0
+  for (const entry of entries) {
+    if (entry.isFile() && entry.name.endsWith('.md')) pages += 1
+  }
+  return pages
+}
+
+/**
+ * The page directories this index skips, with how many pages each holds.
+ *
+ * Entity pages are the whole of what every reader here can answer from, so a
+ * bare count of them is not the vault's size — and read as one it says a vault
+ * holding 13 pages under `wiki/topics` is an empty knowledge base. Skipping
+ * those directories is the decision; leaving the skip invisible is what produced
+ * that reading, so they are counted and named instead.
+ *
+ * One level deep, beside the entity directory: that is where the layouts put
+ * them (`wiki/topics` next to `wiki/entities`), and a deeper walk would traverse
+ * a whole vault to describe pages this module is not going to open anyway.
+ *
+ * @param vault - the registration.
+ * @returns one entry per sibling directory holding at least one page, most pages
+ * first; empty when the vault has no entity directory or nothing beside it.
+ */
+export async function unindexedDirsOf(vault: WikiVault): Promise<WikiUnindexedDir[]> {
+  const entityDir = entityDirOf(vault.path)
+  if (entityDir === undefined) return []
+  const parent = path.dirname(entityDir)
+  const entries = await readdir(parent, { withFileTypes: true }).catch(() => [])
+  const found: WikiUnindexedDir[] = []
+  /** One spelling of a path for every platform, as the registration's own is. */
+  const slash = (full: string): string => full.split(path.sep).join('/')
+
+  for (const entry of entries) {
+    // Dot directories are the editor's, not the vault's.
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue
+    const full = path.join(parent, entry.name)
+    if (full === entityDir) continue
+    // A sibling that is itself a readable vault root — a knowledge base nested
+    // inside this one — is a second registration's tree, not part of this vault's
+    // unindexed surface. Naming it here would describe another row's pages in this
+    // row's voice. (`wiki/entities` is tried before the bare layouts, so a nested
+    // `wiki/` under a root-layout vault can never hold this vault's own pages.)
+    if (entityDirOf(full) !== undefined) continue
+    const pages = await countPages(full)
+    if (pages > 0) {
+      found.push({ vault: vault.id, dir: slash(path.relative(vault.path, full)), path: slash(full), pages })
+    }
+  }
+
+  found.sort((a, b) => b.pages - a.pages || a.dir.localeCompare(b.dir, 'zh'))
+  return found
 }
 
 /**

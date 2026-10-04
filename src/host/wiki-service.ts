@@ -38,7 +38,7 @@
 import { readFile, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
-  buildWikiIndex, ensureWikiIndex, entityDirOf, isVault, wikiIndexPath, writeWikiIndex,
+  buildWikiIndex, ensureWikiIndex, entityDirOf, isVault, unindexedDirsOf, wikiIndexPath, writeWikiIndex,
   type WikiIndex, type WikiPage, type WikiRefKind, type WikiVault,
 } from './wiki-index.ts'
 import {
@@ -54,7 +54,7 @@ import {
 import type { SaveVaultInput, WikiLogEntry, WikiVaultView } from '../shared/types.ts'
 import type {
   WikiCardView, WikiGraphView, WikiHealthReport, WikiLevelStat,
-  WikiRelationGroupView, WikiUsageView,
+  WikiRelationGroupView, WikiUnindexedDir, WikiUsageView,
 } from '../shared/types.ts'
 
 /** What a knowledge base call can fail with. */
@@ -136,8 +136,16 @@ export interface WikiLookupResult {
   readonly hits: readonly WikiHit[]
   /** When the index behind this answer was built. */
   readonly indexAge: string
-  /** How many pages were searched. */
+  /** How many pages were searched — entity pages, which is all a search can read. */
   readonly scanned: number
+  /**
+   * Pages in the searched vaults that no search can reach.
+   *
+   * Carried on every answer, not only the empty ones: a term that missed is
+   * exactly when a caller needs to know the vault holds pages this tool cannot
+   * see, and a term that hit still benefits from knowing the corpus is wider.
+   */
+  readonly unindexed: readonly WikiUnindexedDir[]
 }
 
 /** One page's full text, with the facts worth reading before the body. */
@@ -642,6 +650,7 @@ export function createYonWikiService(
       const needle = asked.toLowerCase()
       const selected = await select(vaultId)
       const hits: WikiHit[] = []
+      const unindexed: WikiUnindexedDir[] = []
       let scanned = 0
       let age = ''
 
@@ -649,6 +658,7 @@ export function createYonWikiService(
         const index = await indexFor(vault)
         const graph = await graphFor(vault)
         scanned += index.entities.length
+        unindexed.push(...await unindexedDirsOf(vault))
         if (age === '' || index.builtAt > age) age = index.builtAt
         for (const page of index.entities) {
           const matched = matchOf(page, needle)
@@ -668,7 +678,7 @@ export function createYonWikiService(
         ...(vaultId === undefined ? {} : { vault: vaultId }),
         ...(hits[0] === undefined ? {} : { top: hits[0].page }),
       })
-      return { term: asked, hits, indexAge: age, scanned }
+      return { term: asked, hits, indexAge: age, scanned, unindexed }
     },
 
     async read(page, vaultId) {
@@ -715,10 +725,18 @@ export function createYonWikiService(
         hits: 0,
         ...(vaultId === undefined ? {} : { vault: vaultId }),
       })
-      throw new WikiError(
-        'not-found',
+      // 「没有名为 X 的页面」 is the same confident wrong conclusion `lookup` guards
+      // against, one step later: a page that lives under `wiki/topics` is not
+      // *missing*, it is outside what this index can open. Say so, and give the
+      // directory, so the reader goes and looks instead of reporting it absent.
+      const outside = (await Promise.all(selected.map(vault => unindexedDirsOf(vault)))).flat()
+      throw new WikiError('not-found', [
         `没有名为「${wanted}」的页面。先用 wiki_lookup 按表名或中文名找到确切的页面名。`,
-      )
+        ...(outside.length === 0 ? [] : [
+          '注意：索引只读实体页目录。这几处还有页面不在索引里，你要找的可能是其中之一：'
+            + outside.map(entry => `${entry.dir} —— ${entry.pages} 页，${entry.path}`).join('；'),
+        ]),
+      ].join('\n'))
     },
 
     async rebuild(vaultId) {
@@ -803,6 +821,7 @@ export function createYonWikiService(
           vault: vault.id,
           vaultLabel: vault.label,
           pages: index.entities.length,
+          unindexed: await unindexedDirsOf(vault),
           indexedAt: index.builtAt,
           ...(bytes === undefined ? {} : { indexBytes: bytes }),
           graph: tallies,

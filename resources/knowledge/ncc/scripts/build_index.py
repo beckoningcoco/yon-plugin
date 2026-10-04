@@ -47,7 +47,7 @@ def build_index(home_path, version, is_bip=False):
         output_dir = os.path.join(SCRIPT_DIR, "..", "..", "yonyou-bip-dev")
         config_name = "bip_home_path.json"
     else:
-        # NCC: 输出到 skills/yon-ncc-dev/
+        # NCC: 输出到 skills/ncc-asset-hawk/
         output_dir = os.path.join(SCRIPT_DIR, "..")
         config_name = "ncc_home_path.json"
 

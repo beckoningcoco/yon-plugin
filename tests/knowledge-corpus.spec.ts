@@ -22,6 +22,7 @@ import { readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { YON_BUNDLED_SKILLS } from '../src/host/skill-catalog.generated.ts'
 
 /**
  * The corpus, resolved the way `knowledge-tools.ts` resolves it — relative to the
@@ -45,12 +46,31 @@ async function documents(): Promise<readonly string[]> {
   return (await walk(CORPUS)).filter(rel => rel.endsWith('.md'))
 }
 
+/**
+ * Every file a search can return — the set `knowledge_search` walks.
+ *
+ * The extensions must stay in step with the filter in `knowledge-tools.ts`
+ * (`listDocuments`), because this is the set its runtime line 已扫描 N 个文档 counts.
+ */
+async function scanned(): Promise<readonly string[]> {
+  return (await walk(CORPUS)).filter(rel => /\.(md|txt|sql|json|py|java|js)$/i.test(rel))
+}
+
 describe('the knowledge corpus this package ships', () => {
   it('is present, with both product lines in it', async () => {
     const docs = await documents()
     expect(docs.length).toBeGreaterThan(300)
     expect(docs.some(rel => rel.startsWith('bip/'))).toBe(true)
     expect(docs.some(rel => rel.startsWith('ncc/'))).toBe(true)
+  })
+
+  it('is at least the size the tool text claims', async () => {
+    // The model-facing text says 「400 余篇」 / "over 400 documents". That is not a
+    // matter of wording: while it said 「约 450 篇」 the 450 was the directory's *file*
+    // count, and the tool printed 已扫描 388 个文档 beside it — a description
+    // contradicting its own output, which nothing here was checking. This bound is
+    // what makes the claim falsifiable.
+    expect((await scanned()).length).toBeGreaterThan(400)
   })
 
   it('ships no blank document', async () => {
@@ -96,5 +116,60 @@ describe('the knowledge corpus this package ships', () => {
       if (/[一-鿿]/.test(await readFile(join(CORPUS, rel), 'utf8'))) chinese++
     }
     expect(chinese).toBeGreaterThan(300)
+  })
+})
+
+/**
+ * The other half of the same promise. A bundled body is copied verbatim into the model's
+ * context, so the paths written in it are the only route it has to a document — there is
+ * no directory behind that text and nothing to click.
+ *
+ * `ncc-asset-hawk/SKILL.md` carried sixteen `[开发指南](./references/x.md)` links in its
+ * reader-navigation table until 2026-10-03, immediately under a header telling the model
+ * not to trust relative paths. They were right for a Claude Code tree, where the links are
+ * clicked by a person, and dead here, where `knowledge_read` takes the corpus spelling.
+ */
+describe('the skill text this package inlines', () => {
+  /**
+   * Paths the bundles spell as corpus files. Restricted to the two reference directories
+   * on purpose: the rest of what these bodies name is a path inside an NCC Home, a config
+   * file on the operator's disk, or prose, and none of it is this corpus's to promise.
+   * A trailing directory (`bip/references/旗舰版/集成/`) is a place to search, not a file
+   * to open, so an extension is required to count as a claim.
+   */
+  const CLAIM = /`((?:ncc|bip)\/references\/[^\s`]*\.[a-z0-9]{2,5})`/g
+
+  it('asks for documents only the way the model can ask for them', () => {
+    const offenders: string[] = []
+    for (const skill of YON_BUNDLED_SKILLS) {
+      for (const match of skill.content.matchAll(/\]\(\.{1,2}\//g)) {
+        const at = match.index ?? 0
+        offenders.push(`${skill.name}: ${skill.content.slice(at, at + 40).split('\n')[0]}`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('names no document the corpus does not have', async () => {
+    // Compared against the walked tree rather than `existsSync`, so a path that differs
+    // from the file only in case is an offender here — it would resolve on this
+    // filesystem and not on the next one.
+    const shipped = new Set(await walk(CORPUS))
+    const claimed = new Set<string>()
+    const missing: string[] = []
+    for (const skill of YON_BUNDLED_SKILLS) {
+      for (const match of skill.content.matchAll(CLAIM)) {
+        const ref = match[1]?.trim()
+        if (ref === undefined || ref === '') continue
+        // `xxx.md` is the shape the tables show a path in, not a document they name.
+        if (/xxx\./.test(ref)) continue
+        claimed.add(ref)
+        if (!shipped.has(ref)) missing.push(`${skill.name}: ${ref}`)
+      }
+    }
+    expect(missing).toEqual([])
+    // The bound exists for the same reason as the ones above: a build that inlined the
+    // bodies but lost their content would otherwise pass this case by claiming nothing.
+    expect(claimed.size).toBeGreaterThan(15)
   })
 })

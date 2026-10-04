@@ -1,0 +1,392 @@
+/* The iteration ledger's own pieces: the tally line, the row list, an expanded
+   row's detail, and the two forms (re-triage inline, file one by hand).
+   Everything structural — the dialog chrome, the pane split, the empty state,
+   the error line, the buttons — comes from the shared stylesheet, so this
+   surface stays one family with its six siblings.
+
+   Two rules this file follows, both learned from the sibling sheets:
+
+   - Every colour is a theme alias. Nothing here may pick a colour that only
+     works on one theme.
+   - No class name may repeat one in `panel.module.css`. The preview pages have
+     no CSS-module hashing, so a repeated name is two stylesheets fighting over
+     one selector, and the screenshot then shows a state that exists nowhere.
+     That is why the full-height override below is `.scrollBody` and not a
+     second `.body`.
+
+   Layout note: the pane below is a column flex container owned by the shared
+   `.detailPane`, which already scrolls and already sets the 10px rhythm. So
+   nothing here declares its own scroll area or its own margins between blocks —
+   a nested scroll area can never reach its end. */
+
+/* Overrides the shared `.body`'s fixed `height: min(62vh, 520px)`.
+
+   That fixed height is right for the surfaces that put a list beside a detail
+   pane: they need a stable frame so selecting a row does not resize the dialog.
+   This surface has one column, and a ledger with three rows in it would leave a
+   band of dead white that reads as content that failed to load. Sized to
+   content, capped at the same ceiling, the card ends where its content ends and
+   still cannot outgrow the viewport. */
+.scrollBody {
+  height: auto;
+  max-height: min(62vh, 520px);
+}
+
+/* ── the tally line and the controls above the list ─────────────────────── */
+
+.toolbar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.tally {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.tallyItem {
+  white-space: nowrap;
+}
+
+.tallyNum {
+  color: var(--dsw-alias-label-primary);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.tallySep {
+  color: var(--dsw-alias-label-dimmed);
+}
+
+/* 未处理的条数是这一屏唯一「等你动手」的数字，所以只有它带上重点色。 */
+.tallyOpen {
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filters {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.filter {
+  padding: 3px 9px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.filter:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.filterOn {
+  background: var(--dsw-alias-interactive-bg-active);
+  color: var(--dsw-alias-label-primary);
+  border-color: var(--dsw-alias-border-l4);
+}
+
+.search {
+  min-width: 180px;
+  flex: 1 1 180px;
+  max-width: 280px;
+}
+
+.sectionNote {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* ── the rows ───────────────────────────────────────────────────────────── */
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.row + .row {
+  border-block-start: 0.5px solid var(--dsw-alias-border-l1);
+}
+
+/* One column width shared by the head and the detail, so an expanded row's text
+   lines up under its own title instead of under a magic number. */
+.row {
+  --stamp-col: 116px;
+}
+
+.rowHead {
+  inline-size: 100%;
+  display: grid;
+  grid-template-columns: var(--stamp-col) minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.rowHead:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.rowHead:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: -2px;
+}
+
+.rowTime {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rowSymptom {
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+/* 状态已处理完的行整条压暗：台账读起来要先看见「还没人管的那几条」。 */
+.rowDone .rowSymptom {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.rowTarget {
+  margin-inline-start: 6px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+.rowTags {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* ── the expanded detail ────────────────────────────────────────────────── */
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 12px 12px calc(var(--stamp-col) + 22px);
+  border-block-start: 0.5px solid var(--dsw-alias-border-l1);
+}
+
+.detailGrid {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 4px 10px;
+  align-items: baseline;
+}
+
+.detailGrid dt {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.detailGrid dd {
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.detailMono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+/* 空字段显示破折号，不省略整行：读者要能分清「没填」和「这一屏没有这一项」。 */
+.detailEmpty {
+  color: var(--dsw-alias-label-dimmed);
+}
+
+/* 详情里那一行操作。**不叫 `.detailActions`**：共享表里有一个同名类，还带一条
+   `:last-child{position:sticky}`。真实环境里 CSS Modules 靠 hash 隔离，两者永不
+   相遇；但预览页不给类名加 hash，同名就等于同一个类，于是这一行会白白继承一条它
+   不需要的吸底规则（`render.spec.tsx` 的撞名校验就是冲着这件事）。 */
+.rowVerbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.editor {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+.editor select {
+  padding: 2px 6px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 12px;
+}
+
+.editor select:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+.removeAsk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+/* ── filing one by hand ─────────────────────────────────────────────────── */
+
+/* 手工记一条的那张表单。**整族都不叫 `.form*`**：共享表里已经有 `.form` 与
+   `.formError`（项目/数据源的表单），而预览页不给类名加 hash，同名即同类，这张表单
+   会因此继承一份不属于它的版式。改成一族自己的名字，撞名校验也就无事可报。 */
+.noteForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.noteFormHead {
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.noteFormGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.fieldWide {
+  grid-column: 1 / -1;
+}
+
+.fieldLabel {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.field textarea {
+  padding: 6px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  resize: vertical;
+  min-height: 52px;
+}
+
+.field select {
+  padding: 5px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 13px;
+}
+
+.field textarea:focus-visible,
+.field select:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+.noteFormActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.noteFormError {
+  margin: 0;
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* ── the foot ───────────────────────────────────────────────────────────── */
+
+.foot {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.footPath {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+.dim {
+  opacity: 0.6;
+}

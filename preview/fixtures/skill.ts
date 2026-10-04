@@ -115,7 +115,7 @@ export const SKILL_DETAILS: readonly SkillDetail[] = [
 
 本技能服务于 **用友 NCC（NC Cloud）**（非旗舰版 BIP）。
 
-> **版本区分**：旗舰版（BIP）→ \`yon-bip-dev\` | NCC → \`yon-ncc-dev\`
+> **版本区分**：旗舰版（BIP）→ \`yon-bip-dev\` | NCC → \`ncc-asset-hawk\`
 >
 > 收到问题时务必先判断版本。记录问题时注意路由到对应的技能目录。
 
@@ -321,7 +321,7 @@ public interface IBusinessListener {
   }),
 
   bundled({
-    name: 'yon-ncc-dev',
+    name: 'ncc-asset-hawk',
     description: 'NCC（用友 NC Cloud）客开技能。当用户提到 NCC、NC Cloud、NCC2111、NCC2312、NCC2207、 或 NCC 特有的开发模式（资产包接口开发、业务插件/事件监听器 IBusinessListener、 单据转换 IPfExchangeService、集成规则 pub_interule、对照表 pub_intecontrast、 REST API Resource 继承 AbstractRestResource、华科客开模式、OpenAPI 路由注册等）时， 必须使用此技能。也包括 NCC 数据库问题、NCC 服务器问题等。',
     content: `# NCC（NC Cloud）客开技能
 
@@ -331,7 +331,7 @@ public interface IBusinessListener {
 
 用友有两个主要产品线，**表结构、实体名、数据字典完全不同**，绝不能混用：
 
-- **NCC（NC Cloud）** <- 本技能 \`yon-ncc-dev\`
+- **NCC（NC Cloud）** <- 本技能 \`ncc-asset-hawk\`
 - **旗舰版（BIP / YonBIP）** -> 对应技能 \`yonyou-bip-dev\`
 
 收到问题时，第一步必须是判断版本；版本不明确就主动问，不要猜。`,
@@ -364,7 +364,7 @@ public interface IBusinessListener {
 
   bundled({
     name: 'yonyou-bip-dev',
-    description: '用友 BIP 旗舰版客开技能（YonBIP / 旗舰版 / BIP）。 触发场景：BIP 平台开发、SuperDO/BPO 实体扩展、YMS 异步任务、 单据模板/元数据/字段名查询、OpenAPI、MDF 前端扩展、 旗舰版数据库问题、旗舰版环境配置、Arthas 诊断。 注意：NCC / NC Cloud 产品线请使用 yon-ncc-dev 技能，勿混用。',
+    description: '用友 BIP 旗舰版客开技能（YonBIP / 旗舰版 / BIP）。 触发场景：BIP 平台开发、SuperDO/BPO 实体扩展、YMS 异步任务、 单据模板/元数据/字段名查询、OpenAPI、MDF 前端扩展、 旗舰版数据库问题、旗舰版环境配置、Arthas 诊断。 注意：NCC / NC Cloud 产品线请使用 ncc-asset-hawk 技能，勿混用。',
     content: `# 用友 BIP 客开技能
 
 > **本技能引用的文档**都在插件的参考库里，路径形如 \`bip/references/xxx.md\`。
@@ -372,7 +372,7 @@ public interface IBusinessListener {
 ## 强制规则：版本路由
 
 - **旗舰版（BIP / YonBIP）** <- 本技能
-- **NCC（NC Cloud）** -> 对应技能 \`yon-ncc-dev\`
+- **NCC（NC Cloud）** -> 对应技能 \`ncc-asset-hawk\`
 
 用户问题里出现 "NCC" 就不要用本技能的参考资料；版本不明确时先问。
 

@@ -53,7 +53,7 @@ const store = createHomeStore(join(scratch, 'home_config.json'))
 // The skills tree the mirror writes into: a scratch one holding the product's own
 // directory, so the merge path runs without touching the operator's.
 const skillsRoot = join(scratch, 'skills')
-const skillDir = join(skillsRoot, product === 'bip' ? 'yonyou-bip-dev' : 'yon-ncc-dev')
+const skillDir = join(skillsRoot, product === 'bip' ? 'yonyou-bip-dev' : 'ncc-asset-hawk')
 mkdirSync(skillDir, { recursive: true })
 // A version the panel does not manage, to prove the mirror merges rather than
 // replaces. `build_index.py` writes entries shaped like this one.

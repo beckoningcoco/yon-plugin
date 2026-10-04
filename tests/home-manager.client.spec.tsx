@@ -112,7 +112,7 @@ function stubApi(
       homes: rows,
       configPath: 'C:/Users/99558/.dsh/yon-panel/home_config.json',
       complete: true,
-      mirrorPath: 'C:/Users/99558/.claude/skills/yon-ncc-dev/ncc_home_path.json',
+      mirrorPath: 'C:/Users/99558/.claude/skills/ncc-asset-hawk/ncc_home_path.json',
     })),
     saveHome: unused(),
     removeHome: unused(),

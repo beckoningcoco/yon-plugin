@@ -1,7 +1,9 @@
 /** Slot contract this package owns: the button seat inside the Yon panel. */
+import type { BrowserApi } from './browser/api.ts';
 import type { DataSourceApi } from './datasource/api.ts';
 import type { DigestApi } from './digest/api.ts';
 import type { HomeApi } from './home/api.ts';
+import type { IterationApi } from './iteration/api.ts';
 import type { ProjectApi } from './project/api.ts';
 import type { SkillApi } from './skill/api.ts';
 import type { WikiApi } from './wiki/api.ts';
@@ -92,6 +94,36 @@ export type DigestItemFace = DigestApi & {
 export type HomeItemFace = HomeApi & {
     /**
      * Announce a layer standing above the panel (the Home surface).
+     * @returns the release for that layer.
+     */
+    pushOverlay(): () => void;
+};
+/**
+ * Data face the panel's iteration-ledger entry receives: the ledger API plus the
+ * same panel-level gesture.
+ *
+ * It borrows nothing, like the wiki and digest entries: the ledger is a file this
+ * plugin owns, and it knows nothing of projects, vaults or installations.
+ */
+export type IterationItemFace = IterationApi & {
+    /**
+     * Announce a layer standing above the panel (the ledger surface).
+     * @returns the release for that layer.
+     */
+    pushOverlay(): () => void;
+};
+/**
+ * Data face the panel's browser entry receives: the browser API plus the same
+ * panel-level gesture.
+ *
+ * It borrows nothing, like the wiki and ledger entries. The one operation it has that
+ * no sibling does is the launch itself — the only call in this panel that starts a
+ * process on the operator's machine — which is why that row's stop is a two-step
+ * confirmation and why nothing else on this list may end it.
+ */
+export type BrowserItemFace = BrowserApi & {
+    /**
+     * Announce a layer standing above the panel (the browser surface).
      * @returns the release for that layer.
      */
     pushOverlay(): () => void;

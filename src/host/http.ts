@@ -51,6 +51,17 @@
  *   GET    /yon/api/wiki/card               one page as a card
  *   GET    /yon/api/wiki/citers             who cites one entity URI
  *
+ *   GET    /yon/api/iterations              the ledger, newest first (`?status=`, `?kind=`)
+ *   POST   /yon/api/iterations              file one row by hand from the panel
+ *   PATCH  /yon/api/iterations/<id>         re-triage one row (status / severity)
+ *   DELETE /yon/api/iterations/<id>         drop one row
+ *
+ *   GET    /yon/api/browsers                registrations, running instances, scan state
+ *   POST   /yon/api/browsers/scan           re-scan this machine and store what was found
+ *   PUT    /yon/api/browsers/<id>           edit one row (id / family / product are immutable)
+ *   POST   /yon/api/browsers/<id>/launch    start one, with a debugging port (answers 201)
+ *   POST   /yon/api/browsers/runs/<runId>/stop  end one this panel started
+ *
  * A datasource key is `<configKey>::<env>` and carries non-ASCII text, so every
  * route segment below is decoded (by {@link segmentsOf}) and every client call
  * encodes it. The key is opaque to this layer: it is split only where the
@@ -63,8 +74,10 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import {
-  API_PREFIX, PROJECT_STATUSES, type ApiError, type DirectoryPickResult, type JsonValue,
-  type SaveHomeInput, type SaveVaultInput, type SetFieldInput, type UpdateProjectInput,
+  API_PREFIX, ITERATION_KINDS, ITERATION_SEVERITIES, ITERATION_STATUSES, PROJECT_STATUSES,
+  type ApiError, type DirectoryPickResult, type JsonValue, type LaunchBrowserInput,
+  type SaveBrowserInput, type SaveHomeInput, type SaveVaultInput, type SetFieldInput,
+  type UpdateProjectInput,
 } from '../shared/types.ts'
 import { ProjectError, type YonProjectsService } from './service.ts'
 import { SkillError, type YonSkillsService } from './skill-registry.ts'
@@ -72,6 +85,8 @@ import { DataSourceError, type YonDataSourcesService } from './datasource-servic
 import { WikiError, type YonWikiService } from './wiki-service.ts'
 import { digestLogPath, type DigestLog } from './digest-log.ts'
 import { HomeError, type YonHomesService } from './home-service.ts'
+import { IterationError, type YonIterationService } from './iteration-service.ts'
+import { BrowserError, type YonBrowsersService } from './browser-service.ts'
 import type { YonMetaService } from './meta-service.ts'
 import type { YonClassService } from './class-service.ts'
 
@@ -801,6 +816,319 @@ async function handleDigest(
   sendFailure(res, 404, 'not-found', `no route for ${method} /yon/api/digest/...`)
 }
 
+/**
+ * 一张字面量表里的成员，或 undefined。
+ *
+ * 这些值从 URL 进来，是任意字符串。传下去也不会出错——`list()` 拿它做等值比较，
+ * 比不中就返回空——但那样一个拼错的 `?status=opne` 会安静地显示「什么都没有」，
+ * 而真相是没人叫这个名字。所以在这里挡一次，并说清有哪些。
+ */
+function memberOf<T extends string>(value: string | null, allowed: readonly T[]): T | undefined {
+  if (value === null || value === '') return undefined
+  return (allowed as readonly string[]).includes(value) ? value as T : undefined
+}
+
+/**
+ * Serve the `/yon/api/iterations` branch.
+ *
+ * The operator's side of the iteration ledger: read it, triage a row, edit a note by
+ * hand, delete one. Nothing here is reachable by the model — its own two tools stop
+ * at append, and the reasoning for that split is in `iteration-tools.ts`.
+ *
+ * `DELETE` removes a row outright rather than marking it. A ledger holds a few dozen
+ * notes and an operator who wants one gone means gone; the panel asks twice before
+ * calling this, which is where the safety belongs, not in a tombstone.
+ *
+ * @param req - the request; read for the body on writes.
+ * @param res - the response.
+ * @param method - HTTP method.
+ * @param segments - the decoded path segments after the API prefix.
+ * @param url - the parsed request URL, for the query parameters.
+ * @param iteration - the ledger service.
+ */
+async function handleIterations(
+  req: IncomingMessage,
+  res: ServerResponse,
+  method: string,
+  segments: readonly string[],
+  url: URL,
+  iteration: YonIterationService,
+): Promise<void> {
+  const id = segments[1]
+
+  // /yon/api/iterations
+  if (id === undefined) {
+    if (method === 'GET') {
+      // An unknown filter is refused rather than silently answered with an empty
+      // list — see {@link memberOf}.
+      const rawStatus = url.searchParams.get('status')
+      const status = memberOf(rawStatus, [...ITERATION_STATUSES, 'all'])
+      if (rawStatus !== null && rawStatus !== '' && status === undefined) {
+        throw new IterationError('invalid-input',
+          `status 只能是 ${[...ITERATION_STATUSES, 'all'].join(' / ')}`)
+      }
+      const rawKind = url.searchParams.get('kind')
+      const kind = memberOf(rawKind, ITERATION_KINDS)
+      if (rawKind !== null && rawKind !== '' && kind === undefined) {
+        throw new IterationError('invalid-input', `kind 只能是 ${ITERATION_KINDS.join(' / ')}`)
+      }
+      sendJson(res, 200, await iteration.list({
+        ...status === undefined ? {} : { status },
+        ...kind === undefined ? {} : { kind },
+      }))
+      return
+    }
+    if (method === 'POST') {
+      const body = await objectBody(req)
+      const kind = memberOf(typeof body.kind === 'string' ? body.kind : null, ITERATION_KINDS)
+      if (kind === undefined) {
+        throw new IterationError('invalid-input', `kind 只能是 ${ITERATION_KINDS.join(' / ')}`)
+      }
+      const severity = memberOf(typeof body.severity === 'string' ? body.severity : null, ITERATION_SEVERITIES)
+      if (body.severity !== undefined && severity === undefined) {
+        throw new IterationError('invalid-input', `severity 只能是 ${ITERATION_SEVERITIES.join(' / ')}`)
+      }
+      const { row, created } = await iteration.create({
+        kind,
+        symptom: typeof body.symptom === 'string' ? body.symptom : '',
+        ...severity === undefined ? {} : { severity },
+        scene: typeof body.scene === 'string' ? body.scene : '',
+        suggestion: typeof body.suggestion === 'string' ? body.suggestion : '',
+        target: typeof body.target === 'string' ? body.target : '',
+        context: typeof body.context === 'string' ? body.context : '',
+      })
+      sendJson(res, 201, { row, created })
+      return
+    }
+    sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+    return
+  }
+
+  // /yon/api/iterations/<id>
+  if (method === 'PATCH') {
+    const body = await objectBody(req)
+    const status = memberOf(typeof body.status === 'string' ? body.status : null, ITERATION_STATUSES)
+    if (body.status !== undefined && status === undefined) {
+      throw new IterationError('invalid-input', `status 只能是 ${ITERATION_STATUSES.join(' / ')}`)
+    }
+    const severity = memberOf(typeof body.severity === 'string' ? body.severity : null, ITERATION_SEVERITIES)
+    if (body.severity !== undefined && severity === undefined) {
+      throw new IterationError('invalid-input', `severity 只能是 ${ITERATION_SEVERITIES.join(' / ')}`)
+    }
+    if (status === undefined && severity === undefined) {
+      throw new IterationError('invalid-input', '这条改动里没有 status 也没有 severity')
+    }
+    sendJson(res, 200, {
+      row: await iteration.update(id, {
+        ...status === undefined ? {} : { status },
+        ...severity === undefined ? {} : { severity },
+      }),
+    })
+    return
+  }
+  if (method === 'DELETE') {
+    sendJson(res, 200, { removed: await iteration.remove(id) })
+    return
+  }
+  sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+}
+
+/**
+ * Read a body that is allowed to be absent, treating "no body at all" as `{}`.
+ *
+ * Distinct from {@link objectBody}, which refuses a missing body. On the launch route
+ * every member means "use what this row remembers", so a request that sends nothing is
+ * complete rather than malformed, and refusing it would be a second way to spell the
+ * same request.
+ * @param req - the request.
+ * @returns the parsed object, or an empty one.
+ */
+async function optionalObjectBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+  const body = await readJsonBody(req)
+  if (body === undefined) return {}
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    throw new BrowserError('invalid-input', 'body must be a JSON object')
+  }
+  return body as Record<string, unknown>
+}
+
+/**
+ * Read one optional text member.
+ *
+ * Absent and `null` both mean "leave it alone". A present-but-not-text member is refused
+ * here rather than passed on: the service normalises these with `toForwardSlashes`, which
+ * would take a number and answer a 500 for it.
+ * @param body - the parsed request body.
+ * @param key - the member to read.
+ * @returns the text, or undefined when the caller did not say.
+ */
+function optionalText(body: Record<string, unknown>, key: string): string | undefined {
+  const value = body[key]
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== 'string') {
+    throw new BrowserError('invalid-input', `「${key}」要是一段文字；收到的是 ${typeof value}。`)
+  }
+  return value
+}
+
+/**
+ * Read the port member as a number.
+ *
+ * Digits only, so `9222abc` is refused instead of being read as 9222. The range itself is
+ * the service's business and is not repeated here — one place that says what a port may
+ * be, and one wording for it.
+ * @param body - the parsed request body.
+ * @returns the number, or undefined when the caller did not say.
+ */
+function optionalPort(body: Record<string, unknown>): number | undefined {
+  const value = body.port
+  if (value === undefined || value === null) return undefined
+  if (typeof value === 'number') return value
+  const text = typeof value === 'string' ? value.trim() : ''
+  if (!/^\d+$/.test(text)) {
+    throw new BrowserError('invalid-input', `「port」要是一个数字；收到的是「${String(value)}」。`)
+  }
+  return Number.parseInt(text, 10)
+}
+
+/**
+ * Read the four members `PUT /yon/api/browsers/<id>` accepts.
+ *
+ * Absent means "leave it as it is", which is why none of them defaults to the empty
+ * string: an empty string is itself a value — blank a profile directory and it goes back
+ * to the default — so the two must not be spelled the same way.
+ *
+ * `id`/`family`/`product` are not read at all rather than refused. They decide the launch
+ * arguments and the probe, so letting a body change one would swap the row for a
+ * different thing while its profile directory stayed put; dropping them means a body that
+ * carries them writes the row it already had.
+ * @param body - the parsed request body.
+ * @returns the input the service reads.
+ */
+function browserPatchOf(body: Record<string, unknown>): SaveBrowserInput {
+  const path = optionalText(body, 'path')
+  const profileDir = optionalText(body, 'profileDir')
+  const startUrl = optionalText(body, 'startUrl')
+  const port = optionalPort(body)
+  return {
+    ...path === undefined ? {} : { path },
+    ...profileDir === undefined ? {} : { profileDir },
+    ...port === undefined ? {} : { port },
+    ...startUrl === undefined ? {} : { startUrl },
+  }
+}
+
+/**
+ * Read the three members `POST /yon/api/browsers/<id>/launch` accepts.
+ *
+ * The same three the row remembers, and nothing else — there is no launch argument a
+ * request can supply that the registration does not already hold, deliberately, so a
+ * launch cannot be aimed at a browser other than the one it names.
+ * @param body - the parsed request body.
+ * @returns the input the service reads.
+ */
+function launchInputOf(body: Record<string, unknown>): LaunchBrowserInput {
+  const port = optionalPort(body)
+  const startUrl = optionalText(body, 'startUrl')
+  const profileDir = optionalText(body, 'profileDir')
+  return {
+    ...port === undefined ? {} : { port },
+    ...startUrl === undefined ? {} : { startUrl },
+    ...profileDir === undefined ? {} : { profileDir },
+  }
+}
+
+/**
+ * Serve the `/yon/api/browsers` branch.
+ *
+ * Registrations are addressed by the id their recipe gave them, and that id is not
+ * editable: it names the profile directory on disk, so changing it would orphan one. The
+ * same convention a datasource key and a Home id follow.
+ *
+ * @param req - the request; read for the body on writes.
+ * @param res - the response.
+ * @param method - HTTP method.
+ * @param segments - the decoded path segments after the API prefix.
+ * @param browsers - the browser service.
+ */
+async function handleBrowsers(
+  req: IncomingMessage,
+  res: ServerResponse,
+  method: string,
+  segments: readonly string[],
+  browsers: YonBrowsersService,
+): Promise<void> {
+  const first = segments[1]
+  const second = segments[2]
+  const third = segments[3]
+
+  // /yon/api/browsers
+  if (first === undefined) {
+    if (method !== 'GET') {
+      sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+      return
+    }
+    sendJson(res, 200, await browsers.list())
+    return
+  }
+
+  // /yon/api/browsers/scan
+  if (first === 'scan') {
+    if (method !== 'POST') {
+      sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+      return
+    }
+    sendJson(res, 200, await browsers.scan())
+    return
+  }
+
+  // /yon/api/browsers/runs/<runId>/stop
+  //
+  // Read before `first` is taken as a browser id, and it has to be: an id is opaque at
+  // this layer, so nothing below could tell the word `runs` from a browser actually named
+  // that. This repo has been here before — see the note on `pick-directory` further down.
+  if (first === 'runs') {
+    if (second === undefined || third !== 'stop') {
+      sendFailure(res, 404, 'not-found', `no route for ${method} /yon/api/browsers/runs/...`)
+      return
+    }
+    if (method !== 'POST') {
+      sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+      return
+    }
+    sendJson(res, 200, await browsers.stop(second))
+    return
+  }
+
+  // /yon/api/browsers/<id>
+  if (second === undefined) {
+    if (method !== 'PUT') {
+      sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+      return
+    }
+    sendJson(res, 200, { browser: await browsers.save(first, browserPatchOf(await objectBody(req))) })
+    return
+  }
+
+  // /yon/api/browsers/<id>/launch
+  //
+  // `third === undefined` is part of the match: without it, `/edge/launch/now` would
+  // launch, and a URL this layer does not serve would be answered as though it did.
+  if (second === 'launch' && third === undefined) {
+    if (method !== 'POST') {
+      sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+      return
+    }
+    const input = launchInputOf(await optionalObjectBody(req))
+    // 201, and `ready:false` is still a 201: the port not answering yet is not the same
+    // statement as the launch having failed, and only an exiting process is that.
+    sendJson(res, 201, { run: await browsers.launch(first, input) })
+    return
+  }
+
+  sendFailure(res, 404, 'not-found', `no route for ${method} /yon/api/browsers/...`)
+}
+
 export function registerYonApi(
   ctx: Context,
   service: YonProjectsService,
@@ -811,6 +1139,8 @@ export function registerYonApi(
   homes: YonHomesService,
   meta: YonMetaService,
   classes: YonClassService,
+  iteration: YonIterationService,
+  browsers: YonBrowsersService,
 ): () => void {
   const carrier = ctx.get('webServer') as RouteRegistrar | undefined
   if (carrier === undefined) {
@@ -845,8 +1175,16 @@ export function registerYonApi(
           await handleDigest(res, method, segments, url, digestLog)
           return
         }
+        if (segments[0] === 'iterations') {
+          await handleIterations(req, res, method, segments, url, iteration)
+          return
+        }
         if (segments[0] === 'homes') {
           await handleHomes(req, res, method, segments, homes, meta, classes, url.searchParams)
+          return
+        }
+        if (segments[0] === 'browsers') {
+          await handleBrowsers(req, res, method, segments, browsers)
           return
         }
         // A segment of its own, not `/homes/pick-directory`: `handleHomes` reads
@@ -963,6 +1301,8 @@ export function registerYonApi(
             || error instanceof DataSourceError
             || error instanceof WikiError
             || error instanceof HomeError
+            || error instanceof IterationError
+            || error instanceof BrowserError
           ) {
             sendFailure(res, error.code === 'not-found' ? 404 : 400, error.code, error.message)
           } else {

@@ -80,7 +80,7 @@ function mount(wiki: unknown): { readonly handler: (req: IncomingMessage, res: S
   const register = vi.fn((_route: unknown) => vi.fn())
   ctx.provide('webServer', { register } as never)
   registerYonApi(ctx, {} as never, {} as never, {} as never, wiki as never, {} as never,
-    {} as never, {} as never, {} as never)
+    {} as never, {} as never, {} as never, {} as never, {} as never)
   const route = register.mock.calls[0]?.[0] as
     { handler: (req: IncomingMessage, res: ServerResponse) => Promise<void> }
   return { handler: route.handler }

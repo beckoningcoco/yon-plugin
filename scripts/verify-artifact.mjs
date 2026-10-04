@@ -12,7 +12,7 @@
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { join } from 'node:path'
+import { join, matchesGlob } from 'node:path'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const failures = []
@@ -165,6 +165,52 @@ if (existsSync(join(root, clientPath))) {
       `lib/client.js is ${client.length} chars for ${clientSourceLength} chars of source `
       + `(${ratio.toFixed(2)}x, bound ${SOURCE_MULTIPLE}x) — something outside src/client may be inlined`,
     )
+  }
+}
+
+// ── the release artifact: what may leave this machine ────────────────────────
+/**
+ * `files` is a whitelist, so the artifact is exactly what it names — which makes the
+ * patterns themselves the only thing standing between this working copy and somebody
+ * else's tarball. One tree here must never be named by one:
+ *
+ *   `.browser-profile/`  the debug browser's user-data directory. The browser panel
+ *   creates it at the plugin root (`browser-service.ts` defaults to `hostRoot`), and a
+ *   profile directory is a login: cookies, session storage, whatever the operator
+ *   signed into while the panel held the browser open.
+ *
+ * The assertion is "no pattern would cover a path in there" rather than "no such file
+ * exists": the first is what a release does, and a machine that has never launched a
+ * debug browser has no profile directory for the second to notice.
+ *
+ * The probe carries a dot-less twin on purpose. Glob's `**` does not descend into a
+ * dot-prefixed segment — measured on node v24.16.0: a `**` pattern matches
+ * `browser-profile/x` but not `.browser-profile/x` — so a future catch-all pattern,
+ * which is the failure this gate exists for, would slip past a check that only ever
+ * asked about the dotted path.
+ */
+const PROFILE_PROBES = [
+  '.browser-profile',
+  '.browser-profile/chrome/Default/Cookies',
+  'browser-profile/chrome/Default/Cookies',
+]
+
+/** `path.matchesGlob` needs node >= 22. A gate that cannot run has to say so, not pass. */
+check(typeof matchesGlob === 'function',
+  `node ${process.versions.node} has no path.matchesGlob, so the "files" whitelist cannot be checked`)
+check(Array.isArray(manifest.files) && manifest.files.length > 0,
+  'package.json: "files" must be a non-empty whitelist, or every file in the tree is publishable')
+if (typeof matchesGlob === 'function' && Array.isArray(manifest.files)) {
+  // The matcher is proved to work before its silence is trusted: with a broken matcher
+  // every probe below reports "no pattern covers it", which reads exactly like a pass.
+  check(matchesGlob('lib/index.js', 'lib/index.js'),
+    'path.matchesGlob does not match a path against itself, so no probe below means anything')
+  for (const pattern of manifest.files) {
+    for (const probe of PROFILE_PROBES) {
+      check(!matchesGlob(probe, pattern),
+        `package.json: files pattern ${JSON.stringify(pattern)} covers ${probe} — `
+        + 'a debug browser profile (cookies, login state) would ship with the artifact')
+    }
   }
 }
 

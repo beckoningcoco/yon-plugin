@@ -3,7 +3,7 @@ import { type WikiAssessment, type WikiGap, type WikiGraphSummary, type WikiLeve
 import type { WikiStore } from './wiki-store.ts';
 import { type WikiUsageLog, type WikiUsageMiss } from './wiki-usage.ts';
 import type { SaveVaultInput, WikiLogEntry, WikiVaultView } from '../shared/types.ts';
-import type { WikiCardView, WikiHealthReport } from '../shared/types.ts';
+import type { WikiCardView, WikiHealthReport, WikiUnindexedDir } from '../shared/types.ts';
 /** What a knowledge base call can fail with. */
 export declare class WikiError extends Error {
     readonly code: 'not-found' | 'invalid-input' | 'not-configured';
@@ -76,8 +76,16 @@ export interface WikiLookupResult {
     readonly hits: readonly WikiHit[];
     /** When the index behind this answer was built. */
     readonly indexAge: string;
-    /** How many pages were searched. */
+    /** How many pages were searched — entity pages, which is all a search can read. */
     readonly scanned: number;
+    /**
+     * Pages in the searched vaults that no search can reach.
+     *
+     * Carried on every answer, not only the empty ones: a term that missed is
+     * exactly when a caller needs to know the vault holds pages this tool cannot
+     * see, and a term that hit still benefits from knowing the corpus is wider.
+     */
+    readonly unindexed: readonly WikiUnindexedDir[];
 }
 /** One page's full text, with the facts worth reading before the body. */
 export interface WikiPageContent {

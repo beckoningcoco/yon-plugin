@@ -91,7 +91,8 @@ function mount(classes: unknown): (req: IncomingMessage, res: ServerResponse) =>
   // answers quietly would hide a route dispatching to the wrong one.
   const unused = new Proxy({}, { get: () => () => { throw new Error('wrong service') } })
   registerYonApi(ctx, unused as never, unused as never, unused as never, unused as never,
-    unused as never, unused as never, unused as never, classes as never)
+    unused as never, unused as never, unused as never, classes as never, unused as never,
+    unused as never)
   const route = register.mock.calls[0]?.[0] as
     { handler: (req: IncomingMessage, res: ServerResponse) => Promise<void> }
   return route.handler
@@ -196,7 +197,7 @@ describe('/yon/api/homes/<id>/class-index', () => {
     const { service, asked } = classService()
     const metaService = { status: meta, startBuild: meta }
     registerYonApi(ctx, {} as never, {} as never, {} as never, {} as never, {} as never,
-      homes as never, metaService as never, service as never)
+      homes as never, metaService as never, service as never, {} as never, {} as never)
     const route = register.mock.calls[0]?.[0] as
       { handler: (req: IncomingMessage, res: ServerResponse) => Promise<void> }
 

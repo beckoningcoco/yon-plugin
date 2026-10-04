@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   BIP_META_TOOL_NAMES, CLASS_TOOL_NAMES, DATASOURCE_TOOL_NAMES, DIGEST_TOOL_NAMES, GBK_TOOL_NAMES,
-  HOME_TOOL_NAMES, KNOWLEDGE_TOOL_NAMES, META_TOOL_NAMES, WIKI_TOOL_NAMES,
+  HOME_TOOL_NAMES, ITERATION_TOOL_NAMES, KNOWLEDGE_TOOL_NAMES, META_TOOL_NAMES, WIKI_TOOL_NAMES,
   WIKI_WRITE_TOOL_NAMES, YON_PROMPT_ORDER, YON_PROMPT_SECTION, YON_PROMPT_TEXT, YON_TOOL_NAMES,
 } from '../src/index.ts'
 
@@ -17,7 +17,7 @@ import {
 const ALL_TOOL_NAMES = [
   ...YON_TOOL_NAMES, ...DATASOURCE_TOOL_NAMES, ...WIKI_TOOL_NAMES, ...WIKI_WRITE_TOOL_NAMES,
   ...GBK_TOOL_NAMES, ...KNOWLEDGE_TOOL_NAMES, ...CLASS_TOOL_NAMES, ...HOME_TOOL_NAMES,
-  ...META_TOOL_NAMES, ...BIP_META_TOOL_NAMES, ...DIGEST_TOOL_NAMES,
+  ...META_TOOL_NAMES, ...BIP_META_TOOL_NAMES, ...DIGEST_TOOL_NAMES, ...ITERATION_TOOL_NAMES,
 ]
 
 describe('the Yon prompt section', () => {
@@ -65,6 +65,40 @@ describe('the Yon prompt section', () => {
     // is gated; the prompt does not editorialise about it.
     expect(YON_PROMPT_TEXT).not.toContain('不是失败')
     expect(YON_PROMPT_TEXT).not.toContain('批准')
+  })
+
+  it('keeps the iteration ledger on the model\'s side of the line it may not cross', () => {
+    // The iteration panel's whole design is that the model records and a person
+    // decides. The tool definitions enforce the half of that a schema can (no
+    // update, no remove — see `iteration-tools.spec.ts`); these four sentences are
+    // the other half, and the only part of it a schema cannot enforce. Each one is
+    // a different failure the prompt has to prevent, so none of them is decoration:
+    // the model must know the record is not a change, that it must not act on its
+    // own note, that it must not rank for the operator, and that a row counts only
+    // once the operator has read it. Paraphrased away, the panel becomes a model
+    // that quietly maintains its own backlog — the exact role this feature exists
+    // to refuse.
+    expect(YON_PROMPT_TEXT).toContain('记录不是改动，改不改由人决定')
+    expect(YON_PROMPT_TEXT).toContain('不要因此改插件')
+    expect(YON_PROMPT_TEXT).toContain('不要替使用者排序、挑选或把记录当待办')
+    expect(YON_PROMPT_TEXT).toContain('每一条都要等他看过才算数')
+    // …and the panel is not a surface the model drives, except for that one row it
+    // writes. Saying only「你不需要操作它」would contradict the new paragraph.
+    expect(YON_PROMPT_TEXT).toContain('只有迭代表板那一条要由你写')
+  })
+
+  it('counts a confidently wrong answer as a signal, not only a missing one', () => {
+    // The four signals that came first all describe *not getting* an answer: a
+    // detour, a repeated question, a guess, a complaint. The fifth is the opposite
+    // shape and the one more likely to survive unnoticed — the tool answered, in
+    // full confidence, and the answer was wrong. A threshold that lists only the
+    // first four teaches the model to record its own frustration and stay quiet
+    // about a table name it caught later, which is the row a person can act on.
+    expect(YON_PROMPT_TEXT).toContain('只在有硬信号时才记')
+    expect(YON_PROMPT_TEXT).toContain('看着笃定但事后发现是错的')
+    // `iteration_add`'s own description carries the same list — that is what the
+    // model reads while deciding whether to call, and `iteration-tools.spec.ts`
+    // holds that half so the two thresholds cannot drift apart.
   })
 
   it('places the section inside the harness’s empty band, not on a boundary', () => {

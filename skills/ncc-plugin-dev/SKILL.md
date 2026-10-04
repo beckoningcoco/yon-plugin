@@ -1,6 +1,6 @@
 ---
 name: ncc-plugin-dev
-description: NCC（用友NC Cloud）业务插件（事件监听器）开发技能。当用户需要编写、生成、审查 NCC 业务插件代码时使用此技能。 触发场景包括但不限于：写一个审批后/新增后/修改后的事件监听、销售订单审批后自动生成采购入库单、 单据审批后自动回写字段、写一个业务插件、NCC事件监听、IBusinessListener、doAction、 单据转换 runChangeDataAry、saveCommit 保存提交、采购发票/销售订单/库存单据的业务插件开发、 NCC客开、NCC二开、用友NC Cloud插件开发、NCC定制开发。
+description: NCC（用友 NC Cloud）的业务插件 / 事件监听器开发。要写或审查「挂到单据事件上的类」时用本技能：审批后、新增后、修改后、保存提交（IBusinessListener、doAction）、单据转换 runChangeDataAry、saveCommit、审批后自动生单或回写字段、购销协同。写后台任务 / 调度任务请用 ncc-background-task；写资产包接口、配置集成规则 pub_interule、接第三方 OpenAPI 请用 ncc-asset-hawk；要查 VO 字段、事件码、单据类型、编码规范或 NCC 数据库查询规则，用 ncc-dev（NCC 总入口）。旗舰版（BIP / YonBIP）是另一条产品线，用 yonyou-bip-dev，表结构、实体名与类名互不相通。
 ---
 
 # NCC 业务插件开发指南
@@ -14,7 +14,7 @@ description: NCC（用友NC Cloud）业务插件（事件监听器）开发技�
 
 本技能服务于 **用友 NCC（NC Cloud）**（非旗舰版 BIP）。
 
-> **版本区分**：旗舰版（BIP）→ `yon-bip-dev` | NCC → `yon-ncc-dev`
+> **版本区分**：旗舰版（BIP）→ `yonyou-bip-dev` | NCC → `ncc-dev`（入口）
 >
 > 收到问题时务必先判断版本。记录问题时注意路由到对应的技能目录。
 

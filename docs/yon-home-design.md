@@ -15,7 +15,7 @@
 | 位置 | 谁写 | 谁读 |
 |---|---|---|
 | `~/.claude/skills/path_config.json` 的 `NCC_Home_2111/2312`、`BIP_Home_V5` | 人手改 | `db-query/scripts/check_config.py`、`uninstall.bat` |
-| `…/yon-ncc-dev/ncc_home_path.json` | `build_index.py` 生成 | 技能里的源码分析工作流 |
+| `…/ncc-asset-hawk/ncc_home_path.json`（原名 `yon-ncc-dev`，见 §十五） | `build_index.py` 生成 | 技能里的源码分析工作流 |
 | `…/yonyou-bip-dev/bip_home_path.json` | 同上 | 同上 |
 | 插件自己的 `~/.dsh/yon-panel/knowledge/class_index_<版本>.json` | `knowledge_build_index` 工具 | `ncc_class_search` 工具 |
 
@@ -152,7 +152,7 @@ UTF-8 试探，然后整文件按 UTF-8 解就乱码了。这条写进了代码�
 
 ## 五、镜像：合并而不覆盖
 
-写 `…/yon-ncc-dev/ncc_home_path.json`（`product: ncc`）或
+写 `…/ncc-asset-hawk/ncc_home_path.json`（`product: ncc`）或
 `…/yonyou-bip-dev/bip_home_path.json`（`product: bip`），字段与 `build_index.py` 写出来
 的逐字段一致。三条硬约束：
 
@@ -911,3 +911,36 @@ knowledge_build_index { home: "<id from ncc_home_list>" }
 - 面向模型的**删除**入口只有面板按钮。模型能建不能删 —— 将来若加，`remove` 服务已经在了。
 - 老的三族 `/homes` 路由（列表/保存/探测/默认/元数据索引）**仍然没有 HTTP 用例**；
   `tests/http-class-index.spec.ts` 只覆盖这一批新加的三条，没有假装成整个路由层的测试。
+
+## 十五、NCC 技能目录改名：`yon-ncc-dev` → `ncc-asset-hawk`（2026-10-03）
+
+### 为什么改
+
+四条 NCC 技能原名里，`yon-ncc-dev` 自称 NCC 入口，`ncc-dev` 也叫自己「总入口」，`ncc-plugin-dev`
+与 `ncc-background-task` 的正文又都写着「是 `ncc-dev` 的子技能」——**三条正文与一条正文互相
+矛盾**。定下来的层级是 `ncc-dev` 当 NCC 总入口（与正文里多数声明一致），`yon-ncc-dev` 只剩下
+资产包接口 / 集成规则 / 三方 OpenAPI / 源码走查这一路，所以给它一个说得出自己是什么的名字。
+
+> 名字只能写成 `ncc-asset-hawk`：`scripts/build-skills.mjs:24` 的技能名语法
+> `/^[a-z0-9]+(?:-[a-z0-9]+)*$/` 不接受下划线，`:119` 会直接抛错。
+
+### 磁盘那一半，以及兼容回退
+
+`yon-ncc-dev` 同时是**磁盘上的目录名**（`~/.claude/skills/yon-ncc-dev/`，装着 class_index、
+`cfr-0.152.jar`、三条子技能、`ncc_home_path.json`）。改名因此有插件外的一半，而插件的镜像
+只认一个目录名——只改一边就会静默落空。
+
+`home-mirror.ts` 因此加了 `LEGACY_SKILL_DIRS`：**新目录在就写新的，只有旧目录在就写旧的**，
+都没有才回退到新路径并在警告里报出预期位置。`resolveMirrorPath()` 同时被 `list()` 用来算面板
+上显示的 `mirrorPath`，这样「面板显示的路径」与「真正写入的文件」在改名前后都还是同一个
+（`home-service.ts` 里那条不变量的注释）。
+
+操作者的技能树没跟着改时，镜像写旧目录并**不会**被当成错误——那不是错误，是一个还没搬家的
+安装。等两边都搬完，`LEGACY_SKILL_DIRS` 就可以删掉了。
+
+### 参考库不受影响
+
+技能正文里的参考路径有两族：`ncc/references/...`（本技能自己的，物理上就是
+`resources/knowledge/ncc/references/`）与 `ncc-dev/references/common/...`（共享底座的）。
+两族都**显式写出路径**，不由技能名推导，所以改名不动参考库一个字节——实测
+`grep -rn "ncc/yon-ncc-dev"` 为空。

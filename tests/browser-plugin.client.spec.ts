@@ -116,8 +116,9 @@ describe('dsh-plugin-yon-panel browser plugin', () => {
     const action = registrations.find(entry => entry.name === 'sidebar.footer.action')
 
     // The footer action plus one entry per built-in surface: project, skills,
-    // datasources, knowledge base, digestion ledger, installations.
-    expect(registrations).toHaveLength(7)
+    // datasources, knowledge base, digestion ledger, installations, iteration ledger,
+    // debug browser.
+    expect(registrations).toHaveLength(9)
     expect(action?.options.id).toBe('yon-btn')
     expect(action?.options.order).toBe(10)
     expect(action?.options.children).toEqual({
@@ -161,14 +162,14 @@ describe('dsh-plugin-yon-panel browser plugin', () => {
     expect(panelFace.hooks.panel.getSnapshot().overlayDepth).toBe(0)
   })
 
-  it('registers the six built-in entries in order: project, skills, datasources, wiki, digest, home', async () => {
+  it('registers the eight built-in entries in order: project, skills, datasources, wiki, digest, home, iteration, browser', async () => {
     const { registrations } = await bench()
 
     const entries = registrations.filter(item => item.name === 'yon.panel.item')
 
     expect(entries.map(entry => entry.options.id))
-      .toEqual(['project', 'skills', 'datasources', 'wiki', 'digest', 'home'])
-    expect(entries.map(entry => entry.options.order)).toEqual([10, 20, 30, 40, 50, 60])
+      .toEqual(['project', 'skills', 'datasources', 'wiki', 'digest', 'home', 'iteration', 'browser'])
+    expect(entries.map(entry => entry.options.order)).toEqual([10, 20, 30, 40, 50, 60, 70, 80])
   })
 
   it('names every built-in entry on its own registration, in the panel dictionary', async () => {
@@ -180,7 +181,7 @@ describe('dsh-plugin-yon-panel browser plugin', () => {
     // renders, so a button that shows no name is a missing label here — this is
     // the assertion that would catch one.
     expect(entries.map(entry => readLabel(entry.options.label)))
-      .toEqual(['项目管理', '技能', '数据源', '知识库', '消化检查', 'Home 管理'])
+      .toEqual(['项目管理', '技能', '数据源', '知识库', '消化检查', 'Home 管理', '迭代', '浏览器'])
   })
 
   it('projects the seat rows into the panel, so it can name the rows it hosts', async () => {
@@ -200,6 +201,8 @@ describe('dsh-plugin-yon-panel browser plugin', () => {
       { id: 'wiki', label: '知识库' },
       { id: 'digest', label: '消化检查' },
       { id: 'home', label: 'Home 管理' },
+      { id: 'iteration', label: '迭代' },
+      { id: 'browser', label: '浏览器' },
     ])
   })
 
@@ -215,6 +218,24 @@ describe('dsh-plugin-yon-panel browser plugin', () => {
       expect(typeof face[method]).toBe('function')
     }
     expect(face.listProjects).toBeUndefined()
+  })
+
+  it('gives the browser entry the browser operations and the overlay announcement', async () => {
+    const { registrations } = await bench()
+
+    const entry = registrations.find(item => item.options.id === 'browser')
+    const face = (entry?.options.inject as () => Record<string, unknown>)()
+
+    // The browser surface: five calls, and it borrows nothing. `launchBrowser` is the
+    // only operation in this panel that starts a process, which is why it is named
+    // here rather than left to the loop below.
+    for (const method of [
+      'listBrowsers', 'scanBrowsers', 'saveBrowser', 'launchBrowser', 'stopBrowser', 'pushOverlay',
+    ]) {
+      expect(typeof face[method]).toBe('function')
+    }
+    expect(face.listProjects).toBeUndefined()
+    expect(face.listSkills).toBeUndefined()
   })
 
   it('registers its dictionaries under the plugin namespace', async () => {

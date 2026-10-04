@@ -354,7 +354,7 @@ export const HOME_PAYLOAD: HomeListPayload = {
   homes: HOME_HOMES,
   configPath: 'C:/Users/operator/.dsh/yon-panel/home_config.json',
   complete: true,
-  mirrorPath: 'C:/Users/operator/.claude/skills/yon-ncc-dev/ncc_home_path.json'
+  mirrorPath: 'C:/Users/operator/.claude/skills/ncc-asset-hawk/ncc_home_path.json'
     + '  ·  C:/Users/operator/.claude/skills/yonyou-bip-dev/bip_home_path.json',
 }
 

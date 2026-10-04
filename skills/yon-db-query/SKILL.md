@@ -1,6 +1,6 @@
 ---
 name: yon-db-query
-description: 查用友客开环境的数据。先用 datasource_list 看插件里登记了哪些库，再用 datasource_query 执行 SQL；连接信息、驱动与密码都由插件宿主处理，不需要你去拼连接串或找脚本。
+description: 查用友客开环境的数据。使用者要求查某个项目/环境的数据、验证一条 SQL、核对表结构或数据是否符合预期时，用本技能：先用 datasource_list 看插件里登记了哪些库，再用 datasource_query 执行 SQL；连接信息、驱动与密码都由插件宿主处理，不需要你去拼连接串或找脚本。
 whenToUse: 使用者要求查某个项目/环境的数据、验证一条 SQL、核对表结构或数据是否符合预期时。
 ---
 

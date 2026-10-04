@@ -1,0 +1,165 @@
+/* Browser-surface pieces the shared dialog chrome does not cover: the heading line,
+   the native picker, the address reader, and the running-instance list.
+
+   Everything structural comes from the shared stylesheet — the form rows, the property
+   grid, the buttons, the error strip, the empty state — so this surface stays one family
+   with the datasource and iteration ones.
+
+   Names here must not repeat a name the shared sheet declares: the preview page loads
+   both sheets **unhashed**, so a repeated name is a real collision there and the guard in
+   `preview/render.spec.tsx` fails on it. `.title`, `.mono` and `.select` are declared by
+   the datasource sheet too, which is not a collision: two panels are never on one page. */
+
+/* 14px, matching the datasource surface's heading. The dialog's own title is the host
+   Modal's 16px above this line; a panel heading one pixel under it is not a level. */
+.title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* A port and an endpoint are read digit by digit, so they get the monospaced face and a
+   consistent digit width, exactly as the addresses elsewhere do. */
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* The native picker, meant to pass as one of the host's own controls. Same three
+   readings as the datasource surface's `.select` — control-radius 8px, control-hairline
+   `border-l4`, and the compact step's 12px — because a select is a control here too. */
+.select {
+  width: 100%;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 6px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* A registered browser whose path is gone. Dimmed rather than hidden: the row is still
+   a real registration with a real profile directory behind it, and dropping it off the
+   list would read as "this machine has no Edge" rather than "your Edge moved". */
+.rowStale {
+  opacity: 0.55;
+}
+
+/* Port beside the address to open: both are short, and stacking them would spend the
+   height the running list below needs. The wide side is the address. */
+.pair {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 8px;
+}
+
+/* ── the running instances ───────────────────────────────────────────────── */
+
+.runs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.run {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+}
+
+/* The browser's name, then what it is doing. Both shrink before the stop button does:
+   a long label must not push the one control on this row off the edge. */
+.runWho {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runState {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* The stop control never wraps and never shrinks: at 680px the first line is already
+   carrying a name, a port, a state and a timestamp, so a shrinkable button is what
+   gives — and a two-character label broken across two lines (`停` over `止`) is what
+   that looks like. A browser row measured 239px of content in a 450px pane before this
+   was pinned; the picture is `preview/panel-browser-running-light.png`. */
+.runButton {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* The verb row docks the way the datasource and wiki panes' rows do (panel.module.css:570-616),
+   but by an opt-in class of this sheet's own rather than by `:last-child`: this pane's
+   content carries on below the row (a rule, the running list, two footnotes), so the shared
+   selector cannot reach it — and that rule says the precondition out loud rather than
+   decorating, which is why a row that does not end its pane was left out of it.
+
+   Measured rather than argued (preview viewport 900x820, `panel-browser-running-light`):
+   the row sits at 437..465 in a 450px pane, so the bottom 15px of a 28px row is past the
+   pane's edge at the top of the scroll — half a button, on every visit, because what is
+   above the row is the form and the row's place follows from it. Docked, the same probe
+   reads 422..450: whole, at the price of covering the last 28px of the form until the
+   operator scrolls the 15px that puts it back in flow.
+
+   The declarations are the shared rule's five, unchanged; only the selector is this
+   sheet's. What it does *not* do is follow the row past the top of the pane: with enough
+   running instances (content past ~915px, roughly four of them) the row scrolls out above
+   and this sticks to the wrong edge for that — see docs/yon-browser-design.md §十四. */
+.actionsDock {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding: 8px 0;
+  border-top: 0.5px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+/* The endpoint plus its copy button, on a full-width line of its own: the address is
+   the thing people paste into Playwright, and on the crowded first line it had 240px to
+   share — enough to break `/json/version` and `tcp://…:9230` mid-token. A basis of 100%
+   sends it to the next line without touching the DOM order, so the tab order still
+   follows what the eye sees. */
+.runEndpoint {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* The address wraps rather than being cut: a `tcp://` endpoint and a `/json/version`
+   URL are both longer than the column, and an ellipsis here would hide the port — the
+   one part of it a reader is looking for. */
+.runEndpoint .mono {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
