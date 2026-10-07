@@ -469,6 +469,34 @@ describe('what one write would cost', () => {
     // Unreadable arguments are not a licence to write without asking.
     expect(isDestructiveWrite('project_update', 'nonsense')).toBe(true)
   })
+
+  it('rules on the requirement family by the same scale', () => {
+    // The requirement family's gate lives in its own module, but "what would be lost"
+    // is answered here for every family — one question, one function. A create loses
+    // nothing until the caller names the entry it is knowingly duplicating, and the
+    // value has to be an id, not a boolean: `true` proves only that a field was
+    // filled, while the id proves which entry the model claims to have asked about
+    // (the service then checks it for equality against the entry that really
+    // conflicts — see `requirement-tools.ts`).
+    expect(isDestructiveWrite('requirement_create', { project: 'p', name: 'n' })).toBe(false)
+    expect(isDestructiveWrite('requirement_create', { name: 'n', acknowledgeDuplicate: '' })).toBe(false)
+    expect(isDestructiveWrite('requirement_create', { name: 'n', acknowledgeDuplicate: '  ' })).toBe(false)
+    expect(isDestructiveWrite('requirement_create', { name: 'n', acknowledgeDuplicate: 'rq-1' })).toBe(true)
+    expect(isDestructiveWrite('requirement_create', 'nonsense')).toBe(true)
+
+    // Overwriting a field and retiring an entry both lose something.
+    expect(isDestructiveWrite('requirement_update', { ref: 'rq-1' })).toBe(true)
+    expect(isDestructiveWrite('requirement_archive', { ref: 'rq-1' })).toBe(true)
+
+    // Appending a note and writing a file of one's own lose nothing.
+    expect(isDestructiveWrite('requirement_annotate', { ref: 'rq-1', text: 't' })).toBe(false)
+    expect(isDestructiveWrite('requirement_artifact_write', { ref: 'rq-1' })).toBe(false)
+
+    // A read in that family is a read, and an unknown name in it is not silently
+    // assumed harmless — that is spelled out in `tools.ts` next to the family.
+    expect(isDestructiveWrite('requirement_list', {})).toBe(false)
+    expect(isDestructiveWrite('requirement_read', { ref: 'rq-1' })).toBe(false)
+  })
 })
 
 describe('what the session permits', () => {

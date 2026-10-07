@@ -62,10 +62,31 @@
  *   POST   /yon/api/browsers/<id>/launch    start one, with a debugging port (answers 201)
  *   POST   /yon/api/browsers/runs/<runId>/stop  end one this panel started
  *
+ *   GET    /yon/api/requirements              the ledger, newest change first (`?project=`, `?status=`)
+ *   GET    /yon/api/requirements/<id>         one entry (`?history=1` keeps the struck-through text)
+ *   POST   /yon/api/requirements              create one from the panel (answers 201)
+ *   PATCH  /yon/api/requirements/<id>         rename / restatus
+ *   POST   /yon/api/requirements/<id>/annotations  append one note
+ *   POST   /yon/api/requirements/<id>/archive      retire it, with a reason
+ *   DELETE /yon/api/requirements/<id>         delete the entry and its directory (panel only)
+ *   GET    /yon/api/requirements/<id>/files   the entry's attachments (`?dir=user|generated|patches`)
+ *   POST   /yon/api/requirements/<id>/files   file one attachment — raw bytes, not JSON, and the
+ *                                             name rides in `x-yon-file-name`, URL-encoded (answers 201)
+ *   GET    /yon/api/requirements/<id>/files/<name>     read one as text (`?dir=`, default user)
+ *   DELETE /yon/api/requirements/<id>/files/<name>     delete one (`?dir=`, default user)
+ *
  * A datasource key is `<configKey>::<env>` and carries non-ASCII text, so every
  * route segment below is decoded (by {@link segmentsOf}) and every client call
  * encodes it. The key is opaque to this layer: it is split only where the
  * service expects a group and a branch.
+ *
+ * An attachment is uploaded as raw bytes, not as JSON, and its name rides in the
+ * `x-yon-file-name` header — URL-encoded, because a header value is latin-1 in Node
+ * and 「华科接口文档.docx」 is not. The reason it is not a JSON body with base64 in
+ * it is {@link MAX_BODY_BYTES}: that cap is a property of every route in this file,
+ * and a route that needed to exceed it would have to raise it for all of them. So
+ * the upload gets its own reader with its own cap instead, and a name in a header
+ * that is checked by the same rule as everything else (the service's).
  *
  * No response on this route ever carries a password. That is a property of the
  * service's own return types rather than a filter applied here — see
@@ -75,6 +96,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import {
   API_PREFIX, ITERATION_KINDS, ITERATION_SEVERITIES, ITERATION_STATUSES, PROJECT_STATUSES,
+  REQUIREMENT_STATUSES,
   type ApiError, type DirectoryPickResult, type JsonValue, type LaunchBrowserInput,
   type SaveBrowserInput, type SaveHomeInput, type SaveVaultInput, type SetFieldInput,
   type UpdateProjectInput,
@@ -87,6 +109,8 @@ import { digestLogPath, type DigestLog } from './digest-log.ts'
 import { HomeError, type YonHomesService } from './home-service.ts'
 import { IterationError, type YonIterationService } from './iteration-service.ts'
 import { BrowserError, type YonBrowsersService } from './browser-service.ts'
+import { RequirementError, type YonRequirementsService } from './requirement-service.ts'
+import { MAX_ATTACHMENT_BYTES, sizeOf } from './requirement-files.ts'
 import type { YonMetaService } from './meta-service.ts'
 import type { YonClassService } from './class-service.ts'
 
@@ -138,6 +162,43 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   } catch {
     throw new ProjectError('invalid-input', 'body must be JSON')
   }
+}
+
+/**
+ * Read a whole upload body as bytes, up to `MAX_ATTACHMENT_BYTES`.
+ *
+ * A sibling of {@link readJsonBody} rather than a relaxation of it: that cap is what
+ * keeps every JSON route from being a memory amplifier, and a route that needs more
+ * gets its own reader instead of moving the ceiling on all the others.
+ *
+ * `content-length` is checked first, so a request that is honest about being 200 MB
+ * is refused before any of it is buffered. It is only a shortcut — the running total
+ * below is what actually enforces the cap, because a header can lie.
+ * @param req - the request.
+ * @returns the body.
+ */
+async function readAttachmentBody(req: IncomingMessage): Promise<Buffer> {
+  const declared = Number(req.headers['content-length'] ?? '')
+  if (Number.isFinite(declared) && declared > MAX_ATTACHMENT_BYTES) {
+    throw new RequirementError(
+      'invalid-input',
+      `一个附件最多 ${sizeOf(MAX_ATTACHMENT_BYTES)}，这个请求声明了 ${sizeOf(declared)}。`,
+    )
+  }
+  const chunks: Buffer[] = []
+  let size = 0
+  for await (const chunk of req) {
+    const buffer = chunk as Buffer
+    size += buffer.length
+    if (size > MAX_ATTACHMENT_BYTES) {
+      throw new RequirementError(
+        'invalid-input',
+        `一个附件最多 ${sizeOf(MAX_ATTACHMENT_BYTES)}，传到这里已经超了。`,
+      )
+    }
+    chunks.push(buffer)
+  }
+  return Buffer.concat(chunks)
 }
 
 /** Read one object body, rejecting a non-object payload. */
@@ -934,6 +995,186 @@ async function handleIterations(
 }
 
 /**
+ * Serve the `/yon/api/requirements` branch.
+ *
+ * Every route here is the panel's, not the model's: the model reaches this ledger
+ * through its own tools (`requirement-tools.ts`), which is where the name-conflict
+ * handshake and the approval gate live. That is why `POST` does not take a
+ * `dedupe` flag — a person typing the same words twice gets two entries, and the
+ * reason is theirs (see `requirement-service.ts`, rule 3).
+ * @param req - the request; read for the body on writes.
+ * @param res - the response.
+ * @param method - HTTP method.
+ * @param segments - the decoded path segments after the API prefix.
+ * @param url - the request URL, read for `?project=`, `?status=`, `?history=`.
+ * @param requirements - the ledger service.
+ */
+async function handleRequirements(
+  req: IncomingMessage,
+  res: ServerResponse,
+  method: string,
+  segments: readonly string[],
+  url: URL,
+  requirements: YonRequirementsService,
+): Promise<void> {
+  const id = segments[1]
+  const tail = segments[2]
+
+  // /yon/api/requirements
+  if (id === undefined) {
+    if (method === 'GET') {
+      // An unknown filter is refused rather than silently answered with an empty
+      // list — the same rule `handleIterations` applies, for the same reason.
+      const project = url.searchParams.get('project')
+      const rawStatus = url.searchParams.get('status')
+      const status = memberOf(rawStatus, REQUIREMENT_STATUSES)
+      if (rawStatus !== null && rawStatus !== '' && status === undefined) {
+        throw new RequirementError('invalid-input', `status 只能是 ${REQUIREMENT_STATUSES.join(' / ')}`)
+      }
+      sendJson(res, 200, await requirements.list({
+        ...project === null || project === '' ? {} : { projectId: project },
+        ...status === undefined ? {} : { status },
+      }))
+      return
+    }
+    if (method === 'POST') {
+      const body = await objectBody(req)
+      const status = memberOf(typeof body.status === 'string' ? body.status : null, REQUIREMENT_STATUSES)
+      if (body.status !== undefined && status === undefined) {
+        throw new RequirementError('invalid-input', `status 只能是 ${REQUIREMENT_STATUSES.join(' / ')}`)
+      }
+      // `projectId`, not a project name: the panel already holds the list and picks
+      // by id, and accepting a second spelling here would be a second way to spell
+      // one request (the reason `ref` is a tool-side concern).
+      sendJson(res, 201, await requirements.create({
+        projectId: typeof body.projectId === 'string' ? body.projectId : '',
+        name: typeof body.name === 'string' ? body.name : '',
+        body: typeof body.body === 'string' ? body.body : '',
+        ...status === undefined ? {} : { status },
+      }))
+      return
+    }
+    sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+    return
+  }
+
+  // The sub-resources are decided before `id` is used as an id, so a spelling like
+  // `/requirements/archive` can never be read as an entry named "archive". The same
+  // rule `pick-directory` forced at `:1196`.
+  if (tail === 'annotations') {
+    if (method !== 'POST') {
+      sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+      return
+    }
+    const body = await objectBody(req)
+    const requirement = await requirements.annotate(id, typeof body.text === 'string' ? body.text : '')
+    sendJson(res, 201, { requirement })
+    return
+  }
+  if (tail === 'archive') {
+    if (method !== 'POST') {
+      sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+      return
+    }
+    // The body is optional here: archiving without a reason is a complete request.
+    const body = await optionalObjectBody(req)
+    const requirement = await requirements.archive(
+      id,
+      typeof body.reason === 'string' ? body.reason : undefined,
+    )
+    sendJson(res, 200, { requirement })
+    return
+  }
+  if (tail === 'files') {
+    // `segments[3]` is the file name — decoded by `segmentsOf` like every other
+    // segment, so a Chinese name arrives as itself. An empty one (`…/files/`) reads
+    // as absent, because a trailing slash is a spelling of the folder, not a file
+    // named "".
+    const named = segments[3]
+    const name = named === undefined || named === '' ? undefined : named
+    const dir = url.searchParams.get('dir')
+    if (name === undefined) {
+      if (method === 'GET') {
+        sendJson(res, 200, await requirements.fileList(id, dir === null || dir === '' ? undefined : dir))
+        return
+      }
+      if (method === 'POST') {
+        const header = req.headers['x-yon-file-name']
+        const encoded = typeof header === 'string' ? header : ''
+        if (encoded === '') {
+          throw new RequirementError(
+            'invalid-input',
+            '上传要带 x-yon-file-name 头，值是 URL 编码过的文件名。',
+          )
+        }
+        let fileName: string
+        try {
+          fileName = decodeURIComponent(encoded)
+        } catch {
+          throw new RequirementError('invalid-input', 'x-yon-file-name 不是合法的 URL 编码。')
+        }
+        const bytes = await readAttachmentBody(req)
+        sendJson(res, 201, await requirements.importFile(
+          id,
+          dir === null || dir === '' ? 'user' : dir,
+          fileName,
+          bytes,
+        ))
+        return
+      }
+      sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+      return
+    }
+    if (method === 'GET') {
+      sendJson(res, 200, await requirements.fileRead(id, dir === null || dir === '' ? 'user' : dir, name))
+      return
+    }
+    if (method === 'DELETE') {
+      // Wrapped the same way the entry's own DELETE wraps its answer, so a client
+      // reading `removed` is reading the same field on both routes.
+      sendJson(res, 200, {
+        removed: await requirements.removeFile(id, dir === null || dir === '' ? 'user' : dir, name),
+      })
+      return
+    }
+    sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+    return
+  }
+  if (tail !== undefined) {
+    sendFailure(res, 404, 'not-found', `no route for ${method} ${url.pathname}`)
+    return
+  }
+
+  // /yon/api/requirements/<id>
+  if (method === 'GET') {
+    const requirement = await requirements.read(id, { history: url.searchParams.get('history') === '1' })
+    sendJson(res, 200, { requirement })
+    return
+  }
+  if (method === 'PATCH') {
+    const body = await objectBody(req)
+    const status = memberOf(typeof body.status === 'string' ? body.status : null, REQUIREMENT_STATUSES)
+    if (body.status !== undefined && status === undefined) {
+      throw new RequirementError('invalid-input', `status 只能是 ${REQUIREMENT_STATUSES.join(' / ')}`)
+    }
+    if (body.name === undefined && status === undefined) {
+      throw new RequirementError('invalid-input', '这条改动里没有 name 也没有 status')
+    }
+    const requirement = await requirements.update(id, {
+      ...body.name === undefined ? {} : { name: String(body.name) },
+      ...status === undefined ? {} : { status },
+    })
+    sendJson(res, 200, { requirement })
+    return
+  }
+  if (method === 'DELETE') {
+    sendJson(res, 200, { removed: await requirements.remove(id) })
+    return
+  }
+  sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+}
+
+/**
  * Read a body that is allowed to be absent, treating "no body at all" as `{}`.
  *
  * Distinct from {@link objectBody}, which refuses a missing body. On the launch route
@@ -1141,6 +1382,7 @@ export function registerYonApi(
   classes: YonClassService,
   iteration: YonIterationService,
   browsers: YonBrowsersService,
+  requirements: YonRequirementsService,
 ): () => void {
   const carrier = ctx.get('webServer') as RouteRegistrar | undefined
   if (carrier === undefined) {
@@ -1185,6 +1427,10 @@ export function registerYonApi(
         }
         if (segments[0] === 'browsers') {
           await handleBrowsers(req, res, method, segments, browsers)
+          return
+        }
+        if (segments[0] === 'requirements') {
+          await handleRequirements(req, res, method, segments, url, requirements)
           return
         }
         // A segment of its own, not `/homes/pick-directory`: `handleHomes` reads
@@ -1303,6 +1549,7 @@ export function registerYonApi(
             || error instanceof HomeError
             || error instanceof IterationError
             || error instanceof BrowserError
+            || error instanceof RequirementError
           ) {
             sendFailure(res, error.code === 'not-found' ? 404 : 400, error.code, error.message)
           } else {

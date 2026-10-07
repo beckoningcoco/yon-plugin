@@ -1,0 +1,584 @@
+/* 需求条目这一屏自己的那几块：选择器那一行、条目行、详情里的正文与追溯、新建表单、
+   钉在底部的动作行。结构性的东西——对话框外壳、分栏、空态、错误行、按钮——全部来自
+   共享表，所以这一屏与它旁边八格是一家人。
+
+   这份表遵守兄弟表留下的两条规矩：
+
+   - 每个颜色都是主题别名，不许挑一个只在某一种主题下成立的颜色。
+   - **不声明共享表 `panel.module.css` 里的任何类名。** 预览页不给类名加 hash，重名就是
+     两份表抢同一个选择器，截出来的图是哪儿都不存在的状态（`render.spec.tsx` 的撞名校验
+     就是冲着这件事）。这正是下面那条整高覆盖叫 `.scrollBody` 而不是第二个 `.body` 的理由。
+
+   布局说明：下面这块内容是共享 `.detailPane` 管的纵向 flex 容器，它自己已经滚动、已经排好
+   10px 的节奏，所以这里不再声明滚动区、也不再声明块与块之间的外边距——嵌套的滚动区永远
+   滚不到底。 */
+
+/* 覆盖共享 `.body` 那个固定高度 `min(62vh, 520px)`。
+   固定高度是给「左列表右详情」那几屏用的：它们要一个稳住的外框，选中一行不该让对话框
+   跳一下。这一屏是列表 ↔ 详情两个视图，一次只画一块，三行条目却撑出一个固定的白带会
+   读成「有内容没加载出来」。按内容定高、封顶用同一个上限，卡片到自己该结束的地方结束，
+   也仍然不会把视口撑破。 */
+.scrollBody {
+  height: auto;
+  max-height: min(62vh, 520px);
+}
+
+/* ── 顶上一行：两个选择器与两个按钮 ─────────────────────────────────────── */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.select {
+  max-width: 220px;
+  padding: 3px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 12px;
+}
+
+.select:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sectionNote {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* ── 列表 ───────────────────────────────────────────────────────────────── */
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.row + .row {
+  border-block-start: 0.5px solid var(--dsw-alias-border-l1);
+}
+
+.rowHead {
+  inline-size: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.rowHead:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.rowHead:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: -2px;
+}
+
+.rowTags {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 名称与状态同一行：名称吃掉剩下的宽度，状态永远不被挤到第二行去。 */
+.rowName {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+/* 第二行是日期：这一行窄，两个日期加一个标签是它能放下的上限。 */
+.rowMeta {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 详情的头部 ─────────────────────────────────────────────────────────── */
+
+.detailHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.detailNameText {
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+/* ── 正文与追溯 ─────────────────────────────────────────────────────────── */
+
+.blockHead {
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+}
+
+/* 正文是这一屏唯一「他到底要什么」的地方，所以给它整幅宽度与好读的行距。 */
+.prose {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary);
+  overflow-wrap: anywhere;
+}
+
+/* 追溯那一段的标题本身是个按钮：它能折起来，而折起来之后这一屏就更短。 */
+.traceHead {
+  inline-size: 100%;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: start;
+  cursor: pointer;
+}
+
+.traceHead:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+.traceCount {
+  color: var(--dsw-alias-label-tertiary);
+  font-weight: 400;
+}
+
+/* 追溯用中性色、左边一条竖线：它是「改过什么」的记录，不是当前要求本身——与上面那块
+   正文在分量上要分得开，否则读者会以为两段都是现在算数的。 */
+.traces {
+  margin: 0;
+  padding: 0 0 0 10px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-inline-start: 2px solid var(--dsw-alias-border-l2);
+}
+
+.trace {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+/* ── 状态与标注 ─────────────────────────────────────────────────────────── */
+
+.statusRow {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+/* 标注那张表单。**整族都不叫 `.form*`**：共享表里已经有 `.form` 与 `.formError`，而预览页
+   不给类名加 hash，同名即同类。改成一族自己的名字，撞名校验也就无事可报。 */
+.noteForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.noteFormHead {
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.noteFormGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.fieldWide {
+  grid-column: 1 / -1;
+}
+
+.fieldLabel {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.noteForm textarea,
+.field textarea {
+  padding: 6px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  resize: vertical;
+  min-height: 52px;
+}
+
+.field select {
+  padding: 5px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 13px;
+}
+
+.noteForm textarea:focus-visible,
+.field textarea:focus-visible,
+.field select:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+.noteFormActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.noteFormError {
+  margin: 0;
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* ── 附件 ───────────────────────────────────────────────────────────────── */
+
+.files {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 三个文件夹是一组开关，不是标签页：按下去是「改看哪一格」，没有 tab 那套面板关系，
+   所以用 `aria-pressed` 而不是 `role="tab"`（假装成 tablist 会让读屏等一个不存在的
+   tabpanel）。 */
+.folderTabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.folderTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.folderTab:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.folderTab:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+.folderTabOn {
+  border-color: var(--dsw-alias-border-l4);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+}
+
+.folderCount {
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.folderTabOn .folderCount {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.fileList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fileRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: 6px;
+}
+
+/* 一行里三件东西：名字吃掉剩下的宽度，大小与日期不让位，动作挨在右边。窄到放不下时
+   动作整块折到第二行，而不是把文件名压成两个字。 */
+.fileHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fileName {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.fileMeta {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.fileActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* 附件行上的小动作与库根那个「复制路径」是同一族的药丸按钮，但那些在脚注里、这些在行内，
+   所以不共用 `.copy` 的选择器。 */
+.fileAction {
+  padding: 1px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.fileAction:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.fileAction:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+.fileAction:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.fileNote {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+
+.fileText {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* 读出来的正文自己滚：一份 6 万字符的文本按原样铺开，会把这一屏其余的东西全推到折线
+   以外——那正是「读一个附件」不该付的代价。 */
+.filePre {
+  margin: 0;
+  max-height: 200px;
+  overflow: auto;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* 「归档附件」是个 label，不是 button：它套着一个真的 `<input type="file">`，而把 input
+   嵌进 `<button>` 里是不合法的嵌套。看着仍要与旁边的按钮是一家人。 */
+.uploadLabel {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 12px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.uploadLabel:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* 焦点画在 label 上：真正拿到焦点的是那个藏起来的 input，`:focus-within` 是唯一能把它
+   画出来的选择器。 */
+.uploadLabel:focus-within {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+/* 藏起来但**不 `display:none`**：老 WebKit 上 label 点不开 display:none 的 input，
+   而这一条路本来就只有一个办法能验（在真宿主里点一下）。留一个 1px 的可见框最省事。 */
+.uploadInput {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  opacity: 0;
+  overflow: hidden;
+}
+
+/* ── 钉在底部的动作行 ───────────────────────────────────────────────────── */
+
+/* 动作行用本表自己的类吸底，而不是靠共享那条 `:last-child`：这一屏的动作行下面还有脚注
+   （库路径与条数），共享那条选择器够不到它，而它的前提写得很清楚——「这一行结束这一栏」。
+   声明就是共享那五条，一个没改，只有选择器是本表的。
+
+   实测过而不是拍脑袋（浏览器面板同一处结论，`panel-browser-running-light`）：450px 的栏
+   里，动作行本来落在折线以外，读者每次进来都只看见半个按钮。 */
+.actionsDock {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+  border-top: 0.5px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+/* 两步确认的第二问。位置就在第一问那处，所以连点两下不会两问都点到。 */
+.ask {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+/* ── 脚注 ───────────────────────────────────────────────────────────────── */
+
+.foot {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.footPath {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+/* 库根在 `~/.dsh/yon-panel/` 下面：面板里能点一下拿走路径，比让人去翻一个隐藏目录有用。 */
+.copy {
+  padding: 1px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.copy:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}

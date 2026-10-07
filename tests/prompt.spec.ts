@@ -9,7 +9,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   BIP_META_TOOL_NAMES, CLASS_TOOL_NAMES, DATASOURCE_TOOL_NAMES, DIGEST_TOOL_NAMES, GBK_TOOL_NAMES,
-  HOME_TOOL_NAMES, ITERATION_TOOL_NAMES, KNOWLEDGE_TOOL_NAMES, META_TOOL_NAMES, WIKI_TOOL_NAMES,
+  HOME_TOOL_NAMES, ITERATION_TOOL_NAMES, KNOWLEDGE_TOOL_NAMES, META_TOOL_NAMES,
+  REQUIREMENT_TOOL_NAMES, WIKI_TOOL_NAMES,
   WIKI_WRITE_TOOL_NAMES, YON_PROMPT_ORDER, YON_PROMPT_SECTION, YON_PROMPT_TEXT, YON_TOOL_NAMES,
 } from '../src/index.ts'
 
@@ -18,6 +19,7 @@ const ALL_TOOL_NAMES = [
   ...YON_TOOL_NAMES, ...DATASOURCE_TOOL_NAMES, ...WIKI_TOOL_NAMES, ...WIKI_WRITE_TOOL_NAMES,
   ...GBK_TOOL_NAMES, ...KNOWLEDGE_TOOL_NAMES, ...CLASS_TOOL_NAMES, ...HOME_TOOL_NAMES,
   ...META_TOOL_NAMES, ...BIP_META_TOOL_NAMES, ...DIGEST_TOOL_NAMES, ...ITERATION_TOOL_NAMES,
+  ...REQUIREMENT_TOOL_NAMES,
 ]
 
 describe('the Yon prompt section', () => {
@@ -84,7 +86,21 @@ describe('the Yon prompt section', () => {
     expect(YON_PROMPT_TEXT).toContain('每一条都要等他看过才算数')
     // …and the panel is not a surface the model drives, except for that one row it
     // writes. Saying only「你不需要操作它」would contradict the new paragraph.
-    expect(YON_PROMPT_TEXT).toContain('只有迭代表板那一条要由你写')
+    expect(YON_PROMPT_TEXT).toContain('只有迭代表板和需求条目这两条要由你写')
+  })
+
+  it('keeps the requirement ledger\'s two sides apart', () => {
+    // The requirement ledger's one rule no tool schema can carry: the entry is the
+    // operator's words, the notes are what was worked out about them, and a body
+    // that mixes the two is a body neither side can read back. The rest is the
+    // consequence: append while it happens (appending interrupts nobody), do not
+    // move the state without the operator saying so, and do not write into the
+    // folder that only they may fill.
+    expect(YON_PROMPT_TEXT).toContain('不要把你的分析写进描述')
+    expect(YON_PROMPT_TEXT).toContain('用 requirement_annotate 当场追加')
+    expect(YON_PROMPT_TEXT).toContain('他没验收就别标「已完成」')
+    expect(YON_PROMPT_TEXT).toContain('那个目录你不能写')
+    expect(YON_PROMPT_TEXT).toContain('真删条目没有工具')
   })
 
   it('counts a confidently wrong answer as a signal, not only a missing one', () => {

@@ -99,7 +99,7 @@ function mount(iteration: unknown): (req: IncomingMessage, res: ServerResponse) 
   const unused = new Proxy({}, { get: () => () => { throw new Error('wrong service') } })
   registerYonApi(ctx, unused as never, unused as never, unused as never, unused as never,
     unused as never, unused as never, unused as never, unused as never, iteration as never,
-    unused as never)
+    unused as never, unused as never)
   const route = register.mock.calls[0]?.[0] as
   { handler: (req: IncomingMessage, res: ServerResponse) => Promise<void> }
   return route.handler

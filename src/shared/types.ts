@@ -1204,3 +1204,222 @@ export function splitDataSourceKey(key: string): { configKey: string; env: strin
 
 /** Where the API lives, shared by the host's route table and the client's calls. */
 export const API_PREFIX = '/yon/api'
+
+/* ── 需求条目（requirement）──────────────────────────────────────────── */
+
+/**
+ * 一个需求条目走到哪一步了。
+ *
+ * 比 `ProjectStatus` 的三档细，因为条目要走完「提出 → 开发 → 待验收 → 完成」这条线；
+ * 「搁置」与「已废弃」分开，因为前者会回来、后者不会。存储里写英文键，中文只出现在
+ * 给人看的地方（面板词条、宿主追加的追溯行）——与 `ProjectStatus` 同一手法。
+ */
+export type RequirementStatus = 'proposed' | 'working' | 'review' | 'done' | 'onHold' | 'dropped'
+
+/** 全部状态，按面板上该显示的顺序。 */
+export const REQUIREMENT_STATUSES: readonly RequirementStatus[] =
+  ['proposed', 'working', 'review', 'done', 'onHold', 'dropped']
+
+/**
+ * 一条需求条目的摘要——列表页读的就是这些。
+ *
+ * 每个字段只有一个权威，来源不同是刻意的：`id`/`projectId`/`createdAt` 来自
+ * `index.json`，`name`/`status`/`updatedAt` 来自 `entry.md` 的 frontmatter。台账里
+ * **不**存名称与状态，否则就有了第二个真相：模型改了 md 忘了改 json，面板会一直显示
+ * 旧名字。代价是列表要读每个 frontmatter，买的是「不会显示错」。
+ */
+export interface RequirementSummary {
+  readonly id: string
+  /** 所属项目的 `projectId`。归属只在台账里，所以换项目是改台账一行，不搬目录。 */
+  readonly projectId: string
+  /** 简要名称。 */
+  readonly name: string
+  readonly status: RequirementStatus
+  /** 建档时间，来自台账。 */
+  readonly createdAt: string
+  /** 最近改动时间，来自 frontmatter（标注、改名、改状态都会推动它）。 */
+  readonly updatedAt: string
+  /** `entry.md` 相对库根的路径，面板与模型都用它定位。 */
+  readonly file: string
+}
+
+/**
+ * 一条需求条目读全时的样子。
+ *
+ * `body` 是**模型默认看到的那一份**：删除线段已经剥掉——作废的说法对干活没用，而标注
+ * 只增不减，不剥就会把该看的正文挤出上下文。
+ */
+export interface RequirementView extends RequirementSummary {
+  /** 正文，含「## 标注」一节；删除线段已剥除。 */
+  readonly body: string
+  /**
+   * 正文原文，删除线还在。
+   *
+   * **只有显式要历史时才给**（`read(ref, { history: true })`）：这一份是给人看
+   * 「改过什么」的，平时不必占上下文。
+   */
+  readonly raw?: string
+  /**
+   * 标注逐段（和 `raw` 同一份原文：划掉的旧说法还在）。
+   *
+   * 同样是**只在要历史时给**。落地这个字段是面板逼出来的：详情页的「追溯」要按段
+   * 显示——段数、每段一行。让面板自己从 `raw` 里切，等于把「`## 标注` 这个标题长什么
+   * 样」「空行分段」这两条规则复制到客户端第二份，而它们只该有一处（`requirement-doc.ts`
+   * 的 `parseEntry`）。所以这里给已经切好的。
+   */
+  readonly notes?: readonly string[]
+  /**
+   * 条目自己那段话（正文），**标注那一段不在里面**——`body` 里有，这里没有。
+   *
+   * 与 `notes` 配对才成立：面板的详情页把文件按「标注」这个标题切成两块画（正文一块、
+   * 追溯一块），而 `body` 是 prose 与 notes 拼起来的那一份，单用它两块都会画重。
+   * 同样是原文（删除线还在），同样只随 `history` 出现。
+   */
+  readonly prose?: string
+}
+
+/** `GET /yon/api/requirements` 的返回。 */
+export interface RequirementListPayload {
+  readonly rows: readonly RequirementSummary[]
+  /** 库根，面板显示它、模型用它说明东西存在哪。 */
+  readonly root: string
+  /**
+   * 台账在、但读不出来时才有。
+   *
+   * 和 `IterationListPayload.error` 同一理由：空列表与「还没记过」长得一模一样，必须
+   * 分开。
+   */
+  readonly error?: string
+  /**
+   * 台账里有记录、但 `entry.md` 读不出来的那些 id。
+   *
+   * 不算进 `rows`（它给不出名称与状态），但也不许静默消失——那会让一条存在过的需求在
+   * 列表里凭空不见。面板据此显示「N 条读不出来」。
+   */
+  readonly unreadable: readonly string[]
+}
+
+/** Body of `POST /yon/api/requirements`. */
+export interface CreateRequirementInput {
+  /** 已经解析好的 `projectId`；名称解析在调用方（工具／路由）做。 */
+  readonly projectId: string
+  readonly name: string
+  readonly body?: string
+  /** 不传即 `proposed`（待开发）。 */
+  readonly status?: RequirementStatus
+}
+
+/** Body of `POST /yon/api/requirements/<id>/annotations`. */
+export interface AnnotateRequirementInput {
+  /** 要追加的一段，**不带日期**——日期由宿主盖章。 */
+  readonly text: string
+}
+
+/** Body of `PATCH /yon/api/requirements/<id>`. */
+export interface UpdateRequirementInput {
+  readonly name?: string
+  readonly status?: RequirementStatus
+}
+
+/**
+ * 新建的结果。
+ *
+ * 是个判别联合而不是「带可选字段的对象」：撞名与建成是两件不同的事，调用方必须分别
+ * 处理，用 `created` 一分就分干净了。撞名时**什么都没写**——那是「问过再说」这条口径的
+ * 落点，不是一次失败。
+ */
+export type RequirementCreated =
+  | { readonly created: true; readonly requirement: RequirementView }
+  | { readonly created: false; readonly conflict: RequirementSummary }
+
+/**
+ * 条目目录下三个文件夹。
+ *
+ * `user/` 是使用者提供的原件，`generated/` 是模型写的方案与资料，`patches/` 是能直接
+ * 落地的补丁。三者的**权限**不同（模型不能写 `user/`），但作为「一个目录」它们一样，
+ * 所以列清单、读、删共用一套形状。
+ */
+export type RequirementDir = 'user' | 'generated' | 'patches'
+
+/** 三个目录，按面板上该显示的顺序：先是他给的，再是你产的。 */
+export const REQUIREMENT_DIRS: readonly RequirementDir[] = ['user', 'generated', 'patches']
+
+/**
+ * 一条附件。
+ *
+ * `bytes` 与 `modifiedAt` 来自一次 `stat`，所以它们是**磁盘上的事实**，不是台账里的
+ * 记录——这里没有台账：一个目录里有什么，就是 `readdir` 说什么。
+ */
+export interface RequirementFile {
+  readonly dir: RequirementDir
+  readonly name: string
+  /** `<id>/<dir>/<name>`，相对库根——与 `RequirementSummary.file` 同一种拼法。 */
+  readonly file: string
+  readonly bytes: number
+  /** 最后写入时间，ISO。 */
+  readonly modifiedAt: string
+  /**
+   * 这一个能不能读成文本。
+   *
+   * 按扩展名判的**预测**，不是承诺：真正的裁决在读取那一刻（`isBinary` 看头 64 个字节
+   * 里有没有 NUL）。两层的分工是——扩展名让清单能一眼看出哪些可读，字节让读取永不吐出
+   * 一屏乱码。`note` 说清是哪一层拦的。
+   */
+  readonly readable: boolean
+  /** 读不了时的一句原因（「这是 docx，要等批 5」；或「它不是文本」）。 */
+  readonly note?: string
+}
+
+/**
+ * 一个目录里的一堆附件。
+ *
+ * 分组而不是一张大表，因为面板就是按目录画的：三块标题各自带个数和总大小，空目录也要
+ * 出现（「他给的」那一块空着，本身就是一句有用的话）。
+ */
+export interface RequirementFileGroup {
+  readonly dir: RequirementDir
+  readonly files: readonly RequirementFile[]
+  /** 这一个目录里所有文件加起来多少字节。 */
+  readonly bytes: number
+}
+
+/**
+ * 一个条目的三个目录。
+ *
+ * 一次给全，而不是一个 `dir` 一次——面板打开详情要看三块，分三次请求就是三次
+ * `readdir` 的等待；调用方要只取一个目录时传 `only`，那是省字节，不是省往返。
+ */
+export interface RequirementFileList {
+  readonly id: string
+  /** 条目的名称，省得调用方为了报一句话再读一次。 */
+  readonly entry: string
+  /** 条目目录的绝对路径。 */
+  readonly dir: string
+  readonly groups: readonly RequirementFileGroup[]
+}
+
+/** 一次附件读取。 */
+export interface RequirementFileRead {
+  readonly file: RequirementFile
+  /** 读出来的文本；读不了时是空串，原因在 `note`。 */
+  readonly text: string
+  /** 实际用的解码（`utf-8` / `gb18030` / …），让报告能说清是照哪个读的。 */
+  readonly encoding: string
+  /** 只读了头一段时为 true——文件比一次读取的上限长。 */
+  readonly truncated: boolean
+  readonly note?: string
+}
+
+/** 归档一件使用者原件的结果。 */
+export interface RequirementFileImport {
+  /** 落到哪一条条目上——HTTP 那一层要拿它拼一句「已归档到 X」。 */
+  readonly entry: string
+  readonly file: RequirementFile
+  /**
+   * 原来的文件名，**只在撞名改写过时才有**。
+   *
+   * 有它才说得清「你给的叫 X，库里这条叫 X-2」——不说的话，使用者回头在 `user/` 里
+   * 找不到自己那个名字。
+   */
+  readonly renamedFrom?: string
+}

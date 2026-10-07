@@ -7,6 +7,7 @@ import { type DigestLog } from './digest-log.ts';
 import { type YonHomesService } from './home-service.ts';
 import { type YonIterationService } from './iteration-service.ts';
 import { type YonBrowsersService } from './browser-service.ts';
+import { type YonRequirementsService } from './requirement-service.ts';
 import type { YonMetaService } from './meta-service.ts';
 import type { YonClassService } from './class-service.ts';
-export declare function registerYonApi(ctx: Context, service: YonProjectsService, skills: YonSkillsService, sources: YonDataSourcesService, wiki: YonWikiService, digestLog: DigestLog, homes: YonHomesService, meta: YonMetaService, classes: YonClassService, iteration: YonIterationService, browsers: YonBrowsersService): () => void;
+export declare function registerYonApi(ctx: Context, service: YonProjectsService, skills: YonSkillsService, sources: YonDataSourcesService, wiki: YonWikiService, digestLog: DigestLog, homes: YonHomesService, meta: YonMetaService, classes: YonClassService, iteration: YonIterationService, browsers: YonBrowsersService, requirements: YonRequirementsService): () => void;

@@ -52,6 +52,9 @@ import { createSystemPorts } from './host/browser-system.ts'
 import { createIterationStore } from './host/iteration-store.ts'
 import { createYonIterationService, type YonIterationService } from './host/iteration-service.ts'
 import { ITERATION_TOOL_NAMES, registerYonIterationTools } from './host/iteration-tools.ts'
+import { createRequirementStore } from './host/requirement-store.ts'
+import { createYonRequirementsService, type YonRequirementsService } from './host/requirement-service.ts'
+import { REQUIREMENT_TOOL_NAMES, registerYonRequirementTools } from './host/requirement-tools.ts'
 import { createHomeStore } from './host/home-store.ts'
 import { createYonHomesService, HomeError as HomesError, type YonHomesService } from './host/home-service.ts'
 import { registerYonHomeTools } from './host/home-tools.ts'
@@ -115,6 +118,24 @@ export type { IterationStore, IterationRow } from './host/iteration-store.ts'
 export { createYonIterationService, IterationError } from './host/iteration-service.ts'
 export type { YonIterationService, IterationQuery, IterationCreated } from './host/iteration-service.ts'
 export { ITERATION_TOOL_NAMES } from './host/iteration-tools.ts'
+export { createRequirementStore, defaultRequirementRoot, isSafeArtifactName, isSafeId }
+  from './host/requirement-store.ts'
+export type {
+  RequirementArtifactKind, RequirementEntryRead, RequirementFileHead, RequirementFileStat,
+  RequirementIndexRead, RequirementRecord, RequirementStore,
+} from './host/requirement-store.ts'
+export {
+  MAX_ATTACHMENT_BYTES, MAX_FILE_READ_BYTES, MAX_FILE_READ_CHARS, attachmentText, classifyFile,
+  extensionOf, freeName, sizeOf,
+} from './host/requirement-files.ts'
+export { createYonRequirementsService, RequirementError } from './host/requirement-service.ts'
+export type {
+  RequirementArtifactWrite, RequirementCreateOptions, RequirementDeps, RequirementErrorCode,
+  RequirementQuery, RequirementReadOptions, YonRequirementsService,
+} from './host/requirement-service.ts'
+export { parseEntry, serializeEntry, bodyText, REQUIREMENT_STATUS_TEXT } from './host/requirement-doc.ts'
+export type { RequirementEntryDoc } from './host/requirement-doc.ts'
+export { REQUIREMENT_TOOL_NAMES } from './host/requirement-tools.ts'
 export {
   createBrowserConfigStore, createBrowserRunStore, defaultBrowserConfigPath,
   defaultBrowserProfileRoot, defaultBrowserRunsPath, pluginRoot,
@@ -181,6 +202,8 @@ declare module '@deepseek-ai/cordis' {
     yonIteration: YonIterationService
     /** The machine's browsers, and the debug instances this panel started. */
     yonBrowsers: YonBrowsersService
+    /** The requirement ledger: what was asked for, per project, and its written history. */
+    yonRequirements: YonRequirementsService
   }
 }
 
@@ -377,6 +400,24 @@ export async function apply(ctx: Context): Promise<void> {
   )
   ctx.provide('yonBrowsers', browsers)
 
+  // The requirement ledger: what the operator asked for, per project, with the
+  // operator's own material kept apart from what the model produced.
+  //
+  // The one entity here whose primary author is the model — a requirement is
+  // described while the operator is talking, so waiting for them to file it by hand
+  // would lose the description. That is why its tools are split by consequence
+  // (`requirement-tools.ts` says why): filing and annotating cost nothing and never
+  // interrupt, changing a field or retiring an entry asks, and deleting has no tool
+  // at all — only the panel can, behind a second confirmation.
+  //
+  // Its storage is a directory of `entry.md` documents rather than one JSON document,
+  // because an entry carries files: the operator's material, the model's documents,
+  // patches. `~/.dsh/yon-panel/requirements/` is the directory that survives
+  // reinstalling this plugin, which a requirement's whole written history needs.
+  const requirements = createYonRequirementsService(createRequirementStore())
+  ctx.provide('yonRequirements', requirements)
+  ctx.effect(() => registerYonRequirementTools(ctx, requirements, service), 'yon-panel: requirement tools')
+
   // The one paragraph the model reads before it ever calls a tool: what this
   // panel brings, and the rules that no single tool description can state. It
   // is global (the profile loads this plugin, not an agent scope), so every
@@ -400,7 +441,7 @@ export async function apply(ctx: Context): Promise<void> {
   ctx.inject(['webServer'], (web) => {
     web.effect(
       () => registerYonApi(web, service, skills.service, dataSources.service, wiki, digestLog,
-        homes.service, meta, classes, iteration, browsers),
+        homes.service, meta, classes, iteration, browsers, requirements),
       'yon-panel: project api',
     )
   })

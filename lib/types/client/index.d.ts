@@ -5,24 +5,25 @@
  * plugin owns the surface and its open state only; what a button does belongs
  * to the package that adds it.
  *
- * Eight buttons ship here: project management, the skills this plugin
+ * Nine buttons ship here: project management, the skills this plugin
  * contributes, the operator's database connections, the knowledge base, the
- * digestion ledger, the installation directories, the iteration ledger, and the
- * debug browser.
+ * digestion ledger, the installation directories, the iteration ledger, the
+ * debug browser, and the requirement ledger.
  * None of them is a second
- * kind of seat — all eight take the same one, which is the point of the seat
+ * kind of seat — all nine take the same one, which is the point of the seat
  * existing. Each declares its own
  * `label`, so the panel names its rows from the seat rather than from what the
- * entries happen to draw. The datasource entry is the one that also borrows an
- * operation from a sibling: its binding picker offers the project list through
- * the project API itself, so both surfaces name the same projects by the same
- * rule.
+ * entries happen to draw. Two of them also borrow an operation from a sibling —
+ * the datasource entry and the requirement entry both offer the project list
+ * through the project API itself, so every surface names the same projects by
+ * the same rule.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis';
 import { type YonPanelKey } from './locales.ts';
 export type { YonPanelItemOwnerProps, YonPanelRootFace, YonPanelSnapshot } from './slots.ts';
 export type { DataSourceItemFace, ProjectItemFace, SkillItemFace, WikiItemFace } from './slots.ts';
 export type { BrowserItemFace, DigestItemFace, HomeItemFace, IterationItemFace } from './slots.ts';
+export type { RequirementItemFace } from './slots.ts';
 export type { YonPanelKey } from './locales.ts';
 declare module '@deepseek-ai/dsh-client-ui-slots' {
     interface LocaleNamespaceMap {

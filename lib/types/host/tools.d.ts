@@ -25,6 +25,7 @@
  * documented shape the registry calls, and nothing more.
  */
 import type { Context } from '@deepseek-ai/cordis';
+import type { ProjectDetail } from '../shared/types.ts';
 import { type YonProjectsService } from './service.ts';
 /** One content block this package produces: text, always. */
 export interface YonTextBlock {
@@ -114,6 +115,22 @@ declare module '@deepseek-ai/cordis' {
 export declare const YON_TOOL_NAMES: readonly ["project_list", "project_read", "project_create", "project_update", "project_delete"];
 /** The subset that changes stored data; the gate inspects each of these. */
 export declare const YON_WRITE_TOOL_NAMES: readonly ["project_create", "project_update", "project_delete"];
+/**
+ * Read an argument as a required project reference.
+ *
+ * Exported for the other tool families that name a project (`requirement-tools.ts`),
+ * so the wording a caller gets for a missing reference is the same wherever it is
+ * asked for.
+ */
+export declare function asRef(value: unknown, argument?: string): string;
+/**
+ * Resolve a reference or explain why it could not be resolved.
+ *
+ * Exported alongside {@link asRef} for the same reason: a second family resolving
+ * project names would otherwise grow a second copy of the ambiguous/not-found
+ * wording, and the two copies would disagree the first time either changed.
+ */
+export declare function locate(projects: YonProjectsService, ref: string): ProjectDetail;
 /**
  * Whether one write destroys something.
  *

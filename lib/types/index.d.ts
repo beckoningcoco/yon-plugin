@@ -24,6 +24,7 @@ import { type YonWikiService } from './host/wiki-service.ts';
 import { type YonClassService } from './host/class-service.ts';
 import { type YonBrowsersService } from './host/browser-service.ts';
 import { type YonIterationService } from './host/iteration-service.ts';
+import { type YonRequirementsService } from './host/requirement-service.ts';
 import { type YonHomesService } from './host/home-service.ts';
 import { type YonMetaService } from './host/meta-service.ts';
 export { DOMAIN_NAME, YON_DOMAIN } from './host/domain.ts';
@@ -76,6 +77,14 @@ export type { IterationStore, IterationRow } from './host/iteration-store.ts';
 export { createYonIterationService, IterationError } from './host/iteration-service.ts';
 export type { YonIterationService, IterationQuery, IterationCreated } from './host/iteration-service.ts';
 export { ITERATION_TOOL_NAMES } from './host/iteration-tools.ts';
+export { createRequirementStore, defaultRequirementRoot, isSafeArtifactName, isSafeId } from './host/requirement-store.ts';
+export type { RequirementArtifactKind, RequirementEntryRead, RequirementFileHead, RequirementFileStat, RequirementIndexRead, RequirementRecord, RequirementStore, } from './host/requirement-store.ts';
+export { MAX_ATTACHMENT_BYTES, MAX_FILE_READ_BYTES, MAX_FILE_READ_CHARS, attachmentText, classifyFile, extensionOf, freeName, sizeOf, } from './host/requirement-files.ts';
+export { createYonRequirementsService, RequirementError } from './host/requirement-service.ts';
+export type { RequirementArtifactWrite, RequirementCreateOptions, RequirementDeps, RequirementErrorCode, RequirementQuery, RequirementReadOptions, YonRequirementsService, } from './host/requirement-service.ts';
+export { parseEntry, serializeEntry, bodyText, REQUIREMENT_STATUS_TEXT } from './host/requirement-doc.ts';
+export type { RequirementEntryDoc } from './host/requirement-doc.ts';
+export { REQUIREMENT_TOOL_NAMES } from './host/requirement-tools.ts';
 export { createBrowserConfigStore, createBrowserRunStore, defaultBrowserConfigPath, defaultBrowserProfileRoot, defaultBrowserRunsPath, pluginRoot, } from './host/browser-store.ts';
 export type { BrowserConfigStore, BrowserRunStore, JsonDocument, StoredBrowser, StoredRun } from './host/browser-store.ts';
 export { BrowserError, createYonBrowsersService } from './host/browser-service.ts';
@@ -120,6 +129,8 @@ declare module '@deepseek-ai/cordis' {
         yonIteration: YonIterationService;
         /** The machine's browsers, and the debug instances this panel started. */
         yonBrowsers: YonBrowsersService;
+        /** The requirement ledger: what was asked for, per project, and its written history. */
+        yonRequirements: YonRequirementsService;
     }
 }
 /**

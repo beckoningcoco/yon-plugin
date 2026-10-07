@@ -1,5 +1,6 @@
 /** Slot contract this package owns: the button seat inside the Yon panel. */
 import type { BrowserApi } from './browser/api.ts';
+import type { RequirementApi } from './requirement/api.ts';
 import type { DataSourceApi } from './datasource/api.ts';
 import type { DigestApi } from './digest/api.ts';
 import type { HomeApi } from './home/api.ts';
@@ -124,6 +125,32 @@ export type IterationItemFace = IterationApi & {
 export type BrowserItemFace = BrowserApi & {
     /**
      * Announce a layer standing above the panel (the browser surface).
+     * @returns the release for that layer.
+     */
+    pushOverlay(): () => void;
+};
+/**
+ * Data face the panel's requirement entry receives: the ledger API, the project list its
+ * project picker needs, and the same panel-level gesture.
+ *
+ * The project list arrives as the project API's own operation, exactly as it does for the
+ * datasource entry, because binding an entry to a project is one of the operations this
+ * surface performs — and a second implementation would be a second answer to "which
+ * projects belong in a picker" (whether archived ones are in or out).
+ *
+ * This is the only entry whose subject the model also writes. Nothing about that changes
+ * the face — the write verbs here are the operator's (`remove` has no tool at all) — but
+ * it is why the surface opens on a ledger rather than on a form.
+ */
+export type RequirementItemFace = RequirementApi & {
+    /**
+     * The projects an entry may belong to.
+     * @param includeArchived - keep soft-deleted projects in the answer.
+     * @returns the summaries.
+     */
+    listProjects: ProjectApi['listProjects'];
+    /**
+     * Announce a layer standing above the panel (the requirement surface).
      * @returns the release for that layer.
      */
     pushOverlay(): () => void;

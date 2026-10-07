@@ -292,16 +292,28 @@ function asFieldMap(value: unknown, argument: string): Record<string, JsonValue>
   return value as Record<string, JsonValue>
 }
 
-/** Read an argument as a required project reference. */
-function asRef(value: unknown, argument = 'project'): string {
+/**
+ * Read an argument as a required project reference.
+ *
+ * Exported for the other tool families that name a project (`requirement-tools.ts`),
+ * so the wording a caller gets for a missing reference is the same wherever it is
+ * asked for.
+ */
+export function asRef(value: unknown, argument = 'project'): string {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new ProjectError('invalid-input', `${argument} must be a project id, name, or code`)
   }
   return value.trim()
 }
 
-/** Resolve a reference or explain why it could not be resolved. */
-function locate(projects: YonProjectsService, ref: string): ProjectDetail {
+/**
+ * Resolve a reference or explain why it could not be resolved.
+ *
+ * Exported alongside {@link asRef} for the same reason: a second family resolving
+ * project names would otherwise grow a second copy of the ambiguous/not-found
+ * wording, and the two copies would disagree the first time either changed.
+ */
+export function locate(projects: YonProjectsService, ref: string): ProjectDetail {
   const resolution: ProjectRefResolution = projects.resolve(ref)
   if (resolution.kind === 'found') return resolution.project
   if (resolution.kind === 'ambiguous') {
@@ -366,6 +378,26 @@ function projectText(value: ProjectValue): string {
  */
 export function isDestructiveWrite(name: string, args: unknown): boolean {
   if (name === 'project_delete') return true
+  // The requirement family answers here too. Its gate is registered by
+  // `requirement-tools.ts`, but the ruling belongs to one function: "what would be
+  // lost" is one question, and a family that kept its own copy is a family whose
+  // copy could drift from this one.
+  if (name === 'requirement_update' || name === 'requirement_archive') return true
+  if (name === 'requirement_create') {
+    // A create loses nothing unless the caller is knowingly duplicating a name in
+    // use, and the only half of that this function can judge is the flag: whether
+    // the name really is in use lives on disk, where `requirement-service.ts`
+    // decides it and hands back the entry it collided with. So presence is what is
+    // checked here, and the tool verifies the value names the entry that actually
+    // conflicts before anything is written.
+    if (args === null || typeof args !== 'object' || Array.isArray(args)) return true
+    const acknowledged = (args as Record<string, unknown>).acknowledgeDuplicate
+    return typeof acknowledged === 'string' && acknowledged.trim() !== ''
+  }
+  // Everything else in that family is additive (annotate, artifact_write) or a
+  // read. A new requirement tool that could lose data must be named above, or it
+  // will be treated as harmless here.
+  if (name.startsWith('requirement_')) return false
   if (name !== 'project_update') return false
   // Unreadable arguments are the tool's problem to reject, but they are not a
   // reason to treat a call as harmless.

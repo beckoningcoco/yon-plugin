@@ -5,18 +5,18 @@
  * plugin owns the surface and its open state only; what a button does belongs
  * to the package that adds it.
  *
- * Eight buttons ship here: project management, the skills this plugin
+ * Nine buttons ship here: project management, the skills this plugin
  * contributes, the operator's database connections, the knowledge base, the
- * digestion ledger, the installation directories, the iteration ledger, and the
- * debug browser.
+ * digestion ledger, the installation directories, the iteration ledger, the
+ * debug browser, and the requirement ledger.
  * None of them is a second
- * kind of seat — all eight take the same one, which is the point of the seat
+ * kind of seat — all nine take the same one, which is the point of the seat
  * existing. Each declares its own
  * `label`, so the panel names its rows from the seat rather than from what the
- * entries happen to draw. The datasource entry is the one that also borrows an
- * operation from a sibling: its binding picker offers the project list through
- * the project API itself, so both surfaces name the same projects by the same
- * rule.
+ * entries happen to draw. Two of them also borrow an operation from a sibling —
+ * the datasource entry and the requirement entry both offer the project list
+ * through the project API itself, so every surface names the same projects by
+ * the same rule.
  */
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
@@ -34,6 +34,7 @@ import { createDigestApi } from './digest/api.ts'
 import { createHomeApi } from './home/api.ts'
 import { createIterationApi } from './iteration/api.ts'
 import { createProjectApi } from './project/api.ts'
+import { createRequirementApi } from './requirement/api.ts'
 import { createSkillApi } from './skill/api.ts'
 import { createWikiApi } from './wiki/api.ts'
 import { BrowserItem } from './BrowserItem.tsx'
@@ -42,6 +43,7 @@ import { DigestItem } from './DigestItem.tsx'
 import { HomeItem } from './HomeItem.tsx'
 import { IterationItem } from './IterationItem.tsx'
 import { ProjectItem } from './ProjectItem.tsx'
+import { RequirementItem } from './RequirementItem.tsx'
 import { SkillItem } from './SkillItem.tsx'
 import { WikiItem } from './WikiItem.tsx'
 import { YonPanelRoot } from './YonPanelRoot.tsx'
@@ -50,6 +52,7 @@ import { en, zh, type YonPanelKey } from './locales.ts'
 export type { YonPanelItemOwnerProps, YonPanelRootFace, YonPanelSnapshot } from './slots.ts'
 export type { DataSourceItemFace, ProjectItemFace, SkillItemFace, WikiItemFace } from './slots.ts'
 export type { BrowserItemFace, DigestItemFace, HomeItemFace, IterationItemFace } from './slots.ts'
+export type { RequirementItemFace } from './slots.ts'
 export type { YonPanelKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -91,6 +94,7 @@ export function apply(ctx: ClientContext): void {
   const homeApi = createHomeApi()
   const iterationApi = createIterationApi()
   const browserApi = createBrowserApi()
+  const requirementApi = createRequirementApi()
 
   // A fresh list id adds this action beside the shipped footer actions, above
   // the settings row; the children table declares (and thereby authorizes) the
@@ -229,4 +233,26 @@ export function apply(ctx: ClientContext): void {
     label: () => t('item.browser'),
     inject: () => ({ ...browserApi, pushOverlay: () => panel.pushOverlay() }),
   }, BrowserItem))
+
+  // The requirement ledger, ninth — the second cell the model writes to, and the first one
+  // whose subject is the operator's own work rather than this plugin's.
+  //
+  // It borrows the project list from the project API, as the datasource cell does: an entry
+  // belongs to a project, and the picker has to offer exactly the projects the project
+  // surface offers.
+  //
+  // Its write verbs are the operator's. Archive and delete have no tool at all — a model
+  // that could quietly retire a requirement would be deciding what the operator still wants.
+  ctx.slots.inject('yon.panel.item', () => ctx.slots.register({
+    name: 'yon.panel.item',
+    id: 'requirement',
+    order: 90,
+    locale: NS,
+    label: () => t('item.requirement'),
+    inject: () => ({
+      ...requirementApi,
+      listProjects: projectApi.listProjects,
+      pushOverlay: () => panel.pushOverlay(),
+    }),
+  }, RequirementItem))
 }
