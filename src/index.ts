@@ -35,6 +35,7 @@ import { createWikiStore } from './host/wiki-store.ts'
 import { createYonWikiService, type YonWikiService } from './host/wiki-service.ts'
 import { registerYonWikiTools, WIKI_TOOL_NAMES } from './host/wiki-tools.ts'
 import { GBK_TOOL_NAMES, registerYonGbkTools } from './host/gbk-tool.ts'
+import { DOC_PARSE_TOOL_NAMES, registerYonDocParseTools } from './host/doc-parse-tool.ts'
 import { KNOWLEDGE_TOOL_NAMES, registerYonKnowledgeTools } from './host/knowledge-tools.ts'
 import { CLASS_TOOL_NAMES, registerYonClassTools } from './host/class-tools.ts'
 import { buildClassIndex, writeClassIndex } from './host/class-index.ts'
@@ -79,6 +80,7 @@ export { DATASOURCE_TOOL_NAMES } from './host/datasource-tools.ts'
 export { WikiError } from './host/wiki-service.ts'
 export { WIKI_TOOL_NAMES } from './host/wiki-tools.ts'
 export { GBK_TOOL_NAMES, GbkError } from './host/gbk-tool.ts'
+export { DOC_PARSE_TOOL_NAMES, DocParseError } from './host/doc-parse-tool.ts'
 export { KNOWLEDGE_TOOL_NAMES, KnowledgeError } from './host/knowledge-tools.ts'
 export { CLASS_TOOL_NAMES, ClassIndexError } from './host/class-tools.ts'
 export { WIKI_WRITE_TOOL_NAMES, WikiWriteError } from './host/wiki-write.ts'
@@ -286,6 +288,13 @@ export async function apply(ctx: Context): Promise<void> {
   // customisation tree is GBK on disk and a general-purpose save corrupts it
   // silently rather than failing.
   ctx.effect(() => registerYonGbkTools(ctx), 'yon-panel: gbk tools')
+
+  // The document reader: one tool over the script this package ships. A read
+  // tool decodes UTF-8 while every Office and PDF file is a zip or a byte
+  // stream, so an operator who hands over an .xlsx gets mojibake — and which
+  // Python library covers which format is a local fact that has to be probed
+  // rather than assumed.
+  ctx.effect(() => registerYonDocParseTools(ctx), 'yon-panel: doc parse tools')
 
   // The reference library: the 415 documents migrated out of the operator's skill
   // directories. A bundled skill body cannot name a runtime path, so without these

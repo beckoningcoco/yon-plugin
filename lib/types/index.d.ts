@@ -42,6 +42,7 @@ export { DATASOURCE_TOOL_NAMES } from './host/datasource-tools.ts';
 export { WikiError } from './host/wiki-service.ts';
 export { WIKI_TOOL_NAMES } from './host/wiki-tools.ts';
 export { GBK_TOOL_NAMES, GbkError } from './host/gbk-tool.ts';
+export { DOC_PARSE_TOOL_NAMES, DocParseError } from './host/doc-parse-tool.ts';
 export { KNOWLEDGE_TOOL_NAMES, KnowledgeError } from './host/knowledge-tools.ts';
 export { CLASS_TOOL_NAMES, ClassIndexError } from './host/class-tools.ts';
 export { WIKI_WRITE_TOOL_NAMES, WikiWriteError } from './host/wiki-write.ts';
