@@ -1423,3 +1423,112 @@ export interface RequirementFileImport {
    */
   readonly renamedFrom?: string
 }
+
+/**
+ * 一条项目记忆属于哪一类。
+ *
+ * 分这五类是为了**召回时的排布**，不是为了归档：模型先看 `pitfall` 和 `env-fact`，
+ * 因为这两类不知道就会做错事；`lesson` 与 `decision` 是背景。
+ *
+ * 没有「跨项目」这一档，是刻意的：跨项目仍然成立的东西不属于这里，那是知识库
+ * （`wiki_write`）的地盘。判定问句与出口写在 `docs/yon-memory-design.md` §7。
+ */
+export type MemoryType = 'pitfall' | 'decision' | 'preference' | 'env-fact' | 'lesson'
+
+/** 五种类型，按显示顺序（先看会让人做错的）。 */
+export const MEMORY_TYPES: readonly MemoryType[] =
+  ['pitfall', 'env-fact', 'decision', 'preference', 'lesson']
+
+/** 类型的中文名，面板与工具报告共用一份，免得两处各写一遍。 */
+export const MEMORY_TYPE_TEXT: Readonly<Record<MemoryType, string>> = {
+  pitfall: '坑',
+  'env-fact': '环境事实',
+  decision: '决定',
+  preference: '偏好',
+  lesson: '做法',
+}
+
+/**
+ * 一条记忆，按列表读它的样子。
+ *
+ * `body` 不在这里，理由与 `iteration_*` 注入相同：召回时注入的是标题，正文按需
+ * `memory_read` 取——5 条标题约一百字，5 条正文会把上下文吃掉。
+ *
+ * 没有 `status`，也没有 `by`（谁写的）。前者在定稿时删掉：记忆记的是「事实是什么」，
+ * 错了就该改正或删除，留着一个错结论再贴一张「已过期」的标签只是给错误加免责声明。
+ * 后者随之失去意义——正文只有模型一个写作者，面板给的只有查看与删除。
+ */
+export interface MemorySummary {
+  /** 宿主生成的 id，形如 `mem-<日期>-<时分秒>-<随机>`。 */
+  readonly id: string
+  readonly projectId: string
+  /** 项目名，由服务解析后填上；项目已不存在时退化成 id。 */
+  readonly projectName: string
+  readonly type: MemoryType
+  /** 召回时注入的就是它。 */
+  readonly title: string
+  readonly tags: readonly string[]
+  /** 这条从哪来的：会话、实测、来源文件。是「去哪核实」的线索，不是可信度标签。 */
+  readonly source: string
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
+/** 一条记忆的全文。 */
+export interface MemoryView extends MemorySummary {
+  readonly body: string
+}
+
+/**
+ * 一条记忆，按 `memory_recall` 读它的样子。
+ *
+ * 比 {@link MemorySummary} 多一段 `snippet`：模型要凭一屏标题决定读哪几条，只有
+ * 标题时它只能全读或全不读。摘要来自正文，所以列表路径**会打开文件**——这是它与
+ * 注入路径的分工，后者（`recent`）只读索引。
+ */
+export interface MemoryListRow extends MemorySummary {
+  readonly snippet: string
+}
+
+/** Body of `GET /yon/api/memories`. */
+export interface MemoryListPayload {
+  readonly rows: readonly MemoryListRow[]
+  /** 记忆库的位置，方便直接打开看。 */
+  readonly path: string
+  /** 索引在、但读不出来时才有：空列表和「还没记过」长得一样，所以要分开。 */
+  readonly error?: string
+}
+
+/** 新建一条记忆。也走工具。 */
+export interface SaveMemoryInput {
+  /** 项目 id / 名字 / code。由服务解析成项目 id 后落盘。 */
+  readonly project: string
+  readonly title: string
+  readonly body: string
+  readonly type?: MemoryType
+  readonly tags?: readonly string[]
+  readonly source: string
+}
+
+/**
+ * 改写一条记忆。
+ *
+ * 只列要改的字段，没列的不动。与 `UpdateIterationInput` 正好相反——那条注释说
+ * 「改写一个人对当时发生了什么的叙述，就是让过去的记录变成现在的记录」，所以
+ * 迭代表板只让人改状态。记忆不是叙述，它是**当前事实**：事实变了就得改，留一句
+ * 错话在库里比改动它危险得多。这是两套记录唯一一处有意的不一致。
+ */
+export interface UpdateMemoryInput {
+  readonly title?: string
+  readonly body?: string
+  readonly type?: MemoryType
+  readonly tags?: readonly string[]
+  readonly source?: string
+}
+
+/** 新建一条记忆的结果。 */
+export interface MemoryCreated {
+  readonly memory: MemoryView
+  /** false 表示同项目内已有一条标题一模一样的，没有重复添加。 */
+  readonly created: boolean
+}

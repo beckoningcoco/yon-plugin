@@ -1,8 +1,9 @@
 /**
  * Yon panel, host half: opens the project, skill-switch and datasource domains,
  * publishes them as `ctx.yonProjects`, `ctx.yonSkills`, `ctx.yonDataSources`,
- * `ctx.yonWiki`, `ctx.yonHomes`, `ctx.yonIteration` and `ctx.yonBrowsers`,
- * offers the projects and the data sources to the agent as tools, contributes
+ * `ctx.yonWiki`, `ctx.yonHomes`, `ctx.yonIteration`, `ctx.yonMemory` and
+ * `ctx.yonBrowsers`, offers the projects and the data sources to the agent as
+ * tools, contributes
  * this plugin's own skills to the skill registry, and — where a web server
  * exists — serves all three over `/yon/api`.
  *
@@ -53,6 +54,9 @@ import { createSystemPorts } from './host/browser-system.ts'
 import { createIterationStore } from './host/iteration-store.ts'
 import { createYonIterationService, type YonIterationService } from './host/iteration-service.ts'
 import { ITERATION_TOOL_NAMES, registerYonIterationTools } from './host/iteration-tools.ts'
+import { createMemoryStore } from './host/memory-store.ts'
+import { createYonMemoryService, type YonMemoryService } from './host/memory-service.ts'
+import { MEMORY_TOOL_NAMES, registerYonMemoryTools } from './host/memory-tools.ts'
 import { createRequirementStore } from './host/requirement-store.ts'
 import { createYonRequirementsService, type YonRequirementsService } from './host/requirement-service.ts'
 import { REQUIREMENT_TOOL_NAMES, registerYonRequirementTools } from './host/requirement-tools.ts'
@@ -120,6 +124,13 @@ export type { IterationStore, IterationRow } from './host/iteration-store.ts'
 export { createYonIterationService, IterationError } from './host/iteration-service.ts'
 export type { YonIterationService, IterationQuery, IterationCreated } from './host/iteration-service.ts'
 export { ITERATION_TOOL_NAMES } from './host/iteration-tools.ts'
+export { createMemoryStore, defaultMemoryRoot, isSafeId as isSafeMemoryId } from './host/memory-store.ts'
+export type { MemoryStore, MemoryRecord, MemoryIndexRead, MemoryEntryRead } from './host/memory-store.ts'
+export { parseMemory, serializeMemory, MEMORY_FRONTMATTER_KEYS } from './host/memory-doc.ts'
+export type { MemoryDoc } from './host/memory-doc.ts'
+export { createYonMemoryService, MemoryError, BODY_SOFT_MAX } from './host/memory-service.ts'
+export type { YonMemoryService, YonMemoryHints, MemoryQuery } from './host/memory-service.ts'
+export { MEMORY_TOOL_NAMES } from './host/memory-tools.ts'
 export { createRequirementStore, defaultRequirementRoot, isSafeArtifactName, isSafeId }
   from './host/requirement-store.ts'
 export type {
@@ -168,11 +179,15 @@ export type {
 } from './shared/types.ts'
 export { HOME_PRODUCTS } from './shared/types.ts'
 export {
-  ITERATION_KINDS, ITERATION_SEVERITIES, ITERATION_STATUSES,
+  ITERATION_KINDS, ITERATION_SEVERITIES, ITERATION_STATUSES, MEMORY_TYPES, MEMORY_TYPE_TEXT,
 } from './shared/types.ts'
 export type {
   IterationCreatedPayload, IterationKind, IterationListPayload, IterationRowView, IterationSeverity,
   IterationStatus, SaveIterationInput, UpdateIterationInput,
+} from './shared/types.ts'
+export type {
+  MemoryCreated, MemoryListPayload, MemoryListRow, MemorySummary, MemoryType, MemoryView,
+  SaveMemoryInput, UpdateMemoryInput,
 } from './shared/types.ts'
 export type {
   CreateProjectInput, DataSourceBinding, DataSourceListPayload, DataSourceProbeResult,
@@ -202,6 +217,8 @@ declare module '@deepseek-ai/cordis' {
     yonClass: YonClassService
     /** The ledger of this plugin's own shortcomings, as the model records them. */
     yonIteration: YonIterationService
+    /** What each project has already taught someone, recalled by the next session. */
+    yonMemory: YonMemoryService
     /** The machine's browsers, and the debug instances this panel started. */
     yonBrowsers: YonBrowsersService
     /** The requirement ledger: what was asked for, per project, and its written history. */
@@ -236,10 +253,28 @@ export async function apply(ctx: Context): Promise<void> {
   ctx.effect(() => dispose, 'yon-panel: project store')
   ctx.provide('yonProjects', service)
 
+  // The project memory: what this project has already taught someone, so that the next
+  // session does not have to learn it again. The gap it fills is narrow and specific —
+  // the wiki holds what stays true across projects, a requirement entry holds what was
+  // asked for, and neither holds 「这个客户把自定义项叫合同号2」.
+  //
+  // Created here, before the project tools rather than beside the other domains, for
+  // one reason: `project_read` carries a hint from it (see `memory-tools.ts`). That
+  // injection is the whole recall design — a model does not search for what it does not
+  // know it does not know, so a memory has to arrive with something it already calls.
+  //
+  // Its tools are asymmetric on purpose: the model writes, rewrites and reads, and
+  // cannot delete. Correcting a memory is the point (a memory states what is true now,
+  // unlike a requirement entry, which is what the operator said at the time), while
+  // deleting one is a person's call, in the panel.
+  const memory = createYonMemoryService(createMemoryStore(), service)
+  ctx.provide('yonMemory', memory)
+
   // The same store, also reachable by the agent as tools: the operator asks in
   // words, the model picks the call, and every write stops for approval with a
   // before/after preview before it touches anything.
-  ctx.effect(() => registerYonProjectTools(ctx, service), 'yon-panel: model tools')
+  ctx.effect(() => registerYonProjectTools(ctx, service, memory), 'yon-panel: model tools')
+  ctx.effect(() => registerYonMemoryTools(ctx, memory), 'yon-panel: memory tools')
 
   const skillDomain = await ctx.storageDomain.open(YON_SKILL_DOMAIN)
   ctx.effect(() => () => { void skillDomain.close() }, 'yon-panel: skill domain')

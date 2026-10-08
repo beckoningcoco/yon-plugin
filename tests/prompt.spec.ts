@@ -10,14 +10,15 @@ import { describe, expect, it } from 'vitest'
 import {
   BIP_META_TOOL_NAMES, CLASS_TOOL_NAMES, DATASOURCE_TOOL_NAMES, DIGEST_TOOL_NAMES,
   DOC_PARSE_TOOL_NAMES, GBK_TOOL_NAMES,
-  HOME_TOOL_NAMES, ITERATION_TOOL_NAMES, KNOWLEDGE_TOOL_NAMES, META_TOOL_NAMES,
+  HOME_TOOL_NAMES, ITERATION_TOOL_NAMES, KNOWLEDGE_TOOL_NAMES, MEMORY_TOOL_NAMES, META_TOOL_NAMES,
   REQUIREMENT_TOOL_NAMES, WIKI_TOOL_NAMES,
   WIKI_WRITE_TOOL_NAMES, YON_PROMPT_ORDER, YON_PROMPT_SECTION, YON_PROMPT_TEXT, YON_TOOL_NAMES,
 } from '../src/index.ts'
 
 /** Every tool this package registers. */
 const ALL_TOOL_NAMES = [
-  ...YON_TOOL_NAMES, ...DATASOURCE_TOOL_NAMES, ...WIKI_TOOL_NAMES, ...WIKI_WRITE_TOOL_NAMES,
+  ...YON_TOOL_NAMES, ...MEMORY_TOOL_NAMES,
+  ...DATASOURCE_TOOL_NAMES, ...WIKI_TOOL_NAMES, ...WIKI_WRITE_TOOL_NAMES,
   ...GBK_TOOL_NAMES, ...DOC_PARSE_TOOL_NAMES,
   ...KNOWLEDGE_TOOL_NAMES, ...CLASS_TOOL_NAMES, ...HOME_TOOL_NAMES,
   ...META_TOOL_NAMES, ...BIP_META_TOOL_NAMES, ...DIGEST_TOOL_NAMES, ...ITERATION_TOOL_NAMES,
@@ -88,7 +89,19 @@ describe('the Yon prompt section', () => {
     expect(YON_PROMPT_TEXT).toContain('每一条都要等他看过才算数')
     // …and the panel is not a surface the model drives, except for that one row it
     // writes. Saying only「你不需要操作它」would contradict the new paragraph.
-    expect(YON_PROMPT_TEXT).toContain('只有迭代表板和需求条目这两条要由你写')
+    expect(YON_PROMPT_TEXT).toContain('只有迭代表板、需求条目和项目记忆这三条要由你写')
+  })
+
+  it('keeps a memory distinct from a ledger entry', () => {
+    // 记忆与需求条目最容易被写成同一种东西，而它们在一个点上正好相反：条目是使用者
+    // 当时的原话，改了就不叫记录了；记忆说的是当前事实，写错了就该改正。这段正文是
+    // 唯一能说清这一点的地方，所以它的四句话各自挡一种失败：写成打架的第二条、把跨
+    // 项目的东西塞进项目库、不带出处地记、以及以为模型能删。
+    expect(YON_PROMPT_TEXT).toContain('memory_write')
+    expect(YON_PROMPT_TEXT).toContain('memory_update 改正')
+    expect(YON_PROMPT_TEXT).toContain('出处必填')
+    expect(YON_PROMPT_TEXT).toContain('那是知识库（wiki_write）该收的')
+    expect(YON_PROMPT_TEXT).toContain('删除没有工具')
   })
 
   it('keeps the requirement ledger\'s two sides apart', () => {

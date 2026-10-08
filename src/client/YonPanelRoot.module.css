@@ -58,7 +58,32 @@
 
 /* Fixed: the sidebar clips overflow, and the anchor is measured before paint.
    Only `.body` scrolls on this elevated surface, so the shared scrollbar tokens
-   are rebound here as the styling rules require. */
+   are rebound here as the styling rules require.
+
+   This card is the plugin's only surface with no mask behind it — it opens on
+   top of whatever the sidebar is showing, which in the light theme is
+   `--dsw-specific-sidebar-fill` = #f9fafb against the menu surface's #fff: a
+   1.045:1 fill, over a session list drawn at that same value, so the fill
+   cannot separate the card from the list it covers. Both separators are the
+   host's, not values of this file's own:
+
+   · `prominent` is the host's menu-card elevation (figma MenuDropdown 122:9481,
+     `ui-primitives/src/Menu.module.css:6-20`) and the one every floating host
+     menu uses (`ui-input-trigger/…/MenuView.module.css:22-24`,
+     `ui-commands/…/PopupSelectView.module.css:29-31`, ui-jobs, ui-model-selection,
+     ui-chat, ui-message-feedback). `-panel` is the lighter step: measured in the
+     live app as 3%/2% soft light, which left the edge unreadable over the list.
+   · `l2` for the hairline is deliberately one step above the menus' l1: a host
+     menu opens over the composer, this card opens over a list drawn at its own
+     value. The host names that step for exactly this bind — "the light neutral
+     (l2, one step above the menus' l1)" on the composer card, itself a white
+     plate over a light background
+     (`ui-conversation/src/client/skeleton/InputBar.module.css:44-47`) — and
+     records l1 as near-invisible on a menu surface
+     (`ui-primitives/src/Menu.module.css:81-82`). It is also this plugin's own
+     hairline for a container, as opposed to a capsule whose line is the whole of
+     its shape (`panel.module.css:214-215`). Measured against the sidebar behind
+     it: 1.09:1 at l1, 1.253:1 at l2. */
 .panel {
   position: fixed;
   z-index: 30;
@@ -69,9 +94,45 @@
   overflow: hidden;
   border: 0;
   border-radius: 12px;
-  background: var(--dsw-specific-menu);
-  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
-  box-shadow: var(--dsw-elevation-panel);
+  /* Opaque by construction, and that is the point of this surface: it opens over
+     the session list, so anything its fill lets through is legible text at ~55%
+     strength, reading as a second layer of type inside the card.
+
+     It used to take `--dsw-specific-menu`, on the reading that the menu token is
+     what a floating surface wears. In the host this was verified against
+     (`deepseek-harness-neuron`) that token is `var(--dsw-alias-bg-layer-3)`, so
+     the two spellings are one colour there and neither can be told from the
+     other. They are NOT one colour in the desktop build
+     (`D:\DeepSeekHarness\resources\app.asar`, nightly win-x64, installed
+     2026-09-29): there the menu is glass — `--dsw-specific-menu:
+     var(--dsw-menu-surface-fill)`, dark `rgba(67, 69, 74, .45)`, light
+     `rgba(248, 249, 250, .58)` — and it is worn with `backdrop-filter:
+     var(--dsw-menu-backdrop-filter)` = `blur(40px) saturate(150%)`, which that
+     build pairs with the fill on every menu surface it draws (19 blur usages to
+     21 fill usages). A surface that borrows the fill without the blur borrows the
+     transparency and none of what hides the text behind it.
+
+     That is the whole of the 2026-10-08 report, and it is arithmetic: the card in
+     that screenshot measured rgb(45, 46, 48) = .45 × rgb(67, 69, 74) over the
+     sidebar's rgb(27, 27, 28), the list's own text showing through at
+     rgb(167, 169, 171) (luminance 168.5) beside this card's labels at their full
+     210.4.
+
+     So the fill is the opaque layer the menu token is derived from, and glass is
+     left to the surfaces that carry the blur that pays for it.
+     `--dsw-alias-bg-layer-3` is opaque in both builds and both themes — #353638
+     dark / #fff light in the checkout, rgb(53, 54, 56) / #fff in the desktop build
+     — and in the checkout it is what the previous declaration already computed
+     to, so this moves nothing there. The menu token is kept as the second
+     fallback rather than dropped, so a host carrying only the menu layer still
+     gets a fill; `Canvas` last keeps the surface on the document's colour scheme
+     rather than pinned to white. A token declared with something that is not a
+     colour is not covered by a fallback: an invalid-at-computed-value declaration
+     drops to the property's initial value rather than to an earlier declaration,
+     and no CSS can tell that case apart. */
+  background-color: var(--dsw-alias-bg-layer-3, var(--dsw-specific-menu, Canvas));
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l2);
+  box-shadow: var(--dsw-elevation-prominent);
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }

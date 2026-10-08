@@ -4,9 +4,11 @@ DSH（DeepSeek Harness）Web GUI 的 **Yon 按钮面板** 插件，带一个**�
 
 | 半边 | 做什么 |
 |---|---|
-| 浏览器半 | 侧栏底部、设置按钮**上方**一个 `Y` 图标 → 点开是按钮面板，里面八个内建格子：**项目管理**、**技能**、**数据源**、**知识库**、**消化检查**、**Home 管理**、**迭代**、**浏览器**；面板里的按钮由任意插件通过 `yon.panel.item` 席位贡献 |
+| 浏览器半 | 侧栏底部、设置按钮**上方**一个 `Y` 图标 → 点开是按钮面板，里面九个内建格子：**项目管理**、**技能**、**数据源**、**知识库**、**消化检查**、**Home 管理**、**迭代**、**浏览器**、**需求**；面板里的按钮由任意插件通过 `yon.panel.item` 席位贡献 |
 | Host 半 | 「项目」存储（主表 + 动态字段子表），以三种方式对外开放：`ctx.yonProjects` 服务（同进程插件）、`project_*` agent 工具（在对话里说人话改配置）、`/yon/api` HTTP 路由（任何前端） |
 | Host 半 | 插件**自带技能**：`skills/*/SKILL.md` 在构建时内联，插件挂载时注册进 DSH 的技能目录，**卸载时自动消失**；开关存在 `yon_skills` 领域里 |
+| Host 半 | **需求条目库**：某个项目下「要做的事」一条条记下来，连同使用者给的资料、模型生成的方案与补丁。以 `ctx.yonRequirements` + 9 个 `requirement_*` 工具 + `/yon/api` 三种方式对外开放；每条是 `~/.dsh/yon-panel/requirements/` 下的一个目录 |
+| Host 半 | **项目记忆**：某个项目上已经摸出来的坑、环境事实、决定与偏好，给下一个会话用。4 个 `memory_*` 工具；模型可写可改、**不能删**；`project_read` 的返回值里会自动带上这个项目最近的五条。**还没有面板**（P0，见下文） |
 
 **安装不需要改动 DSH 仓库**：UI 占用 ui-sidebar 已声明的 `sidebar.footer.action` 席位，数据落在 DSH 自带的 storage 子系统上。
 
@@ -109,6 +111,16 @@ const detail = await ctx.yonSkills.read('yon-devkit')    // 含正文
 
 想要 **SQLite 介质**：在 profile 里挂 `@deepseek-ai/dsh-storage-sqlite` 并把本领域路由指过去即可，**插件代码不用改**（介质由部署方选，见 DSH 的 storage 子系统文档）。
 
+不走存储领域的三个域落在 `~/.dsh/yon-panel/` 下 —— 这个目录在**重装插件之后还在**，这是它们放在这里而不是插件目录里的理由：
+
+| 是什么 | 落在哪 | 形态 |
+|---|---|---|
+| 需求条目 | `requirements/` | `index.json`（目录卡）+ 每条一个目录：`entry.md` + `user/` `generated/` `patches/` |
+| 项目记忆 | `memory/` | `index.json` + 每条一个 `<id>.md`（frontmatter + 正文，人和 `git diff` 都能读） |
+| 迭代表板 | `iteration.json` | 一个 JSON 文档 |
+
+**记忆库的索引是缓存，文件才是真相。** `memory_read` 与 `memory_recall` 都从 `.md` 读；索引只服务注入路径——`project_read` 不能为了带一行标题去开五个文件。所以手工编辑一个 `.md` 是允许的用法（下一次 `memory_read` 就看到你的改动），索引因此落后只会**少给**一条，不会给错一条；重建索引是 `memory_sweep` 的事（P2）。
+
 ### 让 Agent 帮你管配置（模型工具）
 
 Host 半把这份存储同时注册成 **agent 工具**，所以你可以直接在对话里说人话：
@@ -163,6 +175,24 @@ Host 半把这份存储同时注册成 **agent 工具**，所以你可以直接�
 
 > ⚠️ **需要重启 DSH**：工具是 host 半注册的，改完插件必须重启才生效（浏览器半只需要刷新页面）。
 
+### 其余各域的工具
+
+上面那 5 个 `project_*` 只是其中一个域。同一个闸门（判据只有一条：**这次调用会不会丢东西**）、同一份权限档表格，覆盖全部工具族：
+
+| 工具族 | 干什么 | 会写到哪里 |
+|---|---|---|
+| `requirement_*`（9 个） | 需求条目库：建条目、追加标注、改名称与状态、作废、写方案文档与补丁、读条目内的附件。**创建与追加永不打断**（这是它有价值的前提），改名称、改状态、作废走审批，**没有删除工具**——真删只在面板里 | `~/.dsh/yon-panel/requirements/` |
+| `memory_*`（4 个） | 项目记忆：`memory_write` 新建、`memory_update` 改写、`memory_recall` 检索、`memory_read` 读全文。新建不打断，**改写会拦**（它盖掉原来那段话），没有删除工具 | `~/.dsh/yon-panel/memory/` |
+| `datasource_*` | 登记的环境数据库连接，以及执行 SQL 取真实数据 | `db_config.json` |
+| `ncc_home_*` | 登记本机 NCC/BIP 安装目录（Home），按 id 列文件、按原编码读文件 | `home_config.json` |
+| `ncc_meta_*` / `bip_meta_*` | 两条产品线的元数据：实体 / 表名 / 字段 / 枚举。**两条产品线互不相通**，问错一条只会答"没有" | 只读（索引是缓存） |
+| `wiki_*` / `wiki_write` | 读实体知识库；写入分三种模式，**不能覆盖已有页** | Obsidian vault 目录 |
+| `knowledge_*` / `ncc_class_search` / `doc_parse` / `ncc_gbk_edit` | 随包参考库、类名→jar 索引、Excel/PDF/Word 读取、GBK 源码读写 | 只有 `ncc_gbk_edit` 写，改的是 NCC 源码树 |
+| `digest_*` | 素材消化的摸底与验收（只管计划与校验，真正落页的是 `wiki_write`） | `digest-log.jsonl` |
+| `iteration_*`（2 个） | 插件自身短板的台账：模型**只能追加**，改状态、调优先级、删除都在面板里由人做 | `iteration.json` |
+
+模型真正逐字读到的那段总纲在 `src/host/prompt.ts`（系统提示里的一节，**组数是写下来的**：新增一组工具就要同步改那段文字与它的测试）。上面这张表是给人看的。
+
 ### 插件自带技能
 
 插件在 `skills/<名字>/SKILL.md` 里预制技能。构建时正文被**内联**进 `lib/host/skill-catalog.generated.js`，插件挂载时通过 `ctx.skills.register()` 注册进 DSH 的技能目录：
@@ -205,13 +235,13 @@ lib/host/skill-catalog.generated.js   ← 随包发布
 
 ## 按钮面板（浏览器半）
 
-侧栏底部的 `Y` 图标点开是 280px 的小面板。面板内有八个内建格子（悬停显示名字）：
+侧栏底部的 `Y` 图标点开是 280px 的小面板。面板内有九个内建格子（悬停显示名字）：
 
 | 格子 | 名字 | 打开什么 |
 |---|---|---|
 | 文件夹图标 | 项目管理 | 项目列表 + 字段编辑 |
 | 文档图标 | **YONSKILL** | 技能面板 |
-| 其余六个 | 数据源 / 知识库 / 消化检查 / Home 管理 / 迭代 / 浏览器 | 各自的面板 |
+| 其余七个 | 数据源 / 知识库 / 消化检查 / Home 管理 / 迭代 / 浏览器 / 需求 | 各自的面板 |
 
 > 「浏览器」是**调试浏览器**（起一个带 `--remote-debugging-port` 的 Chrome/Edge/Firefox，交给 Playwright 之类的工具接管），
 > 与上文「浏览器半」（插件跑在客户端的那半边）不是一回事。设计说明见 [`docs/yon-browser-design.md`](docs/yon-browser-design.md)。
@@ -320,13 +350,17 @@ pnpm pack        # 打包，prepack 会先 build
 - **技能名撞车是静默的**：DSH 的规则是运行时技能压过用户在 `~/.agents/skills` 里的同名技能，被压掉的那份不报错、也不出现在技能列表里。本插件因此只用全新名字（当前只有 `yon-devkit`）
 - **技能面板只列部署级技能**：`~/.agents/skills` 里的技能由 DSH 的 agent 预设按会话挂载（进 preset 的作用域层），面板没有会话上下文、命名不出该作用域，因此不列出它们。这是 DSH 的分层设计而非缺陷（详见上文「技能面板怎么用」）
 - **技能改动要重启**：`skills/*.md` 属于 host 半数据，改完必须 `pnpm build` + 重启 DSH（刷新页面不够）
+- **需求条目与项目记忆都没有删除工具**：模型能建、能改、能追加，删不了。真删只在面板里由人做（需求面板已有；记忆面板排 P1）。这是刻意的——一个能自己删记录的模型，很快就不再是「帮你记事的那一方」
+- **项目记忆没有「已验证 / 已过期」这类状态**：记忆说的是**当前事实**，不是「某年某月谁说的」。不成立就用 `memory_update` 改正、或让人删掉，库里只留当前成立的结论。所以**别指望从状态上看出哪条可信**——`source`（出处）是唯一线索，也是写入时的必填项
+- **记忆的注入一次会话只给一次，每个项目最多五条**：同一段文字在上下文里重复六遍，模型会学着跳过去，那正好毁掉这段文字存在的理由。要看更多用 `memory_recall`，要读全文用 `memory_read`
+- **项目记忆还没有面板**（P0）：现在只有模型工具与 `project_read` 的注入；浏览、搜索、删除要等 P1
 
 ## 源码地图
 
-八个面板，每个的形状都一样：`src/client/<X>Item.tsx` 一个内建条目、`src/client/<X>/` 一组界面文件、
+九个面板，每个的形状都一样：`src/client/<X>Item.tsx` 一个内建条目、`src/client/<X>/` 一组界面文件、
 `src/host/<X>-*.ts` 一组 host 模块。下面按这层结构列 —— 想找某个文件时，`find src/client src/host -type f` 仍是权威。
 
-### 基础层（八个面板共用）
+### 基础层（九个面板共用）
 
 | 文件 | 职责 |
 |---|---|
@@ -335,16 +369,16 @@ pnpm pack        # 打包，prepack 会先 build
 | `src/host/http.ts` | `/yon/api` 全部路由与错误映射（没有 web server 的部署下不挂载） |
 | `src/host/prompt.ts` | 注入给模型的工具说明。**组数是写下来的**，新增一组工具要同步改 |
 | `src/shared/types.ts` | 前后端共用的数据契约 |
-| `src/client/index.ts` | 浏览器半入口：席位注册、面板 store、**八个**内建条目、API 客户端注入面 |
+| `src/client/index.ts` | 浏览器半入口：席位注册、面板 store、**九个**内建条目、API 客户端注入面 |
 | `src/client/YonPanelRoot.tsx` | 侧栏底部触发按钮、面板外壳、分层后的关闭行为 |
 | `src/client/panel-store.ts` | 面板开合状态 + 覆盖层层数（一次 Esc 只关一层） |
-| `src/client/panel.module.css` / `panel-item.module.css` | 八个面板共用的对话框样式 / 八个内建格共用的图标格样式 |
+| `src/client/panel.module.css` / `panel-item.module.css` | 九个面板共用的对话框样式 / 九个内建格共用的图标格样式 |
 | `src/client/request.ts` | 各 API 客户端共用的 `/yon/api` JSON 调用与错误类型 |
 | `src/client/slots.ts` / `locales.ts` / `cn.ts` / `item-rows.ts` | 席位与 inject face 类型 / 词典（**zh 与 en 两份**）/ 类名拼接 / 条目行 |
 | `scripts/build-skills.mjs` | 把 `skills/*/SKILL.md` 内联成 TS；`--check` 用来抓漂移 |
 | `skills/<名字>/SKILL.md` | 插件自带技能的**源文件**（普通技能 bundle，你编辑这个） |
 
-### 八个面板
+### 九个面板
 
 | 面板 | 界面（`src/client/`） | host 半（`src/host/`） | 职责 |
 |---|---|---|---|
@@ -356,6 +390,7 @@ pnpm pack        # 打包，prepack 会先 build
 | 消化 `digest` | `digest/{DigestManager.tsx,api.ts,panel.module.css}` | `digest-log.ts`、`digest-audit.ts`、`digest-plan.ts`、`digest-sweep.ts`、`digest-config.ts`、`digest-tools.ts` | 判断一份「源素材 → 知识页」消化得够不够：配置阈值与词表、批量按源文档分组验收、每次验收留一条流水 |
 | 迭代 `iteration` | `iteration/{IterationManager.tsx,api.ts,panel.module.css}` | `iteration-store.ts`、`iteration-service.ts`、`iteration-tools.ts` | 模型在使用这套插件时记下的短板（能力不足 / 优化建议）与使用者的处理（状态 / 优先级 / 删除）。模型**只能追加**（`iteration_add` / `iteration_list`，没有改与删的工具），改状态、调优先级、删除都在面板里由人做；台账在 `~/.dsh/yon-panel/iteration.json`。设计记录见 `docs/yon-iteration-design.md` |
 | 浏览器 `browser` | `browser/{BrowserManager.tsx,api.ts,panel.module.css}` | `browser-scan.ts`、`browser-store.ts`、`browser-system.ts`、`browser-service.ts` | **调试浏览器**：扫一遍本机（Chrome / Edge / Chromium / Firefox）并记住路径，填端口点「启动」起一个带调试端口的浏览器，面板报出连接地址，能停掉**本面板起过**的实例。全仓唯一一处 `node:child_process`（进程必须活过这次调用并活过 DSH 重启），也是唯一会结束进程的面板；登记在 `~/.dsh/yon-panel/browser_config.json`、台账在 `browser_runs.json`，用户数据目录默认在插件根目录的 `.browser-profile/<id>/`。设计记录见 `docs/yon-browser-design.md` |
+| 需求 `requirement` | `requirement/{RequirementManager.tsx,api.ts,panel.module.css}` | `requirement-doc.ts`、`requirement-store.ts`、`requirement-files.ts`、`requirement-service.ts`、`requirement-tools.ts` | 某个项目下「要做的事」：名称 / 状态 / 正文 + 一段段追加的标注（删除线即历史，模型读到的是去掉删除线的那份）+ 三个文件夹（`user/` 使用者给的原件、`generated/` 模型的方案、`patches/` 补丁）。**正文只放使用者要什么，模型探查出来的进标注**——这条分界只有提示词那一段守得住。设计记录见 `docs/yon-requirement-design.md` |
 
 ### 不属于任何面板的读取层
 
@@ -366,3 +401,16 @@ pnpm pack        # 打包，prepack 会先 build
 | `src/host/bip-meta.ts` / `bip-meta-tools.ts` | 旗舰版元数据：解析随包的快照，进程内缓存，不建索引 |
 | `src/host/knowledge-tools.ts` | 随包参考文档的检索 |
 | `src/host/gbk-tool.ts` | GBK 源码文件的读与改 |
+
+### 不属于任何面板的写入层（项目记忆）
+
+| 文件 | 职责 |
+|---|---|
+| `src/host/memory-doc.ts` | 一条记忆的文本层：frontmatter 与正文的解析 / 序列化。纯函数，无文件系统、无时钟 |
+| `src/host/memory-store.ts` | `memory/` 的磁盘层：`index.json` + 每条一个 `<id>.md`。原子写、`isSafeId` 门、坏记录跳过而不是让整份索引读不出来 |
+| `src/host/memory-service.ts` | id 生成（`mem-<本地日期>-<本地时分秒>-<随机>`）、字段校验、项目解析、同项目同标题去重、读改写队列 |
+| `src/host/memory-tools.ts` | `memory_write` / `memory_update` / `memory_recall` / `memory_read` |
+| `src/host/tools.ts`（改动） | `project_read` 的返回值里带上这个项目最近的五条（只给标题与 id，一次会话一次）；`isDestructiveWrite` 认 `memory_update` |
+| `scripts/verify-memory-live.mjs` | 实机验证：跑编译产物走一遍完整闭环，并把产出的一份 `.md` 打印出来（形态错了要在这儿看得见） |
+
+**它没有面板**，也不该被当成面板：这一版的价值全在模型侧——写进去，下次会话自动带回来。面板（浏览 / 搜索 / 删除）排在 P1。设计记录见 [`docs/yon-memory-design.md`](docs/yon-memory-design.md)。

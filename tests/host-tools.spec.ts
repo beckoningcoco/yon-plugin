@@ -497,6 +497,17 @@ describe('what one write would cost', () => {
     expect(isDestructiveWrite('requirement_list', {})).toBe(false)
     expect(isDestructiveWrite('requirement_read', { ref: 'rq-1' })).toBe(false)
   })
+
+  it('rules on the memory bank by the same scale', () => {
+    // 记忆与需求条目在这一点上正好相反：那边只有覆盖式修改算丢东西，这边有一条
+    // 「改写正文」——记忆记的是当前事实，改写它是正当用法，但它确实会盖掉原来那段话，
+    // 所以它是这个族里唯一要拦的名字。新建、追加、读取都不丢东西。
+    expect(isDestructiveWrite('memory_update', { id: 'mem-1', body: 'x' })).toBe(true)
+    expect(isDestructiveWrite('memory_write', { project: 'p', title: 't' })).toBe(false)
+    expect(isDestructiveWrite('memory_annotate', { id: 'mem-1', text: 't' })).toBe(false)
+    expect(isDestructiveWrite('memory_recall', {})).toBe(false)
+    expect(isDestructiveWrite('memory_read', { id: 'mem-1' })).toBe(false)
+  })
 })
 
 describe('what the session permits', () => {

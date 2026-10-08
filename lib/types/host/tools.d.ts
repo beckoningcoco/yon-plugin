@@ -27,6 +27,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import type { ProjectDetail } from '../shared/types.ts';
 import { type YonProjectsService } from './service.ts';
+import type { YonMemoryHints } from './memory-service.ts';
 /** One content block this package produces: text, always. */
 export interface YonTextBlock {
     readonly type: 'text';
@@ -191,9 +192,12 @@ export declare function previewWrite(projects: YonProjectsService, name: string,
  * Register the project tools and their preview gate.
  * @param ctx - host context carrying the tool registry.
  * @param projects - the store the tools read and write.
+ * @param memory - the memory bank `project_read` carries a hint from. Optional, so a
+ *   caller that has the project store and not the bank still gets every tool; the
+ *   injection is the only part that goes missing.
  * @returns the disposer that withdraws every registration.
  */
-export declare function registerYonProjectTools(ctx: Context, projects: YonProjectsService): () => void;
+export declare function registerYonProjectTools(ctx: Context, projects: YonProjectsService, memory?: YonMemoryHints): () => void;
 /**
  * Whether one tool name is a write this package gates behind an approval.
  * @param name - the tool name to test.

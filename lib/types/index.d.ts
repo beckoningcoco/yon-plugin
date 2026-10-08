@@ -1,8 +1,9 @@
 /**
  * Yon panel, host half: opens the project, skill-switch and datasource domains,
  * publishes them as `ctx.yonProjects`, `ctx.yonSkills`, `ctx.yonDataSources`,
- * `ctx.yonWiki`, `ctx.yonHomes`, `ctx.yonIteration` and `ctx.yonBrowsers`,
- * offers the projects and the data sources to the agent as tools, contributes
+ * `ctx.yonWiki`, `ctx.yonHomes`, `ctx.yonIteration`, `ctx.yonMemory` and
+ * `ctx.yonBrowsers`, offers the projects and the data sources to the agent as
+ * tools, contributes
  * this plugin's own skills to the skill registry, and — where a web server
  * exists — serves all three over `/yon/api`.
  *
@@ -24,6 +25,7 @@ import { type YonWikiService } from './host/wiki-service.ts';
 import { type YonClassService } from './host/class-service.ts';
 import { type YonBrowsersService } from './host/browser-service.ts';
 import { type YonIterationService } from './host/iteration-service.ts';
+import { type YonMemoryService } from './host/memory-service.ts';
 import { type YonRequirementsService } from './host/requirement-service.ts';
 import { type YonHomesService } from './host/home-service.ts';
 import { type YonMetaService } from './host/meta-service.ts';
@@ -78,6 +80,13 @@ export type { IterationStore, IterationRow } from './host/iteration-store.ts';
 export { createYonIterationService, IterationError } from './host/iteration-service.ts';
 export type { YonIterationService, IterationQuery, IterationCreated } from './host/iteration-service.ts';
 export { ITERATION_TOOL_NAMES } from './host/iteration-tools.ts';
+export { createMemoryStore, defaultMemoryRoot, isSafeId as isSafeMemoryId } from './host/memory-store.ts';
+export type { MemoryStore, MemoryRecord, MemoryIndexRead, MemoryEntryRead } from './host/memory-store.ts';
+export { parseMemory, serializeMemory, MEMORY_FRONTMATTER_KEYS } from './host/memory-doc.ts';
+export type { MemoryDoc } from './host/memory-doc.ts';
+export { createYonMemoryService, MemoryError, BODY_SOFT_MAX } from './host/memory-service.ts';
+export type { YonMemoryService, YonMemoryHints, MemoryQuery } from './host/memory-service.ts';
+export { MEMORY_TOOL_NAMES } from './host/memory-tools.ts';
 export { createRequirementStore, defaultRequirementRoot, isSafeArtifactName, isSafeId } from './host/requirement-store.ts';
 export type { RequirementArtifactKind, RequirementEntryRead, RequirementFileHead, RequirementFileStat, RequirementIndexRead, RequirementRecord, RequirementStore, } from './host/requirement-store.ts';
 export { MAX_ATTACHMENT_BYTES, MAX_FILE_READ_BYTES, MAX_FILE_READ_CHARS, attachmentText, classifyFile, extensionOf, freeName, sizeOf, } from './host/requirement-files.ts';
@@ -106,8 +115,9 @@ export { parseBmf } from './host/meta-bmf.ts';
 export type { BmfComponent, BmfEntity, BmfEnum, BmfField } from './host/meta-bmf.ts';
 export type { ClassBuildView, ClassIndexPayload, ClassIndexStatusView, HomeFileView, HomeFindPayload, HomeIndexView, HomeKeyView, HomeListPayload, HomeMetaIndexView, HomeProduct, HomeProfileView, HomeReadPayload, HomeShape, HomeView, MetaBuildView, MetaCountsView, MetaFreshnessView, MetaIndexPayload, MetaIndexStatusView, SaveHomeInput, } from './shared/types.ts';
 export { HOME_PRODUCTS } from './shared/types.ts';
-export { ITERATION_KINDS, ITERATION_SEVERITIES, ITERATION_STATUSES, } from './shared/types.ts';
+export { ITERATION_KINDS, ITERATION_SEVERITIES, ITERATION_STATUSES, MEMORY_TYPES, MEMORY_TYPE_TEXT, } from './shared/types.ts';
 export type { IterationCreatedPayload, IterationKind, IterationListPayload, IterationRowView, IterationSeverity, IterationStatus, SaveIterationInput, UpdateIterationInput, } from './shared/types.ts';
+export type { MemoryCreated, MemoryListPayload, MemoryListRow, MemorySummary, MemoryType, MemoryView, SaveMemoryInput, UpdateMemoryInput, } from './shared/types.ts';
 export type { CreateProjectInput, DataSourceBinding, DataSourceListPayload, DataSourceProbeResult, DataSourceView, JsonValue, ProjectDetail, ProjectSummary, ProjectStatus, SaveDataSourceInput, SkillDetail, SkillView, UpdateProjectInput, } from './shared/types.ts';
 export type { BrowserFamily, BrowserListPayload, BrowserRunLiveness, BrowserRunView, BrowserStopMethod, BrowserView, LaunchBrowserInput, SaveBrowserInput, ScanBrowsersPayload, StopBrowserResult, } from './shared/types.ts';
 declare module '@deepseek-ai/cordis' {
@@ -128,6 +138,8 @@ declare module '@deepseek-ai/cordis' {
         yonClass: YonClassService;
         /** The ledger of this plugin's own shortcomings, as the model records them. */
         yonIteration: YonIterationService;
+        /** What each project has already taught someone, recalled by the next session. */
+        yonMemory: YonMemoryService;
         /** The machine's browsers, and the debug instances this panel started. */
         yonBrowsers: YonBrowsersService;
         /** The requirement ledger: what was asked for, per project, and its written history. */
