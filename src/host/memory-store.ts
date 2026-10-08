@@ -40,7 +40,7 @@
  * fabricated teaches its reader to distrust the whole file.
  */
 
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -98,6 +98,11 @@ export interface MemoryStore {
   entryPath(id: string): string
   readEntry(id: string): Promise<MemoryEntryRead>
   writeEntry(doc: MemoryDoc): Promise<void>
+  /**
+   * Delete one memory's file. A missing file is not an error: the caller is removing
+   * a record, and the record is what it checks first.
+   */
+  removeEntry(id: string): Promise<void>
 }
 
 /** `~/.dsh/yon-panel/memory/`, beside `iteration.json` and `requirements/`. */
@@ -316,6 +321,15 @@ export function createMemoryStore(root: string = defaultMemoryRoot()): MemorySto
 
     writeEntry(doc: MemoryDoc): Promise<void> {
       return queue(() => writeAtomically(entryPath(doc.id), serializeMemory(doc)))
+    },
+
+    removeEntry(id: string): Promise<void> {
+      return queue(async () => {
+        // `force` so a file that is already gone is a completed deletion rather than
+        // an ENOENT the caller has to interpret: this method's contract is "the file
+        // is not there afterwards", and it is, either way.
+        await rm(entryPath(id), { force: true })
+      })
     },
   }
 }

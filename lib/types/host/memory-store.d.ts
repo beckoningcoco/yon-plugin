@@ -89,6 +89,11 @@ export interface MemoryStore {
     entryPath(id: string): string;
     readEntry(id: string): Promise<MemoryEntryRead>;
     writeEntry(doc: MemoryDoc): Promise<void>;
+    /**
+     * Delete one memory's file. A missing file is not an error: the caller is removing
+     * a record, and the record is what it checks first.
+     */
+    removeEntry(id: string): Promise<void>;
 }
 /** `~/.dsh/yon-panel/memory/`, beside `iteration.json` and `requirements/`. */
 export declare function defaultMemoryRoot(): string;

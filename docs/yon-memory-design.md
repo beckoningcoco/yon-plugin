@@ -2,7 +2,7 @@
 
 > 目标：给 Yon 面板增加一个**项目级**的长期记忆入口。LLM 可以自己往里写"经验、坑、决定、环境事实"，以后做同一个项目时能**召回**。使用者在面板上能看到、能删。
 >
-> 状态：**P0 已实现**（2026-10-08）。`memory_write` / `memory_update` / `memory_recall` / `memory_read` 四个工具、提示词第十四组、以及 `project_read` 的被动注入都已经落地并通过验证；面板、`memory_annotate`、`memory_sweep`、`memory_promote` 仍是待办（§10）。
+> 状态：**P0 与 P1 的面板已实现**（2026-10-08）。四个工具、提示词第十四组、`project_read` 的被动注入，以及侧栏第十格「记忆」（浏览、按类型与项目筛选、搜正文、读全文、删除）都已落地并通过验证。剩下的：`memory_annotate`（存疑，见 §13.3 第 4 条）、`datasource_query` / meta 查询的计数提示、`memory_sweep`、`memory_promote`（§10）。
 >
 > **修订**：v3 —— 按实现结果校正（§13 逐条列出与设计稿不一致的地方），补 P0 的实施记录与验证证据。
 > v2 —— 按与使用者的六条讨论改定（当前项目由模型推断 / 正文用软上限 / **不引入任何状态字段** / 只做项目级 / 删掉会话开场注入 / 补 Hindsight 实测），并**修正 v1 §2 的两条错误前提**。
@@ -337,7 +337,7 @@ v1 写"Hindsight 兜通用仓库记忆（按 git 仓库分 bank、不进面板�
 | 阶段 | 内容 | 验收 | 状态 |
 |---|---|---|---|
 | **P0** | 存储 + `memory_write` / `memory_update` / `memory_recall` / `memory_read` + **`project_read` 注入** + `prompt.ts` 第十四组 | 记一条坑，换个会话 `project_read` 能看见它；改掉它，再看见的是改后的 | ✅ 已完成 |
-| **P1** | 面板页签（浏览、搜索、**删除**）+ `memory_annotate` + 会话内最近项目 + `datasource_query` / meta 查询的计数提示 | 面板能浏览、筛选、删掉一条 | 待办 |
+| **P1** | 面板页签（浏览、筛选、读全文、**删除**）✅ · 待办：`memory_annotate`、`datasource_query` / meta 查询的计数提示 | 面板能浏览、筛选、删掉一条 ✅ | 面板已完成 |
 | **P2** | `memory_sweep` + `memory_promote` | 体检能报出孤儿、无出处与冲突 | 待办 |
 
 **P0 就已形成闭环**（写 + 改 + 被动召回），且是全部价值的大头。不要先做面板。
@@ -409,6 +409,28 @@ v1 写"Hindsight 兜通用仓库记忆（按 git 仓库分 bank、不进面板�
 6. **注入的去重键是会话对象本身**（`WeakMap<session, Set<projectId>>`），且**没有 `agent` 时不注入**——直接派发无从判断这个上下文已经看过什么。设计稿只说"要去重"。
 7. **`MEMORY_TYPE_TEXT`（中文名）放在 `shared/types.ts`**，面板与工具报告共用一份。
 8. **测试是四个 spec 而不是一个**，注入单列（`memory-injection.spec.ts`）：它同时需要真实的项目服务与记忆服务，且它守的是"带什么 / 凭什么 / 带几次"，与工具本身的行为是两件事。
+
+---
+
+## 14. P1 的第一件：面板（2026-10-08）
+
+侧栏第十格「记忆」，与其余九格同形：`src/client/MemoryItem.tsx`（格子）+ `src/client/memory/{MemoryManager.tsx,api.ts,panel.module.css}`（那一屏）。它能浏览（类型徽标、标题、项目、日期、一行摘要）、按类型与项目筛选、搜正文（关键词走后端——面板手上只有摘要，而记忆的价值在一句话的正文里）、展开读全文（正文、出处、id）、删除（两次点击）。
+
+**它没有新建，也没有编辑。** 这是与其余九格唯一方向性不同的地方：记忆是「某人查出来的事实」，做成一张可以填写的表就等于允许凭印象编一条，而库里每一条都会被注入到下一个会话里当成事实用。所以这一屏的 API 只有 `GET` 与 `DELETE`，两条用例各盯着这半边：
+
+- `tests/http-memory.spec.ts` → *has no route that creates or changes a memory*（`POST` 与 `PATCH` 都是 405）
+- `tests/memory-panel.client.spec.tsx` → *asks twice before deleting, and never offers to create*
+
+顺带三处改动，都是这一屏逼出来的：
+
+1. **删除的顺序与写入相反。** `memory-store.ts` / `memory-service.ts` 各加一个删除：写入是「文件先、索引后」，删除是「索引先、文件后」。统一规则是**索引永远不领先于文件**——中断留下的中间态永远是「一条看不见的记忆」（手工能救），而不是「一个读不出正文的标题」（下个会话会拿到一个死引用）。
+2. **`http.ts` 的错误映射链补上 `MemoryError`。** 那是一串手写的 `instanceof`，漏一个域的后果是 not-found 以 500 出去——看起来像服务器崩了，而不是「这条不在库里」。`http-memory.spec.ts` 有一条用例专门盯着 404。
+3. **面板类名一律带 `mem` 前缀。** `iteration/panel.module.css` 里那条规则（预览页没有 CSS-module hash，同名即同一类）对它自己也成立：这一屏与迭代面板概念上共享一个工具栏、一排筛选胶囊、一个行头，不设前缀就是在赌没有一页会同时渲染两者。
+
+### 仍未做的两件（同属 P1）
+
+- **`memory_annotate`**：§13.3 第 4 条说它可能不该存在。在「记忆是当前事实」确立之后，追加一段「此前记的 X 已不成立」是错的做法——正确动作是 `memory_update` 直接改掉。**建议不做**，等有真实用例再说。
+- **计数提示**：`datasource_query` / `ncc_meta_find` / `bip_meta_find` / `wiki_lookup` 的返回值里加一行「本项目有 N 条记忆」。它需要先有一个跨模块的「本次会话最近项目」（目前只有 `project_read` 内部按会话去重，没有对外的登记处），所以要引入一个按 session 存的 tracker 并接进四个模块。价值明确（这四个工具是模型最常调的一批），但改动面比面板还宽。
 
 ---
 

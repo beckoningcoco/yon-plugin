@@ -117,6 +117,15 @@ export interface YonMemoryService extends YonMemoryHints {
   create(input: SaveMemoryInput, options?: { readonly dedupe?: boolean }): Promise<MemoryCreated>
   update(id: string, patch: UpdateMemoryInput): Promise<MemoryView>
   read(id: string): Promise<MemoryView>
+  /**
+   * Delete one memory outright.
+   *
+   * The panel's operation, not the model's — there is no `memory_delete` tool. A
+   * memory is what somebody found out about a project, and a model that can quietly
+   * remove what an earlier session concluded is a model whose notes stop being
+   * evidence of anything.
+   */
+  remove(id: string): Promise<string>
 }
 
 /** The key two titles are compared by when asking "is this the same memory?". */
@@ -448,6 +457,27 @@ export function createYonMemoryService(
       if (entry.error !== undefined) throw new MemoryError('invalid-input', entry.error)
       if (entry.doc === undefined) throw new MemoryError('not-found', `记忆库里没有这一条：${id}`)
       return viewOf(entry.doc, nameLookup()(entry.doc.projectId))
+    },
+
+    async remove(id: string): Promise<string> {
+      return await inLine(async () => {
+        if (!isSafeId(id)) throw new MemoryError('not-found', `记忆库里没有这一条：${id}`)
+        const records = await readAll()
+        if (!records.some(record => record.id === id)) {
+          throw new MemoryError('not-found', `记忆库里没有这一条：${id}`)
+        }
+        // Index first, then the file — the same rule as a write, read the other way
+        // round: **the index must never lead the files.** A write touches the file
+        // first, so an interrupted one leaves a memory no recall can see; a delete
+        // drops the record first, so an interrupted one leaves a file nothing points
+        // at. Both intermediate states are a memory that is *missing* from the bank,
+        // which is recoverable by hand; the opposite order would leave a record whose
+        // body cannot be read — a title injected into a later session with nothing
+        // behind it, which is not.
+        await store.writeIndex(records.filter(record => record.id !== id))
+        await store.removeEntry(id)
+        return id
+      })
     },
   }
 

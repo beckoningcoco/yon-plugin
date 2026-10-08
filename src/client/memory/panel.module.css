@@ -1,0 +1,274 @@
+/* 记忆面板自己的那几块：计数行、筛选器、一行记忆、展开后的详情。
+   结构性的一切——对话框外壳、面板分栏、空态、错误行、按钮——都来自共享样式表，
+   所以这一屏与它的八个兄弟看着是一家人。
+
+   Two rules this file follows, both inherited from the sibling sheets:
+
+   - Every colour is a theme alias. Nothing here may pick a colour that only works
+     on one theme.
+   - No class name may repeat one in `panel.module.css` — **nor one in a sibling
+     panel's sheet.** The rule the iteration sheet states is about the shared file,
+     because that is the collision that was actually hit; the reason behind it
+     (the preview pages have no CSS-module hashing, so a repeated name is two
+     stylesheets fighting over one selector) applies to any two sheets a preview
+     page might load together. This surface shares a dozen concept-for-concept
+     classes with the iteration ledger — a toolbar, a filter row, a row head — so
+     every name here carries a `mem` prefix rather than trusting that no preview
+     will ever render the two side by side.
+
+   Layout note: the pane below is a column flex container owned by the shared
+   `.detailPane`, which already scrolls and already sets the 10px rhythm. So
+   nothing here declares its own outer scroll area or its own margins between
+   blocks. */
+
+/* Overrides the shared `.body`'s fixed `height: min(62vh, 520px)`.
+
+   That frame is right for the surfaces that put a list beside a detail pane — they
+   need it so selecting a row does not resize the dialog. This surface is one
+   column, and a project with two memories in it would leave a band of dead white
+   that reads as content that failed to load. Sized to content, capped at the same
+   ceiling. */
+.memScrollBody {
+  height: auto;
+  max-height: min(62vh, 520px);
+}
+
+/* ── 计数行与上面的控件 ─────────────────────────────────────────────────── */
+
+.memToolbar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.memTally {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+/* 正在重读时把计数压暗，而不是换成「加载中…」：数字跳来跳去比数字变淡更烦人。 */
+.memDim {
+  opacity: 0.55;
+}
+
+.memActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.memFilters {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.memFilter {
+  padding: 3px 9px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.memFilter:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.memFilterOn {
+  background: var(--dsw-alias-interactive-bg-active);
+  color: var(--dsw-alias-label-primary);
+  border-color: var(--dsw-alias-border-l4);
+}
+
+/* 项目筛选与筛选胶囊同一副长相：它们并排站着，长得不一样会让人以为它们不是一回事。 */
+.memSelect {
+  max-width: 190px;
+  padding: 3px 6px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.memSearch {
+  min-width: 180px;
+  flex: 1 1 180px;
+  max-width: 280px;
+}
+
+.memNote {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* ── 一行记忆 ───────────────────────────────────────────────────────────── */
+
+.memList {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.memRow + .memRow {
+  border-block-start: 0.5px solid var(--dsw-alias-border-l1);
+}
+
+.memRowHead {
+  inline-size: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.memRowHead:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.memRowHead:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: -2px;
+}
+
+.memRowTitle {
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.memRowProject {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.memRowTime {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 摘要只给一行。它是「要不要展开」的提示，不是内容——展开就在它下面一格，
+   让它多占几行只会把列表推长、把标题挤小。 */
+.memRowSnippet {
+  margin: 0;
+  padding: 0 12px 8px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 展开的详情 ─────────────────────────────────────────────────────────── */
+
+.memDetail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 12px 12px;
+  border-block-start: 0.5px solid var(--dsw-alias-border-l1);
+}
+
+/* 正文按原样换行：写的人分段是为了读的人，压成一坨就白分了。 */
+.memDetailBody {
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 20px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.memDetailGrid {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 4px 10px;
+  align-items: baseline;
+}
+
+.memDetailGrid dt {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.memDetailGrid dd {
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.memDetailMono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+/* 删除是这一屏唯一有后果的动作，所以它自带一句「没有撤销」，而且按下去先变成
+   一次确认——确认就在原地，不弹第二个对话框。 */
+.memRemoveAsk {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.memRowVerbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.memFootPath {
+  margin: 0;
+  color: var(--dsw-alias-label-dimmed);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}

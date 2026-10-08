@@ -485,7 +485,7 @@ export async function apply(ctx: Context): Promise<void> {
   ctx.inject(['webServer'], (web) => {
     web.effect(
       () => registerYonApi(web, service, skills.service, dataSources.service, wiki, digestLog,
-        homes.service, meta, classes, iteration, browsers, requirements),
+        homes.service, meta, classes, iteration, browsers, requirements, memory),
       'yon-panel: project api',
     )
   })

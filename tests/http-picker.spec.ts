@@ -75,7 +75,7 @@ function mount(picker?: unknown): {
   ctx.provide('webServer', { register } as never)
   if (picker !== undefined) ctx.provide('directoryPicker', picker as never)
   registerYonApi(ctx, {} as never, {} as never, {} as never, {} as never, {} as never,
-    {} as never, {} as never, {} as never, {} as never, {} as never, {} as never)
+    {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never)
   const route = register.mock.calls[0]?.[0] as
     { handler: (req: IncomingMessage, res: ServerResponse) => Promise<void> }
   return { ctx, handler: route.handler }

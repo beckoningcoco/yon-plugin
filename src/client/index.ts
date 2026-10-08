@@ -33,6 +33,7 @@ import { createDataSourceApi } from './datasource/api.ts'
 import { createDigestApi } from './digest/api.ts'
 import { createHomeApi } from './home/api.ts'
 import { createIterationApi } from './iteration/api.ts'
+import { createMemoryApi } from './memory/api.ts'
 import { createProjectApi } from './project/api.ts'
 import { createRequirementApi } from './requirement/api.ts'
 import { createSkillApi } from './skill/api.ts'
@@ -42,6 +43,7 @@ import { DataSourceItem } from './DataSourceItem.tsx'
 import { DigestItem } from './DigestItem.tsx'
 import { HomeItem } from './HomeItem.tsx'
 import { IterationItem } from './IterationItem.tsx'
+import { MemoryItem } from './MemoryItem.tsx'
 import { ProjectItem } from './ProjectItem.tsx'
 import { RequirementItem } from './RequirementItem.tsx'
 import { SkillItem } from './SkillItem.tsx'
@@ -53,6 +55,7 @@ export type { YonPanelItemOwnerProps, YonPanelRootFace, YonPanelSnapshot } from 
 export type { DataSourceItemFace, ProjectItemFace, SkillItemFace, WikiItemFace } from './slots.ts'
 export type { BrowserItemFace, DigestItemFace, HomeItemFace, IterationItemFace } from './slots.ts'
 export type { RequirementItemFace } from './slots.ts'
+export type { MemoryItemFace } from './slots.ts'
 export type { YonPanelKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -95,6 +98,7 @@ export function apply(ctx: ClientContext): void {
   const iterationApi = createIterationApi()
   const browserApi = createBrowserApi()
   const requirementApi = createRequirementApi()
+  const memoryApi = createMemoryApi()
 
   // A fresh list id adds this action beside the shipped footer actions, above
   // the settings row; the children table declares (and thereby authorizes) the
@@ -255,4 +259,27 @@ export function apply(ctx: ClientContext): void {
       pushOverlay: () => panel.pushOverlay(),
     }),
   }, RequirementItem))
+
+  // The project memory: what this project has already taught somebody. The model writes it
+  // through its own four tools; this surface is where a person reads what is in there and
+  // deletes what is wrong.
+  //
+  // It borrows the project list from the project API, as the datasource and requirement
+  // cells do: the filter has to offer exactly the projects those surfaces offer.
+  //
+  // It is the one face in this panel with no create and no update. A memory is what
+  // somebody found out, so a form for typing one in would be a form for inventing one —
+  // and every memory in the bank is injected into a later session as a fact.
+  ctx.slots.inject('yon.panel.item', () => ctx.slots.register({
+    name: 'yon.panel.item',
+    id: 'memory',
+    order: 100,
+    locale: NS,
+    label: () => t('item.memory'),
+    inject: () => ({
+      ...memoryApi,
+      listProjects: projectApi.listProjects,
+      pushOverlay: () => panel.pushOverlay(),
+    }),
+  }, MemoryItem))
 }

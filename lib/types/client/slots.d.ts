@@ -5,6 +5,7 @@ import type { DataSourceApi } from './datasource/api.ts';
 import type { DigestApi } from './digest/api.ts';
 import type { HomeApi } from './home/api.ts';
 import type { IterationApi } from './iteration/api.ts';
+import type { MemoryApi } from './memory/api.ts';
 import type { ProjectApi } from './project/api.ts';
 import type { SkillApi } from './skill/api.ts';
 import type { WikiApi } from './wiki/api.ts';
@@ -151,6 +152,33 @@ export type RequirementItemFace = RequirementApi & {
     listProjects: ProjectApi['listProjects'];
     /**
      * Announce a layer standing above the panel (the requirement surface).
+     * @returns the release for that layer.
+     */
+    pushOverlay(): () => void;
+};
+/**
+ * Data face the panel's project-memory entry receives: the memory API, the project list
+ * its filter needs, and the same panel-level gesture.
+ *
+ * The project list arrives as the project API's own operation, exactly as it does for the
+ * datasource and requirement entries: the filter has to offer exactly the projects those
+ * surfaces offer, archived ones excluded by the same rule.
+ *
+ * This is the one face in the panel with **no create and no update**. The model writes
+ * memories through its own tools (`host/memory-tools.ts`); a person looking at this screen
+ * can read one and delete one, and that is the whole of it. A form for typing a memory in
+ * would be a form for inventing one, and every memory in the bank is injected into a later
+ * session as something that was found out.
+ */
+export type MemoryItemFace = MemoryApi & {
+    /**
+     * The projects the filter may narrow to.
+     * @param includeArchived - keep soft-deleted projects in the answer.
+     * @returns the summaries.
+     */
+    listProjects: ProjectApi['listProjects'];
+    /**
+     * Announce a layer standing above the panel (the memory surface).
      * @returns the release for that layer.
      */
     pushOverlay(): () => void;

@@ -304,4 +304,28 @@ describe('the memory service', () => {
     expect(found.rows.map(row => row.id)).toEqual([saved.id])
     expect(found.rows[0]?.projectName).toBe(WATER)
   })
+
+  it('deletes one memory, leaving neither the file nor the record behind', async () => {
+    const { service, dir } = await bench()
+    const { memory: saved } = await service.create(filing)
+
+    expect(await service.remove(saved.id)).toBe(saved.id)
+
+    expect((await service.list()).rows).toHaveLength(0)
+    // 文件也没了。两份都留下的「删除」下一次体检会当成孤儿报出来。
+    expect(await readFile(join(dir, `${saved.id}.md`), 'utf8').catch(() => undefined)).toBeUndefined()
+    await expect(service.read(saved.id)).rejects.toThrow(/记忆库里没有这一条/)
+  })
+
+  it('refuses to delete what it cannot find, or from an index it cannot read', async () => {
+    const { service } = await bench()
+
+    await expect(service.remove('mem-20260101-000000-zzzz')).rejects.toThrow(/记忆库里没有这一条/)
+    // 不安全的 id 走的是同一条路：先拒绝，再谈文件。
+    await expect(service.remove('../index')).rejects.toThrow(/记忆库里没有这一条/)
+
+    // 索引读不出来时一个字都不动：把空索引当成真的再写回去，等于抹掉整个库。
+    const broken = await bench('{ 这不是 JSON')
+    await expect(broken.service.remove('mem-x')).rejects.toThrow(/不是合法的 JSON/)
+  })
 })

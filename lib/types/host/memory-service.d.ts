@@ -88,6 +88,15 @@ export interface YonMemoryService extends YonMemoryHints {
     }): Promise<MemoryCreated>;
     update(id: string, patch: UpdateMemoryInput): Promise<MemoryView>;
     read(id: string): Promise<MemoryView>;
+    /**
+     * Delete one memory outright.
+     *
+     * The panel's operation, not the model's — there is no `memory_delete` tool. A
+     * memory is what somebody found out about a project, and a model that can quietly
+     * remove what an earlier session concluded is a model whose notes stop being
+     * evidence of anything.
+     */
+    remove(id: string): Promise<string>;
 }
 /**
  * Open the service over a store and the project registry.

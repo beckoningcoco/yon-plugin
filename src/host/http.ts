@@ -56,6 +56,10 @@
  *   PATCH  /yon/api/iterations/<id>         re-triage one row (status / severity)
  *   DELETE /yon/api/iterations/<id>         drop one row
  *
+ *   GET    /yon/api/memories                the memory bank (`?project=`, `?type=`, `?tag=`, `?query=`)
+ *   GET    /yon/api/memories/<id>           one memory, body included
+ *   DELETE /yon/api/memories/<id>           delete one (panel only — the model has no such tool)
+ *
  *   GET    /yon/api/browsers                registrations, running instances, scan state
  *   POST   /yon/api/browsers/scan           re-scan this machine and store what was found
  *   PUT    /yon/api/browsers/<id>           edit one row (id / family / product are immutable)
@@ -95,7 +99,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import {
-  API_PREFIX, ITERATION_KINDS, ITERATION_SEVERITIES, ITERATION_STATUSES, PROJECT_STATUSES,
+  API_PREFIX, ITERATION_KINDS, ITERATION_SEVERITIES, ITERATION_STATUSES, MEMORY_TYPES, PROJECT_STATUSES,
   REQUIREMENT_STATUSES,
   type ApiError, type DirectoryPickResult, type JsonValue, type LaunchBrowserInput,
   type SaveBrowserInput, type SaveHomeInput, type SaveVaultInput, type SetFieldInput,
@@ -108,6 +112,7 @@ import { WikiError, type YonWikiService } from './wiki-service.ts'
 import { digestLogPath, type DigestLog } from './digest-log.ts'
 import { HomeError, type YonHomesService } from './home-service.ts'
 import { IterationError, type YonIterationService } from './iteration-service.ts'
+import { MemoryError, type YonMemoryService } from './memory-service.ts'
 import { BrowserError, type YonBrowsersService } from './browser-service.ts'
 import { RequirementError, type YonRequirementsService } from './requirement-service.ts'
 import { MAX_ATTACHMENT_BYTES, sizeOf } from './requirement-files.ts'
@@ -995,6 +1000,77 @@ async function handleIterations(
 }
 
 /**
+ * Serve the `/yon/api/memories` branch.
+ *
+ * The operator's side of the project memory bank, and the one thing that makes it
+ * lopsided: **there is no create and no update here.** A memory is what somebody found
+ * out about a project, and there is no way to type "what we found out" into a form
+ * without inventing it — the model writes those, through its own four tools
+ * (`memory-tools.ts`). What a person does with a wrong memory is delete it, or say so
+ * in the conversation and let the model correct it.
+ *
+ * `DELETE` removes the file outright rather than marking it. The bank holds a few
+ * dozen memories per project, and an operator who wants one gone means gone; the panel
+ * asks twice before calling this, which is where the safety belongs, not in a
+ * tombstone. There is no status to mark it with — see `docs/yon-memory-design.md` §3.
+ *
+ * @param req - the request; unused, kept for the signature its siblings share.
+ * @param res - the response.
+ * @param method - HTTP method.
+ * @param segments - the decoded path segments after the API prefix.
+ * @param url - the parsed request URL, for the query parameters.
+ * @param memory - the memory service.
+ */
+async function handleMemories(
+  req: IncomingMessage,
+  res: ServerResponse,
+  method: string,
+  segments: readonly string[],
+  url: URL,
+  memory: YonMemoryService,
+): Promise<void> {
+  void req
+  const id = segments[1]
+
+  // /yon/api/memories
+  if (id === undefined) {
+    if (method === 'GET') {
+      // An unknown filter is refused rather than silently answered with an empty list
+      // — see {@link memberOf}. An empty screen that means "you typed the type wrong"
+      // is the one failure this screen cannot afford.
+      const rawType = url.searchParams.get('type')
+      const type = memberOf(rawType, MEMORY_TYPES)
+      if (rawType !== null && rawType !== '' && type === undefined) {
+        throw new MemoryError('invalid-input', `type 只能是 ${MEMORY_TYPES.join(' / ')}`)
+      }
+      const project = url.searchParams.get('project')
+      const tag = url.searchParams.get('tag')
+      const query = url.searchParams.get('query')
+      sendJson(res, 200, await memory.list({
+        ...project === null || project === '' ? {} : { project },
+        ...type === undefined ? {} : { type },
+        ...tag === null || tag === '' ? {} : { tag },
+        ...query === null || query === '' ? {} : { query },
+      }))
+      return
+    }
+    sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+    return
+  }
+
+  // /yon/api/memories/<id>
+  if (method === 'GET') {
+    sendJson(res, 200, { memory: await memory.read(id) })
+    return
+  }
+  if (method === 'DELETE') {
+    sendJson(res, 200, { removed: await memory.remove(id) })
+    return
+  }
+  sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+}
+
+/**
  * Serve the `/yon/api/requirements` branch.
  *
  * Every route here is the panel's, not the model's: the model reaches this ledger
@@ -1383,6 +1459,7 @@ export function registerYonApi(
   iteration: YonIterationService,
   browsers: YonBrowsersService,
   requirements: YonRequirementsService,
+  memory: YonMemoryService,
 ): () => void {
   const carrier = ctx.get('webServer') as RouteRegistrar | undefined
   if (carrier === undefined) {
@@ -1431,6 +1508,10 @@ export function registerYonApi(
         }
         if (segments[0] === 'requirements') {
           await handleRequirements(req, res, method, segments, url, requirements)
+          return
+        }
+        if (segments[0] === 'memories') {
+          await handleMemories(req, res, method, segments, url, memory)
           return
         }
         // A segment of its own, not `/homes/pick-directory`: `handleHomes` reads
@@ -1550,6 +1631,7 @@ export function registerYonApi(
             || error instanceof IterationError
             || error instanceof BrowserError
             || error instanceof RequirementError
+            || error instanceof MemoryError
           ) {
             sendFailure(res, error.code === 'not-found' ? 404 : 400, error.code, error.message)
           } else {
