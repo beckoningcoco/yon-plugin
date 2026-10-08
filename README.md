@@ -182,7 +182,7 @@ Host 半把这份存储同时注册成 **agent 工具**，所以你可以直接�
 | 工具族 | 干什么 | 会写到哪里 |
 |---|---|---|
 | `requirement_*`（9 个） | 需求条目库：建条目、追加标注、改名称与状态、作废、写方案文档与补丁、读条目内的附件。**创建与追加永不打断**（这是它有价值的前提），改名称、改状态、作废走审批，**没有删除工具**——真删只在面板里 | `~/.dsh/yon-panel/requirements/` |
-| `memory_*`（4 个） | 项目记忆：`memory_write` 新建、`memory_update` 改写、`memory_recall` 检索、`memory_read` 读全文。新建不打断，**改写会拦**（它盖掉原来那段话），没有删除工具 | `~/.dsh/yon-panel/memory/` |
+| `memory_*`（5 个） | 项目记忆：`memory_write` 新建、`memory_update` 改写、`memory_recall` 检索、`memory_read` 读全文、`memory_sweep` 体检（六项检查，另可 `repair` 从文件重建索引）。新建与体检不打断，**改写会拦**（它盖掉原来那段话），没有删除工具 | `~/.dsh/yon-panel/memory/` |
 | `datasource_*` | 登记的环境数据库连接，以及执行 SQL 取真实数据 | `db_config.json` |
 | `ncc_home_*` | 登记本机 NCC/BIP 安装目录（Home），按 id 列文件、按原编码读文件 | `home_config.json` |
 | `ncc_meta_*` / `bip_meta_*` | 两条产品线的元数据：实体 / 表名 / 字段 / 枚举。**两条产品线互不相通**，问错一条只会答"没有" | 只读（索引是缓存） |
@@ -411,8 +411,10 @@ pnpm pack        # 打包，prepack 会先 build
 |---|---|
 | `src/host/memory-doc.ts` | 一条记忆的文本层：frontmatter 与正文的解析 / 序列化。纯函数，无文件系统、无时钟 |
 | `src/host/memory-store.ts` | `memory/` 的磁盘层：`index.json` + 每条一个 `<id>.md`。原子写、`isSafeId` 门、坏记录跳过而不是让整份索引读不出来 |
-| `src/host/memory-service.ts` | id 生成（`mem-<本地日期>-<本地时分秒>-<随机>`）、字段校验、项目解析、同项目同标题去重、读改写队列、删除 |
-| `src/host/memory-tools.ts` | `memory_write` / `memory_update` / `memory_recall` / `memory_read` |
+| `src/host/memory-service.ts` | id 生成（`mem-<本地日期>-<本地时分秒>-<随机>`）、字段校验、项目解析、同项目同标题去重、读改写队列、删除、体检 |
+| `src/host/memory-sweep.ts` | 体检的六项检查（索引落后、孤儿、无出处、超长、两两像同一件事、久未复核）与 `repair`（**只重建 `index.json`**，不碰任何 `.md`） |
+| `src/host/memory-session.ts` | 「本次会话现在在哪个项目上」的登记处，以及那一行计数提示怎么并进别的工具的结果里 |
+| `src/host/memory-tools.ts` | `memory_write` / `memory_update` / `memory_recall` / `memory_read` / `memory_sweep` |
 | `src/host/tools.ts`（改动） | `project_read` 的返回值里带上这个项目最近的五条（只给标题与 id，一次会话一次）；`isDestructiveWrite` 认 `memory_update` |
 | `scripts/verify-memory-live.mjs` | 实机验证：跑编译产物走一遍完整闭环，并把产出的一份 `.md` 打印出来（形态错了要在这儿看得见） |
 
