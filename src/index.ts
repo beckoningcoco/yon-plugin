@@ -57,6 +57,7 @@ import { ITERATION_TOOL_NAMES, registerYonIterationTools } from './host/iteratio
 import { createMemoryStore } from './host/memory-store.ts'
 import { createYonMemoryService, type YonMemoryService } from './host/memory-service.ts'
 import { MEMORY_TOOL_NAMES, registerYonMemoryTools } from './host/memory-tools.ts'
+import type { MemoryHintLine } from './host/memory-session.ts'
 import { createRequirementStore } from './host/requirement-store.ts'
 import { createYonRequirementsService, type YonRequirementsService } from './host/requirement-service.ts'
 import { REQUIREMENT_TOOL_NAMES, registerYonRequirementTools } from './host/requirement-tools.ts'
@@ -270,6 +271,29 @@ export async function apply(ctx: Context): Promise<void> {
   const memory = createYonMemoryService(createMemoryStore(), service)
   ctx.provide('yonMemory', memory)
 
+  /**
+   * 那一行计数提示：四个工具族末尾都会带上它。
+   *
+   * 它们——`datasource_query`、`ncc_meta_find`、`bip_meta_find`、`wiki_lookup`——的参数里
+   * 都没有项目，却最常发生在某一个项目的活上。模型不会去搜它不知道自己不知道的东西，所以
+   * 路牌要搭在它本来就会发的调用上。
+   *
+   * 「现在在哪个项目上」由 `project_read` 记下（那是模型为了改配置一定会读的一个），登记处
+   * 见 `memory-session.ts`。这里只做三件事：没有会话、没有项目、这个项目一条记忆都没有，
+   * 就什么都不说；以及一次会话一个项目只说一次。
+   */
+  const memoryHint: MemoryHintLine = async (exec) => {
+    const session = exec.agent?.session
+    const projectId = memory.sessions.current(session)
+    if (projectId === undefined) return undefined
+    // Claimed before the count, not after: an index that cannot be read answers 0 forever,
+    // and without this the same unanswerable question would be asked on every call.
+    if (!memory.sessions.claim(session, projectId)) return undefined
+    const count = await memory.count(projectId)
+    if (count === 0) return undefined
+    return `本项目记着 ${count} 条记忆（memory_recall 可查，memory_read 读全文）。`
+  }
+
   // The same store, also reachable by the agent as tools: the operator asks in
   // words, the model picks the call, and every write stops for approval with a
   // before/after preview before it touches anything.
@@ -294,7 +318,7 @@ export async function apply(ctx: Context): Promise<void> {
   ctx.provide('yonDataSources', dataSources.service)
 
   ctx.effect(
-    () => registerYonDataSourceTools(ctx, dataSources.service),
+    () => registerYonDataSourceTools(ctx, dataSources.service, memoryHint),
     'yon-panel: datasource tools',
   )
 
@@ -307,7 +331,7 @@ export async function apply(ctx: Context): Promise<void> {
   ctx.effect(() => wiki.dispose, 'yon-panel: wiki service')
   ctx.provide('yonWiki', wiki)
 
-  ctx.effect(() => registerYonWikiTools(ctx, wiki), 'yon-panel: wiki tools')
+  ctx.effect(() => registerYonWikiTools(ctx, wiki, memoryHint), 'yon-panel: wiki tools')
 
   // The way back into the vault. Until something can write, a lookup that comes
   // back empty stays empty forever: what the model learns from the database is
@@ -390,7 +414,7 @@ export async function apply(ctx: Context): Promise<void> {
   const meta = createYonMetaService(resolveHome, buildMetaIndex, writeMetaIndex)
   ctx.effect(() => meta.dispose, 'yon-panel: metadata index')
   ctx.provide('yonMeta', meta)
-  ctx.effect(() => registerYonMetaTools(ctx, meta), 'yon-panel: metadata tools')
+  ctx.effect(() => registerYonMetaTools(ctx, meta, memoryHint), 'yon-panel: metadata tools')
 
   // The other metadata line. NCC's index is built from an installation the operator
   // registered; the flagship edition's metadata is not on disk at all, so what answers
@@ -398,7 +422,7 @@ export async function apply(ctx: Context): Promise<void> {
   // is a separate pair of tools rather than a `product` argument on the pair above: the
   // two product lines share no table, entity or column name, and a switch would make
   // crossing them a one-character mistake with a wrong answer as the result.
-  ctx.effect(() => registerYonBipMetaTools(ctx), 'yon-panel: flagship metadata tools')
+  ctx.effect(() => registerYonBipMetaTools(ctx, memoryHint), 'yon-panel: flagship metadata tools')
 
   // The digestion auditor: the one tool that judges the other tools' output.
   //

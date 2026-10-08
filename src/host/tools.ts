@@ -669,23 +669,15 @@ export function registerYonProjectTools(
   }
 
   /**
-   * Which projects one session has already been shown memories from.
+   * This project's memories, once per session, and the record that this session is now on
+   * this project.
    *
-   * Keyed by the session object and not by a counter, because the point is not to save
-   * bytes: a session that reads a project after every write would otherwise re-read the
-   * same five titles into the conversation each time, and a model that sees a block
-   * repeated six times learns to skim past it — which destroys exactly the text this
-   * exists to make it read. A `WeakMap` so a finished session is collected rather than
-   * held by this plugin for the life of the process.
-   */
-  const hinted = new WeakMap<object, Set<string>>()
-
-  /**
-   * This project's memories, once per session.
-   *
-   * A call with no session has no conversation to attribute the hint to, and showing it
-   * anyway would be the un-deduped case; so the ambiguous one says nothing. The failure
-   * is one missing signpost in a dispatch that has no user reading along.
+   * The dedupe and the "which projects has this session seen" bookkeeping live in
+   * `memory-session.ts` — one registry, because a second copy of that rule is a second
+   * answer to "has this been shown already". The recording half is why this runs even when
+   * there is nothing to show: `datasource_query`, `ncc_meta_find`, `bip_meta_find` and
+   * `wiki_lookup` have no project parameter, so the one recorded here is the only one they
+   * can be given a hint about.
    */
   const memoriesOf = async (
     projectId: string,
@@ -693,16 +685,9 @@ export function registerYonProjectTools(
   ): Promise<readonly MemorySummary[]> => {
     if (memory === undefined) return []
     const session = exec.agent?.session
-    if (session === undefined) return []
-    const shown = hinted.get(session)
-    if (shown?.has(projectId) === true) return []
-    const found = await memory.recent(projectId, MEMORY_HINT_LIMIT)
-    // Marked whether or not anything came back: a project with no memories is a fact
-    // this session has learned, and re-reading the index to learn it again on every
-    // later read is work nobody asked for.
-    if (shown === undefined) hinted.set(session, new Set([projectId]))
-    else shown.add(projectId)
-    return found
+    memory.sessions.note(session, projectId)
+    if (!memory.sessions.claim(session, projectId)) return []
+    return await memory.recent(projectId, MEMORY_HINT_LIMIT)
   }
 
   register(defineYonTool({

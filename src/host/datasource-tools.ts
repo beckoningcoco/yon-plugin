@@ -23,7 +23,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { DataSourceView } from '../shared/types.ts'
 import { DataSourceError, type YonDataSourcesService } from './datasource-service.ts'
 import { dispositionOf, permissionsOf } from './tools.ts'
-import type { YonTextBlock, YonToolCallView, YonToolDefinition } from './tools.ts'
+import { memoryHintLine, withMemoryHint, type MemoryHintLine } from './memory-session.ts'
+import type { YonTextBlock, YonToolCallView, YonToolDefinition, YonToolExecution } from './tools.ts'
 
 /** Every tool this module owns. */
 export const DATASOURCE_TOOL_NAMES = ['datasource_list', 'datasource_query'] as const
@@ -89,21 +90,25 @@ function defineTool<V>(spec: {
   render(value: V): string
   execute(args: Record<string, unknown>, signal: AbortSignal): Promise<V>
   presentCall(args: Record<string, unknown>): YonToolCallView
-}): YonToolDefinition {
+}, hint?: MemoryHintLine): YonToolDefinition {
   return {
     name: spec.name,
     description: spec.description,
     parameters: spec.parameters,
     output: {
       schema: spec.outputSchema,
-      render: (_args, value) => text(spec.render(value as V)),
+      render: (_args, value) => text(spec.render(value as V) + memoryHintLine(value)),
     },
-    async execute(args: unknown, exec: { readonly signal: AbortSignal }): Promise<unknown> {
+    async execute(args: unknown, exec: YonToolExecution): Promise<unknown> {
       if (args === null || typeof args !== 'object' || Array.isArray(args)) {
         throw new DataSourceError('invalid-input', `${spec.name} 需要一个对象参数`)
       }
       if (exec.signal.aborted) throw new DataSourceError('invalid-input', `${spec.name} 已被取消`)
-      return await spec.execute(args as Record<string, unknown>, exec.signal)
+      const value = await spec.execute(args as Record<string, unknown>, exec.signal)
+      // The signpost, when this tool is one of the four that carry it. Injected here
+      // rather than in the tool's own `execute` so that each of those four stays about its
+      // own subject, and so the four cannot drift in how they say the same sentence.
+      return hint === undefined ? value : await withMemoryHint(value as object, hint, exec)
     },
     presentCall: (args: unknown) =>
       (args === null || typeof args !== 'object' || Array.isArray(args))
@@ -142,7 +147,11 @@ const QUERY_VALUE = {
  * @param sources - the service the tools read and run against.
  * @returns the disposer that withdraws every registration.
  */
-export function registerYonDataSourceTools(ctx: Context, sources: YonDataSourcesService): () => void {
+export function registerYonDataSourceTools(
+  ctx: Context,
+  sources: YonDataSourcesService,
+  hint?: MemoryHintLine,
+): () => void {
   const disposers: Array<() => void> = []
 
   disposers.push(ctx.tools.register(defineTool({
@@ -234,7 +243,7 @@ export function registerYonDataSourceTools(ctx: Context, sources: YonDataSources
       const sql = String(args.sql ?? '')
       return card(`执行 SQL：${sql.length > 80 ? `${sql.slice(0, 80)}…` : sql}`, 'other', args.key)
     },
-  })))
+  }, hint)))
 
   // The gate. A read never reaches it; a statement that could change data
   // inherits exactly the disposition the project tools use for their writes, so

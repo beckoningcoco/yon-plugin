@@ -27,6 +27,7 @@
  * values".
  */
 import type { Context } from '@deepseek-ai/cordis';
+import { type MemoryHintLine } from './memory-session.ts';
 /** Every tool this module owns. */
 export declare const BIP_META_TOOL_NAMES: readonly ["bip_meta_find", "bip_meta_detail"];
 /**
@@ -34,4 +35,4 @@ export declare const BIP_META_TOOL_NAMES: readonly ["bip_meta_find", "bip_meta_d
  * @param ctx - host context carrying the tool registry.
  * @returns the disposer that withdraws every registration.
  */
-export declare function registerYonBipMetaTools(ctx: Context): () => void;
+export declare function registerYonBipMetaTools(ctx: Context, hint?: MemoryHintLine): () => void;

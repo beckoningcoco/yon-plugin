@@ -21,6 +21,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import { type YonWikiService } from './wiki-service.ts';
+import { type MemoryHintLine } from './memory-session.ts';
 /** Every tool this module owns. */
 export declare const WIKI_TOOL_NAMES: readonly ["wiki_lookup", "wiki_read", "wiki_recent", "wiki_gaps"];
 /**
@@ -29,4 +30,4 @@ export declare const WIKI_TOOL_NAMES: readonly ["wiki_lookup", "wiki_read", "wik
  * @param wiki - the service the tools read through.
  * @returns the disposer that withdraws every registration.
  */
-export declare function registerYonWikiTools(ctx: Context, wiki: YonWikiService): () => void;
+export declare function registerYonWikiTools(ctx: Context, wiki: YonWikiService, hint?: MemoryHintLine): () => void;

@@ -36,6 +36,7 @@
  */
 import { type MemoryCreated, type MemoryListPayload, type MemorySummary, type MemoryType, type MemoryView, type SaveMemoryInput, type UpdateMemoryInput } from '../shared/types.ts';
 import { type MemoryStore } from './memory-store.ts';
+import { type YonMemorySession } from './memory-session.ts';
 import type { YonProjectsService } from './service.ts';
 /**
  * What the design calls the soft limit for one body, in characters.
@@ -76,6 +77,21 @@ export interface MemoryQuery {
 export interface YonMemoryHints {
     /** The newest memories of one project, for the injection `docs/yon-memory-design.md` §6 describes. */
     recent(projectId: string, limit: number): Promise<readonly MemorySummary[]>;
+    /**
+     * How many memories one project holds.
+     *
+     * The count is what the four neighbouring tool families print at the end of an answer
+     * (`datasource_query`, `ncc_meta_find`, `bip_meta_find`, `wiki_lookup`), and it is read
+     * from the index alone for the same reason `recent` is: those tools are called far more
+     * often than they are useful, and opening files to count them would make the plugin's
+     * fastest answers slower.
+     */
+    count(projectId: string): Promise<number>;
+    /**
+     * 「本次会话现在在哪个项目上」—— see `memory-session.ts` for why this travels with the
+     * service rather than as a fifth argument through every `register` call.
+     */
+    readonly sessions: YonMemorySession;
 }
 /** The bank, as the tools, the routes and the panel use it. */
 export interface YonMemoryService extends YonMemoryHints {

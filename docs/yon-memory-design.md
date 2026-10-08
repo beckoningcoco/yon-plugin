@@ -337,7 +337,7 @@ v1 写"Hindsight 兜通用仓库记忆（按 git 仓库分 bank、不进面板�
 | 阶段 | 内容 | 验收 | 状态 |
 |---|---|---|---|
 | **P0** | 存储 + `memory_write` / `memory_update` / `memory_recall` / `memory_read` + **`project_read` 注入** + `prompt.ts` 第十四组 | 记一条坑，换个会话 `project_read` 能看见它；改掉它，再看见的是改后的 | ✅ 已完成 |
-| **P1** | 面板页签（浏览、筛选、读全文、**删除**）✅ · 待办：`memory_annotate`、`datasource_query` / meta 查询的计数提示 | 面板能浏览、筛选、删掉一条 ✅ | 面板已完成 |
+| **P1** | 面板页签（浏览、筛选、读全文、**删除**）✅ · 计数提示（`datasource_query` / `ncc_meta_find` / `bip_meta_find` / `wiki_lookup`）✅ · `memory_annotate` 决定不做（§13.3 第 4 条） | 面板能浏览、筛选、删掉一条 ✅；四个邻近工具的回答末尾带一行记忆计数 ✅ | 已完成 |
 | **P2** | `memory_sweep` + `memory_promote` | 体检能报出孤儿、无出处与冲突 | 待办 |
 
 **P0 就已形成闭环**（写 + 改 + 被动召回），且是全部价值的大头。不要先做面板。
@@ -412,7 +412,7 @@ v1 写"Hindsight 兜通用仓库记忆（按 git 仓库分 bank、不进面板�
 
 ---
 
-## 14. P1 的第一件：面板（2026-10-08）
+## 14. P1：面板与计数提示（2026-10-08）
 
 侧栏第十格「记忆」，与其余九格同形：`src/client/MemoryItem.tsx`（格子）+ `src/client/memory/{MemoryManager.tsx,api.ts,panel.module.css}`（那一屏）。它能浏览（类型徽标、标题、项目、日期、一行摘要）、按类型与项目筛选、搜正文（关键词走后端——面板手上只有摘要，而记忆的价值在一句话的正文里）、展开读全文（正文、出处、id）、删除（两次点击）。
 
@@ -427,10 +427,25 @@ v1 写"Hindsight 兜通用仓库记忆（按 git 仓库分 bank、不进面板�
 2. **`http.ts` 的错误映射链补上 `MemoryError`。** 那是一串手写的 `instanceof`，漏一个域的后果是 not-found 以 500 出去——看起来像服务器崩了，而不是「这条不在库里」。`http-memory.spec.ts` 有一条用例专门盯着 404。
 3. **面板类名一律带 `mem` 前缀。** `iteration/panel.module.css` 里那条规则（预览页没有 CSS-module hash，同名即同一类）对它自己也成立：这一屏与迭代面板概念上共享一个工具栏、一排筛选胶囊、一个行头，不设前缀就是在赌没有一页会同时渲染两者。
 
-### 仍未做的两件（同属 P1）
+### 计数提示：那一行是给谁的
 
-- **`memory_annotate`**：§13.3 第 4 条说它可能不该存在。在「记忆是当前事实」确立之后，追加一段「此前记的 X 已不成立」是错的做法——正确动作是 `memory_update` 直接改掉。**建议不做**，等有真实用例再说。
-- **计数提示**：`datasource_query` / `ncc_meta_find` / `bip_meta_find` / `wiki_lookup` 的返回值里加一行「本项目有 N 条记忆」。它需要先有一个跨模块的「本次会话最近项目」（目前只有 `project_read` 内部按会话去重，没有对外的登记处），所以要引入一个按 session 存的 tracker 并接进四个模块。价值明确（这四个工具是模型最常调的一批），但改动面比面板还宽。
+§6 层1 里 `datasource_query` / `ncc_meta_find` / `bip_meta_find` / `wiki_lookup` 四个工具末尾那一行，落在 `src/host/memory-session.ts` 与四个模块的 `defineTool` 包装器上：
+
+```
+本项目记着 3 条记忆（memory_recall 可查，memory_read 读全文）。
+```
+
+**「现在在哪个项目上」由 `project_read` 记下。** 项目从来不是会话的属性——它是模型从上下文推断出来的，插件只是记住它推断的结果（§1 的第 1 条口径）。`project_read` 是那个一定会被读的工具（模型改配置前必须读它），所以它是唯一诚实的信号源。
+
+三处实现上的选择：
+
+1. **登记处挂在记忆服务上**（`memory.sessions`），不是作为第五个参数穿过每一次 `register` 调用。四个工具族因此只依赖一个 `MemoryHintLine` 函数，不知道记忆服务长什么样。
+2. **提示在包装器里注入，不在工具的 `execute` 里。** 每个模块的 `defineTool(spec, hint?)` 拿到值之后把它并进返回值（多一个 `memoryHint` 字段——四个工具的输出契约都没有 `additionalProperties: false`，所以不必改 schema），render 时再拼成一个段落。这样那四个工具的 `execute` 一行都不用动，也不会各自漂成四种说法。
+3. **去重按「会话 × 项目」算**，且**先认领再计数**：索引读不出来时 `count` 永远答 0，若不先认领，同一个答不上来的问题会在每次调用时重问一遍。
+
+### 决定不做的
+
+- **`memory_annotate`**：§13.3 第 4 条说它可能不该存在。在「记忆是当前事实」确立之后，追加一段「此前记的 X 已不成立」是错的做法——正确动作是 `memory_update` 直接改掉。这一版**不做**，等有真实用例再说；`memory-session.spec.ts` 与工具表里都不留它的位置。
 
 ---
 

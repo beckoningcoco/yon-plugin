@@ -42,6 +42,7 @@ import {
 } from '../shared/types.ts'
 import type { MemoryDoc } from './memory-doc.ts'
 import { isSafeId, recordOfDoc, type MemoryRecord, type MemoryStore } from './memory-store.ts'
+import { createYonMemorySession, type YonMemorySession } from './memory-session.ts'
 import { asRef, locate } from './tools.ts'
 import type { YonProjectsService } from './service.ts'
 
@@ -106,6 +107,21 @@ export interface MemoryQuery {
 export interface YonMemoryHints {
   /** The newest memories of one project, for the injection `docs/yon-memory-design.md` §6 describes. */
   recent(projectId: string, limit: number): Promise<readonly MemorySummary[]>
+  /**
+   * How many memories one project holds.
+   *
+   * The count is what the four neighbouring tool families print at the end of an answer
+   * (`datasource_query`, `ncc_meta_find`, `bip_meta_find`, `wiki_lookup`), and it is read
+   * from the index alone for the same reason `recent` is: those tools are called far more
+   * often than they are useful, and opening files to count them would make the plugin's
+   * fastest answers slower.
+   */
+  count(projectId: string): Promise<number>
+  /**
+   * 「本次会话现在在哪个项目上」—— see `memory-session.ts` for why this travels with the
+   * service rather than as a fifth argument through every `register` call.
+   */
+  readonly sessions: YonMemorySession
 }
 
 /** The bank, as the tools, the routes and the panel use it. */
@@ -296,9 +312,14 @@ export function createYonMemoryService(
   /** Resolve a project reference the way every other family does. */
   const projectOf = (ref: unknown): ProjectDetail => locate(projects, asRef(ref))
 
+  // One registry for this service's lifetime: the sessions it holds are keyed weakly, so
+  // it forgets them as they end without anything having to sweep it.
+  const sessions = createYonMemorySession()
+
   const service: YonMemoryService = {
     root: store.root,
     indexPath: store.indexPath,
+    sessions,
 
     async list(query: MemoryQuery = {}): Promise<MemoryListPayload> {
       const read = await store.readIndex()
@@ -352,6 +373,17 @@ export function createYonMemoryService(
         .filter(record => record.projectId === projectId)
         .slice(0, Math.max(0, limit))
         .map(record => summaryOf(record, nameOf(record.projectId)))
+    },
+
+    async count(projectId: string): Promise<number> {
+      const read = await store.readIndex()
+      // Zero rather than an error, for the same reason: a broken index means the hint
+      // cannot be given, not that the tool the hint would hang off should fail.
+      if (read.error !== undefined) return 0
+      return read.records.reduce(
+        (total, record) => (record.projectId === projectId ? total + 1 : total),
+        0,
+      )
     },
 
     async create(

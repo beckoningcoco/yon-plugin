@@ -25,6 +25,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { YonMetaService } from './meta-service.ts';
+import { type MemoryHintLine } from './memory-session.ts';
 /** Every tool this module owns. */
 export declare const META_TOOL_NAMES: readonly ["ncc_meta_find", "ncc_meta_detail"];
 /**
@@ -33,4 +34,4 @@ export declare const META_TOOL_NAMES: readonly ["ncc_meta_find", "ncc_meta_detai
  * @param meta - the service over the built indexes.
  * @returns the disposer that withdraws every registration.
  */
-export declare function registerYonMetaTools(ctx: Context, meta: YonMetaService): () => void;
+export declare function registerYonMetaTools(ctx: Context, meta: YonMetaService, hint?: MemoryHintLine): () => void;

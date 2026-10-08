@@ -21,6 +21,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import { type YonDataSourcesService } from './datasource-service.ts';
+import { type MemoryHintLine } from './memory-session.ts';
 /** Every tool this module owns. */
 export declare const DATASOURCE_TOOL_NAMES: readonly ["datasource_list", "datasource_query"];
 /**
@@ -35,4 +36,4 @@ export declare function isDestructiveSql(sql: unknown): boolean;
  * @param sources - the service the tools read and run against.
  * @returns the disposer that withdraws every registration.
  */
-export declare function registerYonDataSourceTools(ctx: Context, sources: YonDataSourcesService): () => void;
+export declare function registerYonDataSourceTools(ctx: Context, sources: YonDataSourcesService, hint?: MemoryHintLine): () => void;

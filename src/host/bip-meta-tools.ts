@@ -31,7 +31,8 @@ import { BipMetaError, clampBipLimit, findBipColumns, findBipEnums, findBipEntit
   bipCandidates, loadBipMetadata, DEFAULT_BIP_LIMIT, MAX_BIP_LIMIT,
   type BipColumn, type BipEntity } from './bip-meta.ts'
 import { asQueryKind, META_QUERY_KINDS } from './meta-index.ts'
-import type { YonTextBlock, YonToolCallView, YonToolDefinition } from './tools.ts'
+import { memoryHintLine, withMemoryHint, type MemoryHintLine } from './memory-session.ts'
+import type { YonTextBlock, YonToolCallView, YonToolDefinition, YonToolExecution } from './tools.ts'
 
 /** Every tool this module owns. */
 export const BIP_META_TOOL_NAMES = ['bip_meta_find', 'bip_meta_detail'] as const
@@ -125,21 +126,25 @@ function defineTool<V>(spec: {
   render(value: V): string
   execute(args: Record<string, unknown>, signal: AbortSignal): Promise<V>
   presentCall(args: Record<string, unknown>): YonToolCallView
-}): YonToolDefinition {
+}, hint?: MemoryHintLine): YonToolDefinition {
   return {
     name: spec.name,
     description: spec.description,
     parameters: spec.parameters,
     output: {
       schema: spec.outputSchema,
-      render: (_args, value) => [{ type: 'text', text: spec.render(value as V) }] as YonTextBlock[],
+      render: (_args, value) => [{ type: 'text', text: spec.render(value as V) + memoryHintLine(value) }] as YonTextBlock[],
     },
-    async execute(args: unknown, exec: { readonly signal: AbortSignal }): Promise<unknown> {
+    async execute(args: unknown, exec: YonToolExecution): Promise<unknown> {
       if (args === null || typeof args !== 'object' || Array.isArray(args)) {
         throw new BipMetaError('invalid-input', `${spec.name} 需要一个对象参数`)
       }
       if (exec.signal.aborted) throw new BipMetaError('invalid-input', `${spec.name} 已被取消`)
-      return await spec.execute(args as Record<string, unknown>, exec.signal)
+      const value = await spec.execute(args as Record<string, unknown>, exec.signal)
+      // The signpost, when this tool is one of the four that carry it. Injected here
+      // rather than in the tool's own `execute` so that each of those four stays about its
+      // own subject, and so the four cannot drift in how they say the same sentence.
+      return hint === undefined ? value : await withMemoryHint(value as object, hint, exec)
     },
     presentCall: (args: unknown) =>
       (args === null || typeof args !== 'object' || Array.isArray(args))
@@ -255,7 +260,7 @@ const DETAIL_VALUE = {
  * @param ctx - host context carrying the tool registry.
  * @returns the disposer that withdraws every registration.
  */
-export function registerYonBipMetaTools(ctx: Context): () => void {
+export function registerYonBipMetaTools(ctx: Context, hint?: MemoryHintLine): () => void {
   const disposers: Array<() => void> = []
 
   disposers.push(ctx.tools.register(defineTool({
@@ -375,7 +380,7 @@ export function registerYonBipMetaTools(ctx: Context): () => void {
     presentCall(args) {
       return card(`查旗舰版元数据：${String(args.kind ?? '')} ${String(args.q ?? '')}`.trim())
     },
-  })))
+  }, hint)))
 
   disposers.push(ctx.tools.register(defineTool({
     name: 'bip_meta_detail',
