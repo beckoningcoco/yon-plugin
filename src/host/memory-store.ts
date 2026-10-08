@@ -40,7 +40,7 @@
  * fabricated teaches its reader to distrust the whole file.
  */
 
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -103,6 +103,15 @@ export interface MemoryStore {
    * a record, and the record is what it checks first.
    */
   removeEntry(id: string): Promise<void>
+  /**
+   * The ids of every `.md` file in the bank, sorted.
+   *
+   * The one read that looks at the directory rather than the index, and it exists because
+   * the index **is** allowed to lag: a file the records do not mention is a memory no
+   * recall can see, and nothing else in this store could notice it. `memory_sweep` is the
+   * caller. A missing directory is an empty list, not an error.
+   */
+  listIds(): Promise<readonly string[]>
 }
 
 /** `~/.dsh/yon-panel/memory/`, beside `iteration.json` and `requirements/`. */
@@ -330,6 +339,22 @@ export function createMemoryStore(root: string = defaultMemoryRoot()): MemorySto
         // is not there afterwards", and it is, either way.
         await rm(entryPath(id), { force: true })
       })
+    },
+
+    async listIds(): Promise<readonly string[]> {
+      const entries = await readdir(root, { withFileTypes: true }).catch(() => undefined)
+      // A bank that does not exist yet is empty, not broken: `memory_sweep` runs on a
+      // fresh installation too, and reporting ENOENT as a fault would make the first run
+      // of the check look like a failure.
+      if (entries === undefined) return []
+      return entries
+        // Files only, and only the ones this store writes. A directory somebody left
+        // inside is not a memory, and a `.tmp-…` sibling is a write that did not finish —
+        // naming either of them as an id would turn a stray path into a "broken entry".
+        .filter(entry => entry.isFile() && entry.name.endsWith('.md'))
+        .map(entry => entry.name.slice(0, -'.md'.length))
+        .filter(isSafeId)
+        .sort()
     },
   }
 }

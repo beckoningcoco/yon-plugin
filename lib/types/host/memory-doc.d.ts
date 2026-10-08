@@ -79,3 +79,18 @@ export declare function parseMemory(text: string): MemoryDoc | undefined;
 export declare function serializeMemory(doc: MemoryDoc): string;
 /** The frontmatter key order, for the parser's own spec to assert against. */
 export declare const MEMORY_FRONTMATTER_KEYS: readonly ["id", "project", "type", "title", "tags", "source", "created", "updated"];
+/**
+ * What the design calls the soft limit for one body, in characters.
+ *
+ * Soft means soft: a body over this is **written anyway** and reported, and `memory_sweep`
+ * lists it. Refusing it would be worse than the length it prevents — an experience worth
+ * keeping often needs a table name, a SQL fragment and the error text in one place, and a
+ * hard refusal teaches the model to split one memory into three, which is the duplication
+ * the limit exists to avoid.
+ *
+ * It lives here rather than in `memory-service.ts` because three places need the same
+ * number — the write that reports it, the tool that mentions it, and the sweep that lists
+ * it — and a constant imported by the service cannot be imported *by* something the
+ * service imports.
+ */
+export declare const BODY_SOFT_MAX = 200;

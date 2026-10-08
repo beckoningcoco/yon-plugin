@@ -43,6 +43,7 @@ import {
 import type { MemoryDoc } from './memory-doc.ts'
 import { isSafeId, recordOfDoc, type MemoryRecord, type MemoryStore } from './memory-store.ts'
 import { createYonMemorySession, type YonMemorySession } from './memory-session.ts'
+import { sweepMemories, type MemorySweepReport } from './memory-sweep.ts'
 import { asRef, locate } from './tools.ts'
 import type { YonProjectsService } from './service.ts'
 
@@ -52,13 +53,10 @@ const TITLE_MAX = 120
 /**
  * What the design calls the soft limit for one body, in characters.
  *
- * Soft means soft: a body over this is **written anyway** and reported, and
- * `memory_sweep` lists it. Refusing it would be worse than the length it prevents —
- * an experience worth keeping often needs a table name, a SQL fragment and the error
- * text in one place, and a hard refusal teaches the model to split one memory into
- * three, which is the duplication the soft limit exists to avoid.
+ * Re-exported from `memory-doc.ts`, where the rest of a memory's shape rules live; the
+ * sweep needs the same number and cannot import it from here without a cycle.
  */
-export const BODY_SOFT_MAX = 200
+export { BODY_SOFT_MAX } from './memory-doc.ts'
 
 /** A body past this is not a memory, it is a document, and belongs in the wiki or an entry. */
 const BODY_MAX = 4000
@@ -142,6 +140,16 @@ export interface YonMemoryService extends YonMemoryHints {
    * evidence of anything.
    */
   remove(id: string): Promise<string>
+  /**
+   * 体检整个库，或者顺手把索引重建一遍。
+   *
+   * 它是只读的，除了 `repair`：那一项重写 `index.json`（那是派生缓存），不碰任何
+   * `.md`。体检不修改任何记忆——修是 `memory_update`、面板删除与重建索引三件事。
+   *
+   * @param options.project - 只看这一个项目（id / 名字 / code）。索引漂移是整个库的事，
+   *   它永远都报。
+   */
+  sweep(options?: { readonly repair?: boolean; readonly project?: string }): Promise<MemorySweepReport>
 }
 
 /** The key two titles are compared by when asking "is this the same memory?". */
@@ -510,6 +518,30 @@ export function createYonMemoryService(
         await store.removeEntry(id)
         return id
       })
+    },
+
+    async sweep(
+      options: { readonly repair?: boolean, readonly project?: string } = {},
+    ): Promise<MemorySweepReport> {
+      // Not queued behind this service's own line, deliberately: a sweep reads the whole
+      // bank and would hold that line for the length of a directory walk, blocking every
+      // write that lands meanwhile. What it does write — the rebuilt index — replaces the
+      // whole document, which is exactly the one operation that must not interleave with
+      // a create; `memory-sweep.ts` is where that trade is argued, and it is the reason
+      // `repair` is an explicit request rather than something a report does on its own.
+      const report = await sweepMemories(store, projects, {
+        ...options.repair === true ? { repair: true } : {},
+      })
+      if (options.project === undefined) return report
+      const only = projectOf(options.project).projectId
+      // The drift finding has no project — it is one fact about the whole bank — so it is
+      // kept whatever the filter says. Hiding it would hide the one finding the tool can
+      // fix, for the reader most likely to run the check.
+      return {
+        ...report,
+        findings: report.findings.filter(finding =>
+          finding.projectId === '' || finding.projectId === only),
+      }
     },
   }
 

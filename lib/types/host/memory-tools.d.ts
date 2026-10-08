@@ -22,7 +22,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import type { YonMemoryService } from './memory-service.ts';
 /** 这个模块拥有的工具。 */
-export declare const MEMORY_TOOL_NAMES: readonly ["memory_write", "memory_update", "memory_recall", "memory_read"];
+export declare const MEMORY_TOOL_NAMES: readonly ["memory_write", "memory_update", "memory_recall", "memory_read", "memory_sweep"];
 /**
  * 注册项目记忆的工具。
  * @param ctx - 宿主上下文，带工具注册表。

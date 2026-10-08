@@ -94,6 +94,15 @@ export interface MemoryStore {
      * a record, and the record is what it checks first.
      */
     removeEntry(id: string): Promise<void>;
+    /**
+     * The ids of every `.md` file in the bank, sorted.
+     *
+     * The one read that looks at the directory rather than the index, and it exists because
+     * the index **is** allowed to lag: a file the records do not mention is a memory no
+     * recall can see, and nothing else in this store could notice it. `memory_sweep` is the
+     * caller. A missing directory is an empty list, not an error.
+     */
+    listIds(): Promise<readonly string[]>;
 }
 /** `~/.dsh/yon-panel/memory/`, beside `iteration.json` and `requirements/`. */
 export declare function defaultMemoryRoot(): string;

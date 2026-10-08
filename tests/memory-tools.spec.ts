@@ -102,7 +102,7 @@ const filing = {
 } as const
 
 describe('memory tools', () => {
-  it('registers exactly the four declared names', async () => {
+  it('registers exactly the five declared names', async () => {
     const { registered, dispose } = await bench()
 
     expect(registered.map(definition => definition.name)).toEqual([...MEMORY_TOOL_NAMES])
@@ -118,7 +118,8 @@ describe('memory tools', () => {
   it('offers the model no way to delete a memory', async () => {
     // 与迭代表板同一条线，但位置不同：那边模型只能追加；这边它能改写（记忆说的是
     // 当前事实），删除仍然是人的事。将来谁想加 memory_delete，这条会红。
-    expect([...MEMORY_TOOL_NAMES]).toEqual(['memory_write', 'memory_update', 'memory_recall', 'memory_read'])
+    expect([...MEMORY_TOOL_NAMES])
+      .toEqual(['memory_write', 'memory_update', 'memory_recall', 'memory_read', 'memory_sweep'])
     expect(MEMORY_TOOL_NAMES.some(name => name.includes('delete') || name.includes('remove'))).toBe(false)
   })
 

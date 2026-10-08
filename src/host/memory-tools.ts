@@ -27,10 +27,22 @@ import {
 } from '../shared/types.ts'
 import type { YonMemoryService } from './memory-service.ts'
 import { BODY_SOFT_MAX } from './memory-service.ts'
+import type { SweepCheck } from './memory-sweep.ts'
 import type { YonTextBlock, YonToolCallView, YonToolDefinition } from './tools.ts'
 
 /** 这个模块拥有的工具。 */
-export const MEMORY_TOOL_NAMES = ['memory_write', 'memory_update', 'memory_recall', 'memory_read'] as const
+export const MEMORY_TOOL_NAMES =
+  ['memory_write', 'memory_update', 'memory_recall', 'memory_read', 'memory_sweep'] as const
+
+/** 体检报告里每一类检查的中文名。 */
+const CHECK_LABELS: Readonly<Record<SweepCheck, string>> = {
+  'index-drift': '索引落后',
+  orphan: '挂在不存在的项目上',
+  'no-source': '没有出处',
+  'too-long': '正文过长',
+  overlap: '可能重复或矛盾',
+  stale: '很久没复核',
+}
 
 /** 一次 recall 最多回多少条。 */
 const RECALL_LIMIT = 50
@@ -407,6 +419,81 @@ export function registerYonMemoryTools(ctx: Context, memory: YonMemoryService): 
     presentCall(args: unknown) {
       const input = (args ?? {}) as Record<string, unknown>
       return card(`读记忆 ${textOf(input, 'id') || '（未填）'}`, 'read')
+    },
+  } satisfies YonToolDefinition))
+
+  disposers.push(ctx.tools.register({
+    name: 'memory_sweep',
+    description:
+      'Check the health of the memory bank: records whose file is gone, memories filed under a '
+      + 'project that no longer exists, memories with no source, bodies past the soft limit, pairs '
+      + 'that look like the same finding, and memories nobody has touched in six months.\n'
+      + 'Call it when a project has been going for a while, or before trusting a bank you did not '
+      + 'write, or when `project_read` shows a memory whose body `memory_read` cannot open.\n'
+      + 'It **changes nothing**, except for one thing: `repair` rebuilds the index from the files. '
+      + 'The index is a cache — `memory_read` and `memory_recall` read the `.md` files, and the index '
+      + 'only serves the injection into `project_read` — so the two can disagree, and when the report '
+      + 'says they do, rebuilding is the fix. No memory is ever changed or deleted by this tool: '
+      + 'whether a finding is still true is a judgement, and it is not this tool\'s to make.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        project: {
+          type: 'string',
+          description: 'Look at one project only (id, name or code). The index-drift finding is about '
+            + 'the whole bank, so it is reported either way.',
+        },
+        repair: {
+          type: 'boolean',
+          description: 'Rebuild the index from the files before reporting. Only the index — no memory '
+            + 'is touched.',
+        },
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        required: ['count', 'report'],
+        properties: {
+          count: { type: 'number' },
+          report: { type: 'string' },
+        },
+      },
+      render: (_args: unknown, value: unknown) => text((value as { report: string }).report),
+    },
+    async execute(args: unknown): Promise<unknown> {
+      const input = (args ?? {}) as Record<string, unknown>
+      const project = textOf(input, 'project')
+      const report = await memory.sweep({
+        ...project === '' ? {} : { project },
+        ...input.repair === true ? { repair: true } : {},
+      })
+
+      const lines = [`记忆库体检：${report.path}`, `共 ${report.total} 条记忆。`]
+      if (report.repair !== undefined) {
+        lines.push('',
+          `已从文件重建索引：${report.repair.records} 条`
+          + `（找回 ${report.repair.added} 条，丢掉 ${report.repair.dropped} 条读不出来的）。`)
+      }
+      if (report.findings.length === 0) {
+        lines.push('', '没有查出问题。')
+      } else {
+        for (const finding of report.findings) {
+          const who = finding.projectName === '' ? '' : `（${finding.projectName}）`
+          lines.push('',
+            `【${CHECK_LABELS[finding.check]}】${who}${finding.needsPerson ? '' : ' 可自动修'}`,
+            `  ${finding.detail}`)
+          for (const item of finding.items) {
+            lines.push(`  · ${item.id}  ${item.title === '' ? '（这个文件读不出来）' : item.title}`)
+          }
+        }
+      }
+      lines.push('', '体检只报不改：修是 memory_update、面板上删除，或者上面那条 repair。')
+      return { count: report.findings.length, report: lines.join('\n') }
+    },
+    presentCall() {
+      return card('体检记忆库', 'read')
     },
   } satisfies YonToolDefinition))
 

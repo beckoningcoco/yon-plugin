@@ -37,17 +37,15 @@
 import { type MemoryCreated, type MemoryListPayload, type MemorySummary, type MemoryType, type MemoryView, type SaveMemoryInput, type UpdateMemoryInput } from '../shared/types.ts';
 import { type MemoryStore } from './memory-store.ts';
 import { type YonMemorySession } from './memory-session.ts';
+import { type MemorySweepReport } from './memory-sweep.ts';
 import type { YonProjectsService } from './service.ts';
 /**
  * What the design calls the soft limit for one body, in characters.
  *
- * Soft means soft: a body over this is **written anyway** and reported, and
- * `memory_sweep` lists it. Refusing it would be worse than the length it prevents —
- * an experience worth keeping often needs a table name, a SQL fragment and the error
- * text in one place, and a hard refusal teaches the model to split one memory into
- * three, which is the duplication the soft limit exists to avoid.
+ * Re-exported from `memory-doc.ts`, where the rest of a memory's shape rules live; the
+ * sweep needs the same number and cannot import it from here without a cycle.
  */
-export declare const BODY_SOFT_MAX = 200;
+export { BODY_SOFT_MAX } from './memory-doc.ts';
 /** Why a memory operation could not be carried out. */
 export declare class MemoryError extends Error {
     /** `invalid-input` answers 400, `not-found` answers 404. */
@@ -113,6 +111,19 @@ export interface YonMemoryService extends YonMemoryHints {
      * evidence of anything.
      */
     remove(id: string): Promise<string>;
+    /**
+     * 体检整个库，或者顺手把索引重建一遍。
+     *
+     * 它是只读的，除了 `repair`：那一项重写 `index.json`（那是派生缓存），不碰任何
+     * `.md`。体检不修改任何记忆——修是 `memory_update`、面板删除与重建索引三件事。
+     *
+     * @param options.project - 只看这一个项目（id / 名字 / code）。索引漂移是整个库的事，
+     *   它永远都报。
+     */
+    sweep(options?: {
+        readonly repair?: boolean;
+        readonly project?: string;
+    }): Promise<MemorySweepReport>;
 }
 /**
  * Open the service over a store and the project registry.
