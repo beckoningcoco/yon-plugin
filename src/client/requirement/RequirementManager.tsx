@@ -44,7 +44,7 @@
  * 了」，是拿一次等待换一句他本来就看得到的话。
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Button, Input, MarkdownText, Modal, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, MarkdownText, Modal, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import {
@@ -72,17 +72,34 @@ function blankDraft(projectId = ''): Draft {
 }
 
 /**
- * 状态格的配色。
+ * 状态格的色调。**这一族颜色是本表自己的**（`panel.module.css` 的 `.tone*`），不共用共享表
+ * 那三个 `.tagPass` / `.tagFail` / `.tagMuted`：那三个是通用标签配色，迭代表板与知识库面板
+ * 也在用，改它会顺手改掉旁边几屏。
  *
- * 只有「待验收」用告警色：那一条正等着人点头，是这一屏唯一需要读者动手的状态。已完成用
- * 成功色，其余四种（待开发、开发中、搁置、已废弃）共用中性色——它们都只是「定了」。
+ * 为什么不共用，有实测：那三档对对话框底色的对比度是——中性 1.26:1（亮）/ 1.45:1（暗）、
+ * 成功 2.28:1 / 6.12:1、失败 4.50:1 / 4.24:1。六条状态里**只有一条**在两种主题下都过
+ * 4.5:1，而对比度最低的那四档共用同一个中性色：读者最需要一眼分辨的东西，恰恰是这一屏
+ * 最看不见的东西。
+ *
+ * 换颜色也不是随手挑一个更深的：宿主这套色标里，状态色当**文字**用，两种主题下都过不了线
+ * （business-primary 4.23/5.24、error-primary 4.50/4.24、success-primary 2.28/6.12、
+ * warn-primary 2.15/6.49），而 `state-*-tertiary` 正是宿主给「浅底 + 深字」这一族芯片备的。
+ * 所以照那个用法来：底铺状态那一层浅色，字用 label 族（label-primary 13.34~18.90、
+ * label-secondary 5.80~9.25），六条全部过线。
+ *
+ * 六种状态只给三档色相，因为它们本来只分三档意思：要你动手的（待验收）、成了的（已完成）、
+ * 以及「定了但还没走到头」的四种。中性那四种靠**由实到虚**分开——待开发有底、搁置只剩一圈
+ * 边、已废弃连边也收掉。一句话：颜色说「要不要你动手」，文字说「走到了哪一步」。
  * @param status - the row's status.
- * @returns the shared tag class for it.
+ * @returns this panel's tone class for it.
  */
-function statusTag(status: RequirementStatus): string | undefined {
-  if (status === 'review') return base.tagFail
-  if (status === 'done') return base.tagPass
-  return base.tagMuted
+function statusTone(status: RequirementStatus): string | undefined {
+  if (status === 'review') return css.toneReview
+  if (status === 'done') return css.toneDone
+  if (status === 'working') return css.toneWorking
+  if (status === 'proposed') return css.toneProposed
+  if (status === 'onHold') return css.toneOnHold
+  return css.toneDropped
 }
 
 /** Props of the surface: the injected APIs, the copy seat, and the close verb. */
@@ -582,42 +599,47 @@ export function RequirementManager({
         </p>
       )}
 
-      <div className={cn(base.body, css.scrollBody)}>
+      <div className={cn(base.body)}>
         <section className={cn(base.detailPane)} aria-label={t('requirement.title')}>
           {openId === undefined && (
             <>
+              {/* 这一行是两个组，不是一组：「筛」两个、「做」两个。原先三者是平级的兄弟
+                  + `space-between`，被平均撒开——实测两个筛选器之间 72px、筛选器到按钮也
+                  72px，读起来是同一层级的三个东西。 */}
               <div className={css.toolbar}>
-                <span className={css.picker}>
-                  <label htmlFor="yon-rq-project">{t('requirement.project')}</label>
-                  <select
-                    id="yon-rq-project"
-                    className={cn(css.select)}
-                    value={projectId}
-                    onChange={(event) => { setProjectId(event.target.value) }}
-                  >
-                    <option value="">{t('requirement.projectAll')}</option>
-                    {projects.map(project => (
-                      <option key={project.projectId} value={project.projectId}>{project.name}</option>
-                    ))}
-                  </select>
-                </span>
-                <span className={css.picker}>
-                  <label htmlFor="yon-rq-status">{t('requirement.status')}</label>
-                  <select
-                    id="yon-rq-status"
-                    className={cn(css.select)}
-                    value={status}
-                    onChange={(event) => {
-                      setStatus(event.target.value === 'all' ? 'all' : event.target.value as RequirementStatus)
-                    }}
-                  >
-                    {STATUS_FILTERS.map(value => (
-                      <option key={value} value={value}>
-                        {value === 'all' ? t('requirement.statusAll') : t(STATUS_LABEL_KEYS[value])}
-                      </option>
-                    ))}
-                  </select>
-                </span>
+                <div className={css.filters}>
+                  <span className={css.picker}>
+                    <label htmlFor="yon-rq-project">{t('requirement.project')}</label>
+                    <select
+                      id="yon-rq-project"
+                      className={cn(css.select)}
+                      value={projectId}
+                      onChange={(event) => { setProjectId(event.target.value) }}
+                    >
+                      <option value="">{t('requirement.projectAll')}</option>
+                      {projects.map(project => (
+                        <option key={project.projectId} value={project.projectId}>{project.name}</option>
+                      ))}
+                    </select>
+                  </span>
+                  <span className={css.picker}>
+                    <label htmlFor="yon-rq-status">{t('requirement.status')}</label>
+                    <select
+                      id="yon-rq-status"
+                      className={cn(css.select)}
+                      value={status}
+                      onChange={(event) => {
+                        setStatus(event.target.value === 'all' ? 'all' : event.target.value as RequirementStatus)
+                      }}
+                    >
+                      {STATUS_FILTERS.map(value => (
+                        <option key={value} value={value}>
+                          {value === 'all' ? t('requirement.statusAll') : t(STATUS_LABEL_KEYS[value])}
+                        </option>
+                      ))}
+                    </select>
+                  </span>
+                </div>
                 <div className={css.actions}>
                   <Button
                     size="sm"
@@ -644,8 +666,19 @@ export function RequirementManager({
               {projectFailure !== undefined && (
                 <p className={css.sectionNote}>{t('requirement.projectFailed', { message: projectFailure })}</p>
               )}
+              {/* 台账坏掉与「动作失败」是同一件事的两张脸：都是「这一步没成，你要么重试、
+                  要么去修」。原先它只是一行和别处长得一样的 12px 灰字，而它上面紧挨着
+                  「某项目下要做的事…」那句说明，读者很容易把它读成第二句说明。它现在走
+                  共享那条错误条，和 `failure` 长得一样、也带同一个重试。 */}
               {indexError !== undefined && (
-                <p className={css.sectionNote}>{t('requirement.readFailed', { message: indexError })}</p>
+                <p className={cn(base.error)} role="alert">
+                  <span className={cn(base.errorText)}>
+                    {t('requirement.readFailed', { message: indexError })}
+                  </span>
+                  <button type="button" className={cn(base.errorAction)} onClick={() => { void load() }}>
+                    {t('requirement.retry')}
+                  </button>
+                </p>
               )}
               {unreadable.length > 0 && (
                 <p className={css.sectionNote}>
@@ -678,9 +711,14 @@ export function RequirementManager({
                       <label className={css.fieldLabel} htmlFor="yon-rq-new-name">
                         {t('requirement.formName')}
                       </label>
-                      <Input
+                      {/* 裸 `<input>`，跟这一行的 `<select>`、下一行的 `<textarea>` 走同一条
+                          规则。原先借宿主那个 `Input`：它的外框 `.pi-wrap` 是 content-box 又带
+                          `width:100%`，实测 197.7 宽的格子里画出一个 214.7 宽的框（多出来的 16px
+                          是它自己的左右 padding），名称的占位符因此被裁掉一截；而它 32px 高、
+                          14px 字，跟旁边 30px/13px 的控件也差着一档。数字与理由见
+                          `panel.module.css` 里那条控件规则。 */}
+                      <input
                         id="yon-rq-new-name"
-                        className={cn(base.inputFill)}
                         value={draft.name}
                         placeholder={t('requirement.formNameHint')}
                         onChange={(event) => { setDraft({ ...draft, name: event.target.value }) }}
@@ -745,15 +783,20 @@ export function RequirementManager({
                         >
                           <span className={css.rowTags}>
                             <span className={css.rowName}>{row.name}</span>
-                            <span className={cn(base.tag, statusTag(row.status))}>
+                            <span className={cn(base.tag, statusTone(row.status))}>
                               {t(STATUS_LABEL_KEYS[row.status])}
                             </span>
                           </span>
                           <span className={css.rowMeta}>
-                            {t('requirement.rowMeta', {
-                              created: shortDate(row.createdAt),
-                              updated: shortDate(row.updatedAt),
-                            })}
+                            <span className={css.rowProject}>
+                              {t('requirement.rowProject', { project: projectName(row.projectId) })}
+                            </span>
+                            <span className={css.rowDates}>
+                              {t('requirement.rowMeta', {
+                                created: shortDate(row.createdAt),
+                                updated: shortDate(row.updatedAt),
+                              })}
+                            </span>
                           </span>
                         </button>
                       </li>
@@ -778,18 +821,45 @@ export function RequirementManager({
 
           {openId !== undefined && (
             <>
-              <div className={css.toolbar}>
-                <Button size="sm" variant="ghost" onClick={backToList}>
-                  {t('requirement.back')}
-                </Button>
-                <span className={css.detailHead}>
-                  <span className={css.detailNameText}>{detail?.name ?? t('requirement.loading')}</span>
+              {/* 详情是「一件事」，头部就合成一块：返回、名称、状态同一栏，出处紧跟其下。
+                  两处改动是同一件事的两半——名称从行内文字升成这一屏的标题（它是这一屏
+                  唯一的主题），状态从底部单独一行挪进这一栏就地可改。挪上来不只是省地方：
+                  一个字段的「读」与「改」原先分在两处，读者得在屏幕上找两遍同一个东西。 */}
+              <div className={css.detailTop}>
+                <div className={css.detailBar}>
+                  <Button size="sm" variant="ghost" onClick={backToList}>
+                    {t('requirement.back')}
+                  </Button>
+                  <h2 className={cn(base.detailName, css.detailTitle)}>
+                    {detail?.name ?? t('requirement.loading')}
+                  </h2>
                   {detail !== undefined && (
-                    <span className={cn(base.tag, statusTag(detail.status))}>
-                      {t(STATUS_LABEL_KEYS[detail.status])}
+                    <span className={cn(css.statusPick, statusTone(detail.status))}>
+                      <select
+                        id="yon-rq-detail-status"
+                        className={cn(base.tag, css.statusSelect)}
+                        value={detail.status}
+                        disabled={writing}
+                        aria-label={t('requirement.status')}
+                        onChange={(event) => { void changeStatus(event.target.value as RequirementStatus) }}
+                      >
+                        {STATUSES.map(value => (
+                          <option key={value} value={value}>{t(STATUS_LABEL_KEYS[value])}</option>
+                        ))}
+                      </select>
+                      <span className={css.statusCaret} aria-hidden="true">▾</span>
                     </span>
                   )}
-                </span>
+                </div>
+                {detail !== undefined && (
+                  <p className={css.sectionNote}>
+                    {t('requirement.entryMeta', {
+                      project: projectName(detail.projectId),
+                      created: shortDate(detail.createdAt),
+                      id: detail.id,
+                    })}
+                  </p>
+                )}
               </div>
 
               {flash !== undefined && <p className={css.sectionNote} role="status">{flash}</p>}
@@ -804,15 +874,9 @@ export function RequirementManager({
 
               {detail !== undefined && (
                 <>
-                  <p className={css.sectionNote}>
-                    {t('requirement.entryMeta', {
-                      project: projectName(detail.projectId),
-                      created: shortDate(detail.createdAt),
-                      id: detail.id,
-                    })}
-                  </p>
-
-                  <p className={css.blockHead}>{t('requirement.prose')}</p>
+                  {/* 正文不再顶一个「正文」标签：它是这一屏唯一的无边框文字块，紧跟在出处
+                      那一行后面，读者不会认错。那个标签要吃掉 26px（16 的字号行 + 10 的
+                      节距），而这一屏最贵的东西正是 450px 的折线。 */}
                   {detail.prose === undefined || detail.prose === ''
                     ? <p className={css.sectionNote}>{t('requirement.proseEmpty')}</p>
                     : (
@@ -821,9 +885,14 @@ export function RequirementManager({
                       </div>
                     )}
 
+                  {/* 正文与追溯之间那条线：两块都是不描边的文字，只有这一处需要一条线说清
+                      「上面是这件事本身，下面是它怎么变成现在这样的」。线是共享表那一条，
+                      与旁边八格是同一条。 */}
+                  <hr className={cn(base.rule, css.sectionGap)} />
+
                   <button
                     type="button"
-                    className={css.traceHead}
+                    className={cn(base.sectionTitle, css.traceHead)}
                     aria-expanded={traceOpen}
                     onClick={() => { setTraceOpen(value => !value) }}
                   >
@@ -855,22 +924,7 @@ export function RequirementManager({
                       )
                   )}
 
-                  <p className={css.statusRow}>
-                    <label htmlFor="yon-rq-detail-status">{t('requirement.status')}</label>
-                    <select
-                      id="yon-rq-detail-status"
-                      className={cn(css.select)}
-                      value={detail.status}
-                      disabled={writing}
-                      onChange={(event) => { void changeStatus(event.target.value as RequirementStatus) }}
-                    >
-                      {STATUSES.map(value => (
-                        <option key={value} value={value}>{t(STATUS_LABEL_KEYS[value])}</option>
-                      ))}
-                    </select>
-                  </p>
-
-                  <div className={css.noteForm}>
+                  <div className={cn(css.noteForm, css.sectionGap)}>
                     <label className={css.fieldLabel} htmlFor="yon-rq-note">{t('requirement.note')}</label>
                     <textarea
                       id="yon-rq-note"
@@ -889,8 +943,8 @@ export function RequirementManager({
 
                   {/* 附件：三个目录各带一个数，点哪个看哪个。文件本身不落进这一屏的状态里，
                       它就在磁盘上——这里画的每一行都来自一次 `readdir`。 */}
-                  <div className={css.files}>
-                    <p className={css.blockHead}>{t('requirement.files')}</p>
+                  <div className={cn(css.files, css.sectionGap)}>
+                    <p className={cn(base.sectionTitle)}>{t('requirement.files')}</p>
                     <p className={css.sectionNote}>{t('requirement.filesHint')}</p>
                     <div className={css.folderTabs} role="group" aria-label={t('requirement.files')}>
                       {REQUIREMENT_DIRS.map(dir => (
@@ -1025,9 +1079,6 @@ export function RequirementManager({
                         {t('requirement.uploadFailed', { message: uploadError })}
                       </p>
                     )}
-                    {/* 那句话说的是动作行里那个按钮的下场，所以挨着这一块说，而不是塞进
-                        已经排满的按钮行。 */}
-                    <p className={css.sectionNote}>{t('requirement.uploadHint')}</p>
                   </div>
 
                   {/* 动作行钉在本表自己的类上，不放宽共享那条 `:last-child`：这一屏的动作行
@@ -1100,7 +1151,8 @@ export function RequirementManager({
                       : (
                         <Button
                           size="sm"
-                          variant="ghost"
+                          variant="outline"
+                          className={cn(base.dangerButton)}
                           disabled={writing}
                           onClick={() => { setConfirm('delete') }}
                         >

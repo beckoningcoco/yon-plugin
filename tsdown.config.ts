@@ -18,7 +18,7 @@
  *    so the bundle carries its own styling and no stylesheet file is fetched.
  */
 import { readFile } from 'node:fs/promises'
-import { basename, dirname, resolve as resolvePath } from 'node:path'
+import { basename, dirname, resolve as resolvePath, sep } from 'node:path'
 import type { UserConfig } from 'tsdown'
 import { transform } from 'lightningcss'
 
@@ -52,6 +52,9 @@ const isExternal = (specifier: string): boolean =>
 const CSS_VIRTUAL_PREFIX = '\0yon-css:'
 const CSS_VIRTUAL_SUFFIX = '.mjs'
 
+/** Path segment a stylesheet's package-relative name is measured from. */
+const SOURCE_MARKER = '/src/'
+
 /**
  * Order two CSS-module export entries by their local name.
  * @param left - one `[local, export]` entry.
@@ -60,6 +63,32 @@ const CSS_VIRTUAL_SUFFIX = '.mjs'
  */
 function byLocalName([left]: [string, unknown], [right]: [string, unknown]): number {
   return left < right ? -1 : left > right ? 1 : 0
+}
+
+/**
+ * Style-tag identity of one stylesheet: its path below `src/`, forward-slashed.
+ *
+ * Not its basename. Nine of this package's eleven stylesheets are called
+ * `panel.module.css` (one per panel, plus the shared table the panels also
+ * import), and the injector below is a `querySelector` on the tag id: with the
+ * basename as identity they all claimed `…/panel.module.css`, so whichever
+ * loaded first won and the other eight saw a tag that was already there and
+ * skipped themselves. The built artifact measured 11 injection points under 3
+ * distinct ids (9 of them the same one) — every panel's own styles compiled
+ * into the bundle and never reached the document, while the shared table did,
+ * which is exactly the half-styled screen this shipped as.
+ *
+ * A path outside this package's sources (a stylesheet pulled in from a
+ * dependency) keeps the basename: the id has to stay stable across machines,
+ * so an absolute path may not leak into the committed artifact.
+ * @param fileId - absolute path of the stylesheet being loaded.
+ * @returns an id unique per stylesheet within this plugin.
+ */
+function tagIdOf(fileId: string): string {
+  const normalized = fileId.split(sep).join('/')
+  const boundary = normalized.lastIndexOf(SOURCE_MARKER)
+  const local = boundary < 0 ? basename(fileId) : normalized.slice(boundary + SOURCE_MARKER.length)
+  return `${ID}/${local}`
 }
 
 /**
@@ -83,7 +112,7 @@ async function stylesheetModule(fileId: string): Promise<string> {
   for (const [local, value] of Object.entries(exports ?? {}).sort(byLocalName)) {
     classMap[local] = value.name
   }
-  const tagId = `${ID}/${basename(fileId)}`
+  const tagId = tagIdOf(fileId)
   return [
     `const css = ${JSON.stringify(code.toString())};`,
     `const tagId = ${JSON.stringify(tagId)};`,

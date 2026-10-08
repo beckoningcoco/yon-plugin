@@ -351,6 +351,10 @@ const {
 const { IterationManager } = await import('../src/client/iteration/IterationManager.tsx')
 const { ITERATION_FIXTURE, ITERATION_EMPTY, ITERATION_UNREADABLE } = await import('./fixtures/iteration.ts')
 const { BrowserManager } = await import('../src/client/browser/BrowserManager.tsx')
+const { RequirementManager } = await import('../src/client/requirement/RequirementManager.tsx')
+const {
+  REQUIREMENT_FIXTURE, REQUIREMENT_EMPTY, REQUIREMENT_READFAIL,
+} = await import('./fixtures/requirement.ts')
 const {
   BROWSER_FIXTURE, BROWSER_FORM, BROWSER_UNSCANNED, BROWSER_EMPTY, BROWSER_UNREADABLE,
   BROWSER_NOROW,
@@ -598,7 +602,7 @@ function Popover({ rows }: { readonly rows: readonly YonPanelItemRow[] }): React
 }
 
 /** 面板给八个内置条目的名字，顺序即注册顺序（`src/client/index.ts` 的 order 10…80）。 */
-const EIGHT_ROWS: readonly YonPanelItemRow[] = [
+const NINE_ROWS: readonly YonPanelItemRow[] = [
   { id: 'project', label: name('item.project') },
   { id: 'skills', label: name('item.skills') },
   { id: 'datasources', label: name('item.datasource') },
@@ -607,6 +611,7 @@ const EIGHT_ROWS: readonly YonPanelItemRow[] = [
   { id: 'home', label: name('item.home') },
   { id: 'iteration', label: name('item.iteration') },
   { id: 'browser', label: name('item.browser') },
+  { id: 'requirement', label: name('item.requirement') },
 ]
 
 /**
@@ -617,7 +622,7 @@ const EIGHT_ROWS: readonly YonPanelItemRow[] = [
  * 而面板的行宽是固定的 280。
  */
 const MANY_ROWS: readonly YonPanelItemRow[] = [
-  ...EIGHT_ROWS,
+  ...NINE_ROWS,
   // 名字要长到**无论字体怎么回退都放不下**：第一版 20 个字，280 宽的面板里刚好
   // 卡在边界上，探针数出来的截断行数是 0——看着像"省略号没生效"，其实是名字还不够长。
   { id: 'third-party-connector', label: '第三方连接器：一个长到无论怎么排都放不下、必须走省略号的条目名称' },
@@ -985,10 +990,22 @@ const PANELS: readonly Panel[] = [
     probe: actionsAt('actions@top'),
   },
   {
+    id: 'requirement',
+    // 主图给的是**列表态**：六条、六个状态、一个长名称。详情与附件各占一页（见下面
+    // 那几页），因为这一屏的两个视图是先后关系，不是同一屏的两半，挤在一张图里会
+    // 变成"画的是哪一个"都说不清。
+    //
+    // 这一份表**不声明共享表里的任何类名**：它的整高覆盖叫 `.scrollBody`、表单那一族
+    // 叫 `.noteForm*`，正是为了躲开共享表的 `.body` 与 `.form*`（理由在它自己的头注释
+    // 里）。所以它连 {@link SAME_ELEMENT} 那份豁免名单都不需要进。
+    sheets: [SHARED, 'src/client/requirement/panel.module.css'],
+    node: () => <RequirementManager t={t} onClose={noop} {...REQUIREMENT_FIXTURE} />,
+  },
+  {
     id: 'items',
     // 外壳与行，两份都是它自己的：**不挂共享表**，理由见上面 {@link Panel.sheets}。
     sheets: ['src/client/YonPanelRoot.module.css', 'src/client/panel-item.module.css'],
-    node: () => <Popover rows={EIGHT_ROWS} />,
+    node: () => <Popover rows={NINE_ROWS} />,
   },
 ]
 
@@ -1315,6 +1332,103 @@ describe('预览导出', () => {
     expect(inner).toContain(name('browser.stopAsk'))
     expect(inner).toContain(name('browser.stopYes'))
     expect(inner).toContain(name('browser.stopNo'))
+  })
+
+  // ── 需求条目那一段 ────────────────────────────────────────────────────────
+  //
+  // 这一屏是**列表 ↔ 详情两个视图**，一次只画一块。默认页（`panel-requirement-*`）是
+  // 列表；下面这几页是这个面板剩下的几种内容边界，都要点开或滚下去才看得到，而"点开
+  // 之后长什么样"正是这一屏设计里最需要有人看过的那部分。
+
+  // 详情：正文（markdown）、带删除线的追溯三段、状态与标注表单。内容比工作区高，所以
+  // 附件与动作行都落在折线以下，它们另有下面那一页。
+  it('渲染需求条目的详情（亮色）', async () => {
+    const panel = PANELS.find(candidate => candidate.id === 'requirement') as Panel
+    const view = render(<RequirementManager t={t} onClose={noop} {...REQUIREMENT_FIXTURE} />)
+    await settle(view.container.ownerDocument.body)
+    const doc = view.container.ownerDocument
+
+    const row = doc.querySelector('[class*="rowHead"]')
+    expect(row).not.toBeNull()
+    fireEvent.click(row as Element)
+    await settle(doc.body)
+
+    const inner = doc.body.innerHTML
+    // 删除线那一段是这一屏的立身之本：`requirement-doc.ts` 剥掉它给模型、留着它给人。
+    // 判据取元素本身——只查那几句话时，MarkdownText 把 `~~` 漏掉也一样为真。
+    expect(inner).toMatch(/<(s|del)[ >]/)
+    // 正文那一块不再顶一个「正文」标签（那一行要吃掉 26px，而这一屏只有 450px 的折线），
+    // 所以按它那个类断言。这一页要证的仍然是「正文与追溯是两块」，不是某一句文案在不在。
+    expect(inner).toContain('class="prose"')
+    expect(inner).toContain(name('requirement.trace'))
+    writeFileSync('preview/panel-requirement-detail.html',
+      page(inner, 'requirement-detail', panel.sheets, false), 'utf8')
+  })
+
+  // 附件与动作行：都在详情页的折线以下，不滚这一页画的是正文。
+  it('渲染需求条目的附件与动作行（亮色，滚到底）', async () => {
+    const panel = PANELS.find(candidate => candidate.id === 'requirement') as Panel
+    const view = render(<RequirementManager t={t} onClose={noop} {...REQUIREMENT_FIXTURE} />)
+    await settle(view.container.ownerDocument.body)
+    const doc = view.container.ownerDocument
+
+    const row = doc.querySelector('[class*="rowHead"]')
+    expect(row).not.toBeNull()
+    fireEvent.click(row as Element)
+    await settle(doc.body)
+
+    const inner = doc.body.innerHTML
+    // 读不了的那一件**不给**「读」按钮，只在行下写一句原因——这条分支只有摆一个 xlsx
+    // 才会出现在图上。查的是宿主那句原话里最靠前的一段（后半段随时会随批 5 改）。
+    expect(inner).toContain('这是 Office 的压缩包格式（xlsx）')
+    expect(inner).toContain('卡片接口清单.xlsx')
+    expect(inner).toContain(name('requirement.upload'))
+    writeFileSync('preview/panel-requirement-files.html',
+      page(inner, 'requirement-files', panel.sheets, false, SCROLL_TO_BOTTOM), 'utf8')
+  })
+
+  // 新建表单：这一屏里最宽的那个东西（三格自适应网格 + 一整行 textarea）。宽度分配成
+  // 不成立只有图能回答。
+  it('渲染需求条目的新建表单（亮色）', async () => {
+    const panel = PANELS.find(candidate => candidate.id === 'requirement') as Panel
+    const view = render(<RequirementManager t={t} onClose={noop} {...REQUIREMENT_FIXTURE} />)
+    await settle(view.container.ownerDocument.body)
+    const doc = view.container.ownerDocument
+
+    const open = [...doc.querySelectorAll('button')]
+      .find(candidate => candidate.textContent === name('requirement.new'))
+    expect(open).toBeTruthy()
+    fireEvent.click(open as Element)
+    await settle(doc.body)
+
+    const inner = doc.body.innerHTML
+    expect(inner).toContain(name('requirement.formTitle'))
+    writeFileSync('preview/panel-requirement-form.html',
+      page(inner, 'requirement-form', panel.sheets, false), 'utf8')
+  })
+
+  // 台账在、但一条都没记过：这一屏要说清三件事——这里是什么、谁会写、写完谁决定。
+  it('渲染需求条目的空账本（亮色）', async () => {
+    const panel = PANELS.find(candidate => candidate.id === 'requirement') as Panel
+    const file = await renderPanel(panel, false,
+      <RequirementManager t={t} onClose={noop} {...REQUIREMENT_EMPTY} />, 'requirement-empty')
+    const inner = readFileSync(file, 'utf8')
+
+    expect(inner).toContain(name('requirement.empty'))
+    expect(inner).toContain(name('requirement.emptyWhy'))
+  })
+
+  // 台账文件坏了：与"还没记过"是完全不同的两句话，版面却几乎一样——差别只在标题与两段
+  // 解释在不在。图上是唯一看得出这个差别的地方，因为两者都是空列表。
+  it('渲染需求条目的读取失败（亮色）', async () => {
+    const panel = PANELS.find(candidate => candidate.id === 'requirement') as Panel
+    const file = await renderPanel(panel, false,
+      <RequirementManager t={t} onClose={noop} {...REQUIREMENT_READFAIL} />, 'requirement-readfail')
+    const inner = readFileSync(file, 'utf8')
+
+    expect(inner).toContain(name('requirement.emptyUnreadable'))
+    // 读不出来时**不该**再讲一遍这套东西是什么：那是给还没记过的人看的。
+    expect(inner).not.toContain(name('requirement.emptyWhy'))
   })
 
   // 一个值读出来长什么样：长文本要换行、JSON 文本要摊成键值列表、嵌套要退回 JSON，

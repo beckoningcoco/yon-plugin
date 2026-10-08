@@ -140,6 +140,21 @@ if (existsSync(join(root, clientPath))) {
   check(!client.includes('jsx-runtime.production'), 'lib/client.js: React appears to be bundled in')
   check(client.includes('data-plugin-css'), 'lib/client.js: plugin-owned style injection is missing')
   check(client.includes('--dsw-'), 'lib/client.js: the injected styles carry no theme token (CSS not compiled?)')
+  // Regression net. Eleven stylesheets ship in this bundle and nine of them are
+  // named `panel.module.css`; while the tag id was their basename, all nine
+  // claimed one id, so the injector's `querySelector` guard treated them as
+  // already-present and dropped them: 11 injection points, 3 distinct ids, and
+  // a half-styled screen inside a real host (found 2026-10-08 from a user
+  // screenshot, not from these checks — hence this one). The ids must be
+  // pairwise distinct for every stylesheet's styles to reach the document.
+  const tagIds = [...client.matchAll(/tagId\$?\d* = "([^"]+)"/g)].map(match => match[1])
+  check(tagIds.length > 0, 'lib/client.js: no style tag ids found — the injector template changed shape')
+  const colliding = [...new Set(tagIds.filter((tagId, index) => tagIds.indexOf(tagId) !== index))]
+  check(
+    colliding.length === 0,
+    `lib/client.js: style tag ids collide (${colliding.join(', ')}), so those stylesheets are silently `
+    + 'skipped at runtime — name them by path below src/, not by basename',
+  )
   // A net for code inlined from outside this tree — not a budget for how big
   // the UI is allowed to get. It is a multiple of the source the bundle is built
   // from rather than a fixed ceiling, so adding a surface raises the source and

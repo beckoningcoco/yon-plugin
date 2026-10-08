@@ -590,10 +590,12 @@ export const zh = {
   'requirement.emptyUnreadable': '台账在，但读不出来',
   'requirement.emptyWhy': '这里一条是一件「要做的事」：正文是使用者要什么，标注是后来补的澄清、决定与进展。',
   'requirement.emptyHow': '点「新建条目」自己记一条，或者在对话里说清要做什么，让模型记下来。',
-  // 一行是两行字：名称与状态一行，两个日期一行。450px 的栏里再多一个字段就会折成三行。
+  // 一行是两行字：名称与状态一行，第二行左边属于哪个项目、右边两个日期。
+  // 「项目：」这个前缀和详情页那句 `entryMeta` 一致——第二行是没头没尾的两截，
+  // 光一个项目名会被读成标题的续行。
+  'requirement.rowProject': '项目：{project}',
   'requirement.rowMeta': '建 {created} · 最近改动 {updated}',
   'requirement.entryMeta': '项目：{project} · 建 {created} · {id}',
-  'requirement.prose': '正文',
   'requirement.proseEmpty': '还没有写正文。',
   'requirement.trace': '追溯',
   'requirement.traceNone': '（还没有）',
@@ -643,7 +645,10 @@ export const zh = {
   'requirement.dir.generated': '模型产出的方案与资料',
   'requirement.dir.patches': '补丁文件',
   'requirement.files': '附件',
-  'requirement.filesHint': 'user/ 是他给的（只有你放得进去），generated/ 与 patches/ 是模型写的。',
+  // 原先这句只讲三个目录是谁的，「归档附件」那句话（原件不改写、撞名加 -2）单摆在附件
+  // 清单的末尾。两句话说的是同一件事的两半——谁放的文件、你放进去会怎样——合起来读一次
+  // 就够，分母排在清单两头反而要读者在块里来回找两次。
+  'requirement.filesHint': 'user/ 是他给的（只有你放得进去），generated/ 与 patches/ 是模型写的；底下「归档附件」放的也是 user/，原件一个字都不会被改写，撞名时自动加 -2。',
   'requirement.filesLoading': '读附件清单…',
   'requirement.filesEmpty': '这个目录是空的。',
   'requirement.filesFailed': '附件清单读不出来：{message}',
@@ -660,7 +665,6 @@ export const zh = {
   'requirement.fileNoText': '它读出来是空的——里面没有可读的字符。',
   'requirement.upload': '归档附件',
   'requirement.uploading': '归档中…',
-  'requirement.uploadHint': '放进 user/。原件一个字都不会被改写，撞名时自动加 -2。',
   'requirement.uploaded': '已归档到 user/{name}。',
   'requirement.uploadedRenamed': '已归档：你给的叫 {from}，库里这条叫 {name}（撞名了）。',
   'requirement.uploadFailed': '归档失败：{message}',
@@ -1235,9 +1239,9 @@ export const en = {
   'requirement.emptyUnreadable': 'The ledger is there, but unreadable',
   'requirement.emptyWhy': 'One entry here is one thing to be done: the body is what the operator asked for, and the notes are the clarifications, decisions and progress added later.',
   'requirement.emptyHow': 'Add one yourself with "New entry", or say what needs doing in the conversation and let the model record it.',
+  'requirement.rowProject': 'Project: {project}',
   'requirement.rowMeta': 'opened {created} · last changed {updated}',
   'requirement.entryMeta': 'Project: {project} · opened {created} · {id}',
-  'requirement.prose': 'Body',
   'requirement.proseEmpty': 'No body yet.',
   'requirement.trace': 'Trace',
   'requirement.traceNone': '(none yet)',
@@ -1286,7 +1290,7 @@ export const en = {
   'requirement.dir.generated': 'Documents and plans the model produced',
   'requirement.dir.patches': 'Patch files',
   'requirement.files': 'Attachments',
-  'requirement.filesHint': 'user/ is what they handed over (only you can put anything there); generated/ and patches/ are what the model wrote.',
+  'requirement.filesHint': 'user/ is what they handed over (only you can put anything there); generated/ and patches/ are what the model wrote. "File an attachment" also lands in user/ — the original is never rewritten, and a name already taken gets a -2.',
   'requirement.filesLoading': 'Reading the attachment list…',
   'requirement.filesEmpty': 'This folder is empty.',
   'requirement.filesFailed': 'The attachment list did not load: {message}',
@@ -1301,7 +1305,6 @@ export const en = {
   'requirement.fileNoText': 'It read back empty — there are no readable characters in it.',
   'requirement.upload': 'File an attachment',
   'requirement.uploading': 'Filing…',
-  'requirement.uploadHint': 'It goes into user/. The original is never rewritten, and a name already taken gets a -2.',
   'requirement.uploaded': 'Filed as user/{name}.',
   'requirement.uploadedRenamed': 'Filed: you handed over {from}, and the copy here is {name} (the name was taken).',
   'requirement.uploadFailed': 'Could not file it: {message}',

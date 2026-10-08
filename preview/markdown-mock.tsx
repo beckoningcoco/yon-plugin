@@ -17,6 +17,9 @@
  *      复制按钮的卡片头，块本身有语法高亮。这里只给等宽的代码块。
  *   2. 没实现脚注、链接引用定义、katex、任务列表、纯文本文件提及。
  * 这两条不影响面板布局的判断，也正是这份替身存在的目的。
+ *
+ * 行内标记（`` `code` `` / `**粗体**` / `~~删除线~~`）**都实现了**，因为本仓库的面板真的
+ * 在用它们，而且用在了要看的地方（删除线是需求条目那一屏「追溯」的全部意义）。
  */
 import type { ReactNode } from 'react'
 
@@ -44,16 +47,44 @@ function code(text: string, key: string): ReactNode[] {
 }
 
 /**
- * 行内：`` `code` `` 与 `**粗体**`，两者可以互相嵌套。
+ * 行内：`` `code` ``、`**粗体**` 与 `~~删除线~~`，三者可以互相嵌套。
  *
  * 先切粗体、再在每段里切行内代码，而不是一条正则同时认两种：一条正则会让先
  * 命中的那种吃掉另一种——正文里的 `**本 skill 是 \`ncc-dev\`（…）的子技能**`
  * 会整段变成粗体，反引号原样显示，而宿主那边渲染出来的是粗体里嵌一个代码段。
+ * 删除线按同一道理先切一层，再交给粗体那一层。
+ *
+ * **删除线这一层是需求条目面板逼出来的**：那一屏的「追溯」把过时的旧说法划掉留着
+ * （`requirement-doc.ts` 剥掉它给模型、留着它给人），`~~…~~` 是它最想让人看见的一处
+ * 标记。替身原先不认 `~~`，于是那段在每一张预览图上都是**两个波浪号夹着一句话**——
+ * 看着像正文里混进了 markdown 源码，而真宿主渲染的是 `<del>`
+ * （`ui-primitives/src/markdown/render.tsx:241`）。这是"改了看得出来、但要真渲染才知道
+ * 差多少"的那一类，正是这份替身最怕的东西。
  * @param text - 一行文本。
  * @param key - 生成 React key 用的前缀。
  * @returns 片段数组。
  */
 function inline(text: string, key: string): ReactNode[] {
+  const out: ReactNode[] = []
+  const re = /~~([^~]+)~~/g
+  let last = 0
+  let match: RegExpExecArray | null
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > last) out.push(...bold(text.slice(last, match.index), `${key}-t${String(match.index)}`))
+    out.push(<del key={`${key}-d${String(match.index)}`}>{bold(match[1] ?? '', `${key}-d${String(match.index)}`)}</del>)
+    last = match.index + match[0].length
+  }
+  out.push(...bold(text.slice(last), `${key}-end`))
+  return out
+}
+
+/**
+ * 粗体那一层：`**…**` 里面再切行内代码。
+ * @param text - 一段还没有删除线的文本。
+ * @param key - 生成 React key 用的前缀。
+ * @returns 片段数组。
+ */
+function bold(text: string, key: string): ReactNode[] {
   const out: ReactNode[] = []
   const re = /\*\*([^*]+)\*\*/g
   let last = 0

@@ -555,9 +555,9 @@ export declare const zh: {
     'requirement.emptyUnreadable': string;
     'requirement.emptyWhy': string;
     'requirement.emptyHow': string;
+    'requirement.rowProject': string;
     'requirement.rowMeta': string;
     'requirement.entryMeta': string;
-    'requirement.prose': string;
     'requirement.proseEmpty': string;
     'requirement.trace': string;
     'requirement.traceNone': string;
@@ -617,7 +617,6 @@ export declare const zh: {
     'requirement.fileNoText': string;
     'requirement.upload': string;
     'requirement.uploading': string;
-    'requirement.uploadHint': string;
     'requirement.uploaded': string;
     'requirement.uploadedRenamed': string;
     'requirement.uploadFailed': string;
@@ -1174,9 +1173,9 @@ export declare const en: {
     'requirement.emptyUnreadable': string;
     'requirement.emptyWhy': string;
     'requirement.emptyHow': string;
+    'requirement.rowProject': string;
     'requirement.rowMeta': string;
     'requirement.entryMeta': string;
-    'requirement.prose': string;
     'requirement.proseEmpty': string;
     'requirement.trace': string;
     'requirement.traceNone': string;
@@ -1236,7 +1235,6 @@ export declare const en: {
     'requirement.fileNoText': string;
     'requirement.upload': string;
     'requirement.uploading': string;
-    'requirement.uploadHint': string;
     'requirement.uploaded': string;
     'requirement.uploadedRenamed': string;
     'requirement.uploadFailed': string;
