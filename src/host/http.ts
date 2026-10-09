@@ -1202,7 +1202,16 @@ async function handleRequirements(
       return
     }
     if (method === 'GET') {
-      sendJson(res, 200, await requirements.fileRead(id, dir === null || dir === '' ? 'user' : dir, name))
+      // `?version=N` reads the N-th archived version instead of the current file.
+      // Only `generated/` and `patches/` keep history — `user/` never overwrites.
+      const raw = url.searchParams.get('version')
+      const parsed = raw === null || raw === '' ? Number.NaN : Number.parseInt(raw, 10)
+      sendJson(res, 200, await requirements.fileRead(
+        id,
+        dir === null || dir === '' ? 'user' : dir,
+        name,
+        Number.isInteger(parsed) ? parsed : undefined,
+      ))
       return
     }
     if (method === 'DELETE') {

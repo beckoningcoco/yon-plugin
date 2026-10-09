@@ -637,6 +637,10 @@ export declare const zh: {
     'requirement.filesHint': string;
     'requirement.filesLoading': string;
     'requirement.filesEmpty': string;
+    'requirement.fileHistory': string;
+    'requirement.fileVersions': string;
+    'requirement.fileHistoryHint': string;
+    'requirement.fileVersionOf': string;
     'requirement.filesFailed': string;
     'requirement.fileRead': string;
     'requirement.fileReading': string;
@@ -1285,6 +1289,10 @@ export declare const en: {
     'requirement.dir.patches': string;
     'requirement.files': string;
     'requirement.filesHint': string;
+    'requirement.fileHistory': string;
+    'requirement.fileVersions': string;
+    'requirement.fileHistoryHint': string;
+    'requirement.fileVersionOf': string;
     'requirement.filesLoading': string;
     'requirement.filesEmpty': string;
     'requirement.filesFailed': string;

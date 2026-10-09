@@ -39,7 +39,7 @@ import type { FileHandle } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { REQUIREMENT_DIRS, type RequirementDir } from '../shared/types.ts'
+import { REQUIREMENT_DIRS, type RequirementDir, type RequirementHistoryStat } from '../shared/types.ts'
 import {
   parseEntry,
   serializeEntry,
@@ -169,6 +169,30 @@ export interface RequirementStore {
     name: string,
     content: string,
   ): Promise<{ readonly path: string; readonly bytes: number }>
+  /**
+   * The earlier versions of one artifact, oldest first — what {@link writeArtifact}
+   * put aside before each overwrite.
+   *
+   * They live in `<kind>/.history/<name>/<n>`. A sub-directory, deliberately: {@link
+   * statFiles} skips those, so keeping history changes nothing about what the panel
+   * lists — the current file stays the only row, and the versions stay out of the way
+   * until someone asks for them. Before this, the second write of a name destroyed
+   * the first one silently; a document that had been rewritten eight times left one
+   * file and no way to see what the earlier seven said.
+   */
+  statHistory(
+    id: string,
+    kind: RequirementArtifactKind,
+    name: string,
+  ): Promise<readonly RequirementHistoryStat[]>
+  /** The first `maxBytes` of one archived version, or undefined when there is no such version. */
+  readHistoryHead(
+    id: string,
+    kind: RequirementArtifactKind,
+    name: string,
+    version: number,
+    maxBytes: number,
+  ): Promise<RequirementFileHead | undefined>
   /** Remove an entry outright. Human-only path — the model archives instead. */
   removeEntry(id: string): Promise<void>
 }
@@ -300,6 +324,50 @@ export function createRequirementStore(root: string = defaultRequirementRoot()):
     return { path: indexPath, records, exists: true, skipped }
   }
 
+  /**
+   * Where displaced versions wait, under each artifact folder.
+   *
+   * A dot-directory so a `find` or a file manager sorts it out of the way, and a
+   * sub-directory rather than a sibling `foo.md.v2` so the folder the panel lists
+   * holds only the files that are actually current.
+   */
+  const HISTORY_DIR = '.history'
+
+  /** `<kind>/.history/<name>` — where the displaced versions of one artifact wait. */
+  const historyDir = (id: string, kind: RequirementArtifactKind, name: string): string =>
+    join(dirPath(id), kind, HISTORY_DIR, name)
+
+  /**
+   * Put the current content of an artifact aside so the incoming write cannot be the
+   * only copy left.
+   *
+   * Version numbers only ever grow and a number already in use is never reused, so
+   * the history reads in order however often the file is rewritten. The body goes in
+   * byte-for-byte: this is evidence of what was there, and re-encoding it would make
+   * it evidence of something else.
+   */
+  const keepPrevious = async (
+    id: string,
+    kind: RequirementArtifactKind,
+    name: string,
+  ): Promise<void> => {
+    let previous: Buffer
+    try {
+      previous = await readFile(filePath(id, kind, name))
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+      throw error
+    }
+    const dir = historyDir(id, kind, name)
+    await mkdir(dir, { recursive: true })
+    const taken = await readdir(dir)
+    const numbers = taken
+      .map(entry => Number.parseInt(entry, 10))
+      .filter(value => Number.isFinite(value))
+    const next = String((numbers.length === 0 ? 0 : Math.max(...numbers)) + 1)
+    await writeFile(join(dir, next), previous)
+  }
+
   return {
     root,
     indexPath,
@@ -414,9 +482,59 @@ export function createRequirementStore(root: string = defaultRequirementRoot()):
       queue(async () => {
         const path = filePath(id, kind, name)
         await mkdir(dirname(path), { recursive: true })
+        // Before the bytes go in, the ones already there go aside. A first write has
+        // nothing to keep, so a missing file is the ordinary case here.
+        await keepPrevious(id, kind, name)
         await writeFile(path, content, 'utf8')
         return { path, bytes: Buffer.byteLength(content, 'utf8') }
       }),
+
+    statHistory: async (id, kind, name) => {
+      const dir = historyDir(id, kind, name)
+      let entries: Dirent[]
+      try {
+        entries = await readdir(dir, { withFileTypes: true })
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+        throw error
+      }
+      const rows: RequirementHistoryStat[] = []
+      for (const entry of entries) {
+        if (!entry.isFile()) continue
+        const version = Number.parseInt(entry.name, 10)
+        if (!Number.isFinite(version)) continue
+        try {
+          const info = await stat(join(dir, entry.name))
+          rows.push({ version, bytes: info.size, modifiedAt: info.mtime.toISOString() })
+        } catch {
+          // Removed between the readdir and the stat; not worth failing a listing.
+        }
+      }
+      return rows.sort((a, b) => a.version - b.version)
+    },
+
+    readHistoryHead: async (id, kind, name, version, maxBytes) => {
+      let handle: FileHandle
+      try {
+        handle = await open(join(historyDir(id, kind, name), String(version)), 'r')
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+        throw error
+      }
+      try {
+        const info = await handle.stat()
+        const buffer = Buffer.allocUnsafe(Math.max(0, maxBytes))
+        const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0)
+        return {
+          name,
+          bytes: info.size,
+          modifiedAt: info.mtime.toISOString(),
+          data: buffer.subarray(0, bytesRead),
+        }
+      } finally {
+        await handle.close()
+      }
+    },
 
     removeEntry: async id => {
       await rm(join(root, id), { recursive: true, force: true })

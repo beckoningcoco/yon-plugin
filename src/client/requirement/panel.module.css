@@ -394,6 +394,47 @@
   color: inherit;
 }
 
+/* 结构化标注：模型按「现状／问题／改法／依据·结果」写的那些，段名当小标题、内容另起一列。
+   拆不出来的历史标注仍走上面那条 `.trace > div`，两条路都要降一档。
+
+   标签列用 `max-content`：长短不一（「现状」两个字、「依据/结果」五个字），两列对齐比每段
+   自己缩进更好扫。「依据/结果」里那个斜杠是模型写的原文，这里照原样显示，不改写它。 */
+.traceDate {
+  margin: 0 0 4px;
+  font: var(--dsw-font-markdown-small);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.traceSections {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.traceSection {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 2px 8px;
+  align-items: start;
+}
+
+.traceLabel {
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-markdown-small);
+  white-space: nowrap;
+}
+
+.traceBody {
+  min-width: 0;
+}
+
+/* 与 `.trace > div` 同一条降档规则：这里的 markdown 根在 `.traceBody` 里面，不再是 `.trace`
+   的直接子元素，所以那一条选不中它，要再写一条。 */
+.traceBody > div {
+  font: var(--dsw-font-markdown-small);
+  color: inherit;
+}
+
 /* ── 标注 ───────────────────────────────────────────────────────────────── */
 
 /* 标注那张表单。**整族都不叫 `.form*`**：共享表里已经有 `.form` 与 `.formError`，而预览页

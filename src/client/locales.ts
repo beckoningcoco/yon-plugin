@@ -683,9 +683,13 @@ export const zh = {
   // 原先这句只讲三个目录是谁的，「归档附件」那句话（原件不改写、撞名加 -2）单摆在附件
   // 清单的末尾。两句话说的是同一件事的两半——谁放的文件、你放进去会怎样——合起来读一次
   // 就够，分母排在清单两头反而要读者在块里来回找两次。
-  'requirement.filesHint': 'user/ 是他给的（只有你放得进去），generated/ 与 patches/ 是模型写的；底下「归档附件」放的也是 user/，原件一个字都不会被改写，撞名时自动加 -2。',
+  'requirement.filesHint': 'user/ 是他给的原件，generated/ 与 patches/ 是模型写的。模型只能把「他指出的本机文件」搬进 user/，写不了里面的内容；底下「归档附件」放的也是 user/，撞名时自动加 -2。',
   'requirement.filesLoading': '读附件清单…',
   'requirement.filesEmpty': '这个目录是空的。',
+  'requirement.fileHistory': '历史',
+  'requirement.fileVersions': '改过 {count} 次',
+  'requirement.fileHistoryHint': '同名重写会覆盖，旧内容留在这里：',
+  'requirement.fileVersionOf': '第 {version} 版',
   'requirement.filesFailed': '附件清单读不出来：{message}',
   'requirement.fileRead': '读',
   'requirement.fileReading': '读取中…',
@@ -1361,7 +1365,11 @@ export const en = {
   'requirement.dir.generated': 'Documents and plans the model produced',
   'requirement.dir.patches': 'Patch files',
   'requirement.files': 'Attachments',
-  'requirement.filesHint': 'user/ is what they handed over (only you can put anything there); generated/ and patches/ are what the model wrote. "File an attachment" also lands in user/ — the original is never rewritten, and a name already taken gets a -2.',
+  'requirement.filesHint': 'user/ is what they handed over, generated/ and patches/ are what the model wrote. The model can only move a file they point at on this machine into user/ — it cannot author what goes there. "File an attachment" also lands in user/; a name already taken gets a -2.',
+  'requirement.fileHistory': 'History',
+  'requirement.fileVersions': 'rewritten {count}×',
+  'requirement.fileHistoryHint': 'Rewriting a name overwrites it; the earlier content stays here:',
+  'requirement.fileVersionOf': 'version {version}',
   'requirement.filesLoading': 'Reading the attachment list…',
   'requirement.filesEmpty': 'This folder is empty.',
   'requirement.filesFailed': 'The attachment list did not load: {message}',

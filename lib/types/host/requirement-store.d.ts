@@ -32,7 +32,7 @@
  * the plugin, which matters a great deal more for a requirement's whole written
  * history than it does for one iteration report.
  */
-import { type RequirementDir } from '../shared/types.ts';
+import { type RequirementDir, type RequirementHistoryStat } from '../shared/types.ts';
 import { type RequirementEntryDoc } from './requirement-doc.ts';
 /** The three folders every entry carries. */
 export declare const REQUIREMENT_SUBDIRS: readonly RequirementDir[];
@@ -141,6 +141,20 @@ export interface RequirementStore {
         readonly path: string;
         readonly bytes: number;
     }>;
+    /**
+     * The earlier versions of one artifact, oldest first — what {@link writeArtifact}
+     * put aside before each overwrite.
+     *
+     * They live in `<kind>/.history/<name>/<n>`. A sub-directory, deliberately: {@link
+     * statFiles} skips those, so keeping history changes nothing about what the panel
+     * lists — the current file stays the only row, and the versions stay out of the way
+     * until someone asks for them. Before this, the second write of a name destroyed
+     * the first one silently; a document that had been rewritten eight times left one
+     * file and no way to see what the earlier seven said.
+     */
+    statHistory(id: string, kind: RequirementArtifactKind, name: string): Promise<readonly RequirementHistoryStat[]>;
+    /** The first `maxBytes` of one archived version, or undefined when there is no such version. */
+    readHistoryHead(id: string, kind: RequirementArtifactKind, name: string, version: number, maxBytes: number): Promise<RequirementFileHead | undefined>;
     /** Remove an entry outright. Human-only path — the model archives instead. */
     removeEntry(id: string): Promise<void>;
 }

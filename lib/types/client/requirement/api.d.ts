@@ -48,13 +48,13 @@ export interface RequirementApi {
      * 那三种情况这一屏都要画，把它们做成三种错误就要在上面写三支特判。只有「没有这条
      * 条目」和「没有这个文件」才是错的。
      */
-    fileRead(id: string, dir: RequirementDir, name: string): Promise<RequirementFileRead>;
+    fileRead(id: string, dir: RequirementDir, name: string, version?: number): Promise<RequirementFileRead>;
     /**
      * 归档一件使用者原件。
      *
-     * **这是通往 `user/` 的唯一入口**：模型侧那条路（`requirement_artifact_write`）的
-     * `kind` 里根本没有 `user`，所以「这是他给的」这件事由目录结构保证，不靠模型自述。
-     * 撞名不覆盖——回里的 `renamedFrom` 会说清它被改成了什么名字。
+     * 面板走的是这一条；模型侧另有 `requirement_file_import`，它只把使用者指出的、
+     * 本机已存在的文件复制进来，写不了内容本身——所以「这是他给的」仍然成立。两条路
+     * 都不覆盖同名：回里的 `renamedFrom` 会说清它被改成了什么名字。
      */
     importFile(id: string, dir: RequirementDir, file: File): Promise<RequirementFileImport>;
     /** 删一个附件。与条目本身一样，是「只有这一屏走得到」的写。 */

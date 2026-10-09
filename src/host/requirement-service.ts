@@ -206,7 +206,7 @@ export interface YonRequirementsService {
    * refusal shaped like an error would make both of them special-case the same three
    * situations. The only errors are "no such entry" and "no such file".
    */
-  fileRead(ref: string, dir: string, name: string): Promise<RequirementFileRead>
+  fileRead(ref: string, dir: string, name: string, version?: number): Promise<RequirementFileRead>
   /**
    * Put an operator's file into one of the entry's folders.
    *
@@ -647,18 +647,38 @@ export function createYonRequirementsService(
       const groups: RequirementFileGroup[] = []
       for (const dir of dirs) {
         const files = await filesIn(record.id, dir)
-        groups.push({ dir, files, bytes: files.reduce((sum, file) => sum + file.bytes, 0) })
+        // 每个文件带上「被覆盖过几次」。历史藏在子目录里，只有这里知道它有多少版；
+        // `user/` 不覆盖，所以那一格连问都不用问。
+        const counted = await Promise.all(files.map(async file => {
+          if (dir === 'user') return file
+          const history = await store.statHistory(record.id, dir, file.name)
+          return history.length === 0 ? file : { ...file, history }
+        }))
+        groups.push({
+          dir,
+          files: counted,
+          bytes: counted.reduce((sum, file) => sum + file.bytes, 0),
+        })
       }
       return { id: record.id, entry: doc.name, dir: store.dirPath(record.id), groups }
     },
 
-    fileRead: async (ref, dir, name) => {
+    fileRead: async (ref, dir, name, version) => {
       const record = await resolve(ref)
       const folder = requireDir(dir)
       const file = requireFileName(name)
-      const head = await store.readFileHead(record.id, folder, file, MAX_FILE_READ_BYTES)
+      // 带 version 就是读历史里那一版；`user/` 不覆盖，也就没有历史可读。
+      const fromHistory = version !== undefined && Number.isInteger(version) && folder !== 'user'
+      const head = fromHistory
+        ? await store.readHistoryHead(record.id, folder, file, version, MAX_FILE_READ_BYTES)
+        : await store.readFileHead(record.id, folder, file, MAX_FILE_READ_BYTES)
       if (head === undefined) {
-        throw new RequirementError('not-found', `${record.id} 的 ${folder}/ 里没有「${file}」。`)
+        throw new RequirementError(
+          'not-found',
+          fromHistory
+            ? `${record.id} 的 ${folder}/「${file}」没有第 ${String(version)} 版。`
+            : `${record.id} 的 ${folder}/ 里没有「${file}」。`,
+        )
       }
 
       const predicted = classifyFile(file)
@@ -687,6 +707,7 @@ export function createYonRequirementsService(
           // The bytes get the last word: a name that promised text over a file that
           // is not text comes back unreadable, not as a screenful of mojibake.
           readable: predicted.readable && body.encoding !== '',
+          ...(fromHistory ? { version } : {}),
           ...(note === undefined ? {} : { note }),
         },
         text: body.text,

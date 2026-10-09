@@ -143,7 +143,7 @@ export interface YonRequirementsService {
      * refusal shaped like an error would make both of them special-case the same three
      * situations. The only errors are "no such entry" and "no such file".
      */
-    fileRead(ref: string, dir: string, name: string): Promise<RequirementFileRead>;
+    fileRead(ref: string, dir: string, name: string, version?: number): Promise<RequirementFileRead>;
     /**
      * Put an operator's file into one of the entry's folders.
      *

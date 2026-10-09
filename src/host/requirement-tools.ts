@@ -1,9 +1,9 @@
 /**
- * 需求条目，暴露给模型的九个工具，以及它们自己的闸门。
+ * 需求条目，暴露给模型的十个工具，以及它们自己的闸门。
  *
- * 后两个是附件的清单与读取（批 4），**都只读**：写 `user/` 的路只有面板那一条
- * （`POST .../files`），模型侧根本没有——「这是他给的」这件事由目录结构保证，
- * 不靠模型自述。
+ * 附件族里，清单与读取**只读**；归档使用者原件的那一个**只搬运**——它把使用者
+ * 指出的、本机已存在的文件复制进 `user/`，字节从磁盘来、不从模型来。理由见文末
+ * 「user/ 有一半的工具」。
  *
  * ## 这个工具族在做什么
  *
@@ -36,11 +36,18 @@
  * 所以 `requirement_update` 的审批卡列得出 `旧 → 新`，而不是只有新值——与人核对一条
  * 改动靠的正是这个差。
  *
- * ## user/ 没有对应的工具
+ * ## user/ 有一半的工具：只能搬运，不能编写
  *
- * `requirement_artifact_write` 只认 `generated` 与 `patches`。使用者自己放的资料
- * 只能从面板进 `user/`：一个模型写得进去的目录，「这是使用者给的」就不再是真的。
+ * `requirement_artifact_write` 只认 `generated` 与 `patches`，它写不了 `user/`——
+ * 一个模型**编**得进去的目录，「这是使用者给的」就不再是真的。
+ *
+ * 但「让他自己放」这个要求同样不成立：使用者不知道插件的目录在哪，也不该被要求
+ * 知道。于是有了第三条路 `requirement_file_import`——它只把**使用者指出的、这台
+ * 机器上已经存在的文件**复制进 `user/`，字节从磁盘读、不从模型来，并把来源路径
+ * 记进条目标注。内容确实是他的，模型只负责搬。
  */
+import { readFile, stat } from 'node:fs/promises'
+import { basename, resolve as resolvePath } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type {
   ProjectDetail,
@@ -50,7 +57,7 @@ import type {
 } from '../shared/types.ts'
 import { redactSecrets } from './home-files.ts'
 import { REQUIREMENT_STATUS_TEXT, localDate, normalizeName } from './requirement-doc.ts'
-import { sizeOf } from './requirement-files.ts'
+import { MAX_ATTACHMENT_BYTES, sizeOf } from './requirement-files.ts'
 import type { YonRequirementsService } from './requirement-service.ts'
 import type { RequirementArtifactKind } from './requirement-store.ts'
 import type { YonProjectsService } from './service.ts'
@@ -69,6 +76,7 @@ export const REQUIREMENT_TOOL_NAMES = [
   'requirement_read',
   'requirement_file_list',
   'requirement_file_read',
+  'requirement_file_import',
   'requirement_create',
   'requirement_annotate',
   'requirement_update',
@@ -76,8 +84,9 @@ export const REQUIREMENT_TOOL_NAMES = [
   'requirement_artifact_write',
 ] as const
 
-/** 这一族里会走闸门的工具。只读的三个不在里面。 */
+/** 这一族里会走闸门的工具。只读的那几个不在里面。 */
 const WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'requirement_file_import',
   'requirement_create',
   'requirement_annotate',
   'requirement_update',
@@ -445,12 +454,18 @@ export function registerYonRequirementTools(
         lines.push(`${head}（${group.files.length} 个文件，共 ${sizeOf(group.bytes)}）`)
         for (const file of group.files) {
           const read = file.readable ? '' : `    ⚠ ${file.note ?? '读不出文本'}`
-          lines.push(`  ${file.name}    ${sizeOf(file.bytes)}    ${dayOf(file.modifiedAt)}${read}`)
+          // 被覆盖过的文件要报出「有旧版」这件事，否则模型只看见当前这一份，也就不会
+          // 知道自己漏掉了几版——历史存在磁盘上，但没人问它就不存在。
+          const past = file.history ?? []
+          const versions = past.length === 0
+            ? ''
+            : `    改过 ${String(past.length)} 次，旧版可读：${past.map(one => `version=${String(one.version)}`).join(' ')}`
+          lines.push(`  ${file.name}    ${sizeOf(file.bytes)}    ${dayOf(file.modifiedAt)}${versions}${read}`)
         }
         lines.push('')
       }
       lines.push(
-        '读某个文件的正文用 requirement_file_read。',
+        '读某个文件的正文用 requirement_file_read；它带 version 时读的是被覆盖掉的旧版。',
         '标了 ⚠ 的是读不出文本的（Office 压缩包、PDF、图片等）；要它们的正文，得请使用者另存为纯文本。',
         'user/ 里的是使用者提供的材料，不是你生成的。',
       )
@@ -472,6 +487,11 @@ export function registerYonRequirementTools(
       'Read one file from a requirement entry as text. Defaults to user/ — the material the operator '
       + 'handed over — and that is the usual reason to call it: they said "look at the document I gave '
       + 'you", and this is how you look.\n'
+      + 'Pass `version` to read one of the EARLIER versions of a file that was rewritten: every '
+      + 'overwrite of a name under generated/ or patches/ keeps the displaced content, and '
+      + 'requirement_file_list reports which versions exist. Reading the previous one is how you answer '
+      + '"what changed?" without asking anybody. user/ keeps no history — an import whose name is '
+      + 'already taken is filed as "-2" rather than overwriting.\n'
       + 'Text only, and only the start of it: at most about 60k characters, which the report says when '
       + 'it cuts off. Office files (docx/xlsx/pptx), PDFs, images and other binaries come back with no '
       + 'text and a reason instead — that is not an error, it is the answer.\n'
@@ -496,6 +516,11 @@ export function registerYonRequirementTools(
           enum: ['user', 'generated', 'patches'],
           description: 'Which folder the file is in. Defaults to user.',
         },
+        version: {
+          type: 'number',
+          description: 'Read this archived version instead of the current file. The numbers come from '
+            + 'requirement_file_list; 1 is the oldest one kept. Omit for the file as it is now.',
+        },
       },
     },
     output: {
@@ -517,8 +542,14 @@ export function registerYonRequirementTools(
       if (name === '') throw new Error('requirement_file_read 需要 file（文件名，不是路径）')
       const dir = textOf(input, 'dir')
 
-      const read = await service.fileRead(ref, dir === '' ? 'user' : dir, name)
-      const where = `${read.file.dir}/${read.file.name}`
+      const rawVersion = input.version
+      const version = typeof rawVersion === 'number' && Number.isInteger(rawVersion)
+        ? rawVersion
+        : undefined
+      const read = await service.fileRead(ref, dir === '' ? 'user' : dir, name, version)
+      const where = version === undefined
+        ? `${read.file.dir}/${read.file.name}`
+        : `${read.file.dir}/${read.file.name}（第 ${String(version)} 版，已被覆盖）`
       if (read.text === '') {
         return {
           file: read.file.file,
@@ -687,6 +718,17 @@ export function registerYonRequirementTools(
       + 'Use it for the material YOU produced (the tables and fields you found, why a plan was '
       + 'chosen, what you tried that did not work), and for what the operator tells you as the work '
       + 'goes on.\n'
+      + 'STRUCTURE — when the note reports a change, write it as short labelled lines rather than '
+      + 'prose, so an entry stays scannable after a dozen rounds:\n'
+      + '  **现状**：what it is now, one line\n'
+      + '  **问题**：what is wrong, or what forced the change (omit the line when nothing is wrong)\n'
+      + '  **改法**：what was changed, or what will be\n'
+      + '  **依据/结果**：the evidence — measured numbers, file paths, commands run\n'
+      + 'Keep each line to a sentence or two. Do NOT paste SQL or long tables into the note: put '
+      + 'them in a file under generated/ and name that path instead. A note that is only a finding '
+      + 'needs two lines at most (现状 + 依据/结果). The panel renders these labels as sections; '
+      + 'notes written without them still display as ordinary prose, so this is safe to adopt '
+      + 'gradually.\n'
       + 'Annotation never needs approval and never interrupts anyone, so file it as it happens rather '
       + 'than saving it for the end of the session. If a fact recorded earlier turns out to be wrong, '
       + 'say so in the new note in those terms — do not try to rewrite the earlier one.\n'
@@ -703,8 +745,9 @@ export function registerYonRequirementTools(
         },
         text: {
           type: 'string',
-          description: 'The note. One self-contained paragraph: what happened, and what it means. '
-            + 'Do not write a date — the host stamps the local date in front of it.',
+          description: 'The note. Where it reports a change, use the labelled lines '
+            + '(**现状**：/ **问题**：/ **改法**：/ **依据/结果**：); otherwise one self-contained '
+            + 'paragraph. Do not write a date — the host stamps the local date in front of it.',
         },
       },
     },
@@ -874,6 +917,96 @@ export function registerYonRequirementTools(
     },
     presentCall(args) {
       return card(`废弃需求条目：${String((args as { ref?: unknown })?.ref ?? '')}`, 'other')
+    },
+  } satisfies YonToolDefinition))
+
+  disposers.push(ctx.tools.register({
+    name: 'requirement_file_import',
+    description:
+      'File a document the operator handed over INTO the entry\'s user/ folder — the "they gave me '
+      + 'this" side of the ledger.\n'
+      + 'Use it as soon as they point you at a file on this machine (a path they paste, a document '
+      + 'they say they wrote). Do NOT ask them to copy it into the plugin\'s folders themselves: they '
+      + 'do not know where those are, and should not have to.\n'
+      + 'It only COPIES a file that already exists on this machine — you pass the path, and the bytes '
+      + 'are read from disk, never composed by you. Anything you wrote yourself does not belong in '
+      + 'user/: that goes to requirement_artifact_write with kind "generated" or "patches". Keeping '
+      + 'those two apart is the whole reason "this is theirs" can be trusted.\n'
+      + 'A name already taken is kept by adding "-2" (the original is never overwritten), one '
+      + 'attachment may not exceed 50 MB, and the import is recorded as a note on the entry naming '
+      + 'the source path — so the provenance survives without anyone having to remember it.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['ref', 'path'],
+      properties: {
+        ref: {
+          type: 'string',
+          description: 'The entry: its id (rq-…) or its name. Prefer the id.',
+        },
+        path: {
+          type: 'string',
+          description: 'Path of the file on this machine, as the operator gave it. The file must '
+            + 'already exist — this copies it, it cannot create content.',
+        },
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        required: ['file', 'report'],
+        properties: { file: { type: 'string' }, report: { type: 'string' } },
+      },
+      render: (_args: unknown, value: unknown) => text((value as { report: string }).report),
+    },
+    async execute(args: unknown): Promise<unknown> {
+      if (args === null || typeof args !== 'object' || Array.isArray(args)) {
+        throw new Error('requirement_file_import 需要一个对象参数')
+      }
+      const input = args as Record<string, unknown>
+      const ref = textOf(input, 'ref')
+      if (ref === '') throw new Error('requirement_file_import 需要 ref（条目的 id 或名称）')
+      const given = textOf(input, 'path')
+      if (given === '') throw new Error('requirement_file_import 需要 path（使用者给你的文件路径）')
+
+      const source = resolvePath(given)
+      let bytes: Buffer
+      try {
+        const info = await stat(source)
+        if (!info.isFile()) throw new Error('这不是一个文件')
+        if (info.size > MAX_ATTACHMENT_BYTES) {
+          throw new Error(`有 ${sizeOf(info.size)}，超过一个附件 ${sizeOf(MAX_ATTACHMENT_BYTES)} 的上限`)
+        }
+        bytes = await readFile(source)
+      } catch (error: unknown) {
+        const why = error instanceof Error ? error.message : String(error)
+        throw new Error(
+          `读不到「${source}」：${why}。要归档的是使用者给的那份文件本身——请他把路径给全`
+          + '（或者先放到一个读得到的地方），不要改用一个由你来写的文件顶替它。',
+        )
+      }
+
+      const imported = await service.importFile(ref, 'user', basename(source), bytes)
+      const renamed = imported.renamedFrom === undefined
+        ? ''
+        : `（原名「${imported.renamedFrom}」已被占用，存为「${imported.file.name}」）`
+      await service.annotate(
+        ref,
+        `已把使用者提供的材料归档进 user/：${imported.file.name}（${sizeOf(imported.file.bytes)}，`
+        + `来源：${source}）${renamed}`,
+      )
+
+      return {
+        file: imported.file.file,
+        report: [
+          `已归档到「${imported.entry}」的 user/：${imported.file.name}（${sizeOf(imported.file.bytes)}）`,
+          `· 来源：${source}${renamed}`,
+          '· 这次归档与来源已记进条目标注；原件一个字都没有被改写。',
+        ].join('\n'),
+      }
+    },
+    presentCall(args) {
+      return card(`归档使用者原件：${String((args as { path?: unknown })?.path ?? '')}`, 'other')
     },
   } satisfies YonToolDefinition))
 

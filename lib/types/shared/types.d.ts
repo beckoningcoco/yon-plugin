@@ -1230,6 +1230,28 @@ export interface RequirementFile {
     readonly readable: boolean;
     /** 读不了时的一句原因（「这是 docx，要等批 5」；或「它不是文本」）。 */
     readonly note?: string;
+    /**
+     * 被覆盖掉的旧版本，从旧到新。
+     *
+     * `generated/` 与 `patches/` 里同名重写就是覆盖，写之前旧内容会先移到
+     * `<dir>/.history/<name>/<n>`（`user/` 撞名加 `-2`、不覆盖，所以那里永远是空的）。
+     * 省略或空数组表示从没被覆盖过——那正是「现在这一份就是全部」的意思。
+     */
+    readonly history?: readonly RequirementHistoryStat[];
+    /**
+     * 这是第几版（1 起）。
+     *
+     * 只有读某个历史版本时才有；读当前文件时没有这个字段——当前那份没有版本号，
+     * 它就是「现在」。
+     */
+    readonly version?: number;
+}
+/** 一件附件被覆盖掉的某一版。 */
+export interface RequirementHistoryStat {
+    /** 1 是第二次写入挤掉的那一版；编号只增、不复用，所以它按序读得通。 */
+    readonly version: number;
+    readonly bytes: number;
+    readonly modifiedAt: string;
 }
 /**
  * 一个目录里的一堆附件。

@@ -59,6 +59,49 @@ import { DIR_LABEL_KEYS, STATUSES, STATUS_FILTERS, STATUS_LABEL_KEYS } from './a
 import base from '../panel.module.css'
 import css from './panel.module.css'
 
+/** 标注的日期前缀：宿主追加时盖的章，形如 `2026-10-09 `（`requirement-doc.ts` 的 localDate）。 */
+const NOTE_DATE_RE = /^(\d{4}-\d{2}-\d{2})[ \t]+/
+
+/** 标注里的段标记，只认行首的 `**标签**：`。 */
+const NOTE_SECTION_RE = /^\*\*([^*\n]{1,16})\*\*[:：][ \t]*/gm
+
+/**
+ * 把一条标注拆成「日期 + 若干结构段」。
+ *
+ * 只有认出**两个以上**段标记时才拆：标注是只增不改的记录，早期那些整段散文里也常有
+ * `**加粗**`，一个加粗不足以说明这条标注本身就是分段的。段标记之前若还有正文，同样不拆
+ * ——那多半是「一句话，后面跟了几段」，切开会把开头那句丢掉。
+ *
+ * 拆不出来就返回 `undefined`，交给原来的整段渲染：历史标注因此不会因为这次改动而变样。
+ */
+function splitNote(text: string): { date: string; sections: Array<{ label: string; body: string }> } | undefined {
+  const dated = NOTE_DATE_RE.exec(text)
+  const date = dated === null ? '' : dated[1] ?? ''
+  const rest = dated === null ? text : text.slice(dated[0].length)
+
+  const marks: Array<{ label: string; start: number; end: number }> = []
+  NOTE_SECTION_RE.lastIndex = 0
+  let hit = NOTE_SECTION_RE.exec(rest)
+  while (hit !== null) {
+    marks.push({ label: hit[1] ?? '', start: hit.index, end: hit.index + hit[0].length })
+    hit = NOTE_SECTION_RE.exec(rest)
+  }
+  const first = marks[0]
+  if (first === undefined || marks.length < 2) return undefined
+  if (rest.slice(0, first.start).trim() !== '') return undefined
+
+  return {
+    date,
+    sections: marks.map((mark, index) => {
+      const next = marks[index + 1]
+      return {
+        label: mark.label,
+        body: rest.slice(mark.end, next === undefined ? rest.length : next.start).trim(),
+      }
+    }),
+  }
+}
+
 /** 新建表单开着的时候它拿着的东西。 */
 interface Draft {
   projectId: string
@@ -230,6 +273,8 @@ export function RequirementManager({
   const [folder, setFolder] = useState<RequirementDir>('user')
   /** 展开着正文的那一个文件。同一刻只开一个：这一屏只有 450px，开两个就谁也读不了。 */
   const [openFile, setOpenFile] = useState<string | undefined>(undefined)
+  /** 展开着历史清单的那一个文件。与 `openFile` 分开：正文与历史各自开合。 */
+  const [historyOf, setHistoryOf] = useState<string | undefined>(undefined)
   const [fileText, setFileText] = useState<RequirementFileRead | undefined>(undefined)
   const [fileBusy, setFileBusy] = useState(false)
   const [fileFailure, setFileFailure] = useState<string | undefined>(undefined)
@@ -476,10 +521,21 @@ export function RequirementManager({
     setCopied(ok ? 'ok' : 'failed')
   }
 
-  /** 展开／收起一个附件的正文。再点同一个就是收起，省一个「收起」按钮的地方。 */
-  const readAttachment = async (dir: RequirementDir, name: string): Promise<void> => {
+  /**
+   * 展开／收起一个附件的正文。再点同一个就是收起，省一个「收起」按钮的地方。
+   *
+   * 带 `version` 就是读被覆盖掉的第 N 版；键也跟着带版本，所以「当前版」与「某个旧版」
+   * 是两个各自开合的位置，翻旧版不会把当前版顶掉。
+   */
+  const readAttachment = async (
+    dir: RequirementDir,
+    name: string,
+    version?: number,
+  ): Promise<void> => {
     if (detail === undefined) return
-    const key = fileKey(dir, name)
+    const key = version === undefined
+      ? fileKey(dir, name)
+      : `${fileKey(dir, name)}@${String(version)}`
     if (openFile === key) {
       setOpenFile(undefined)
       setFileText(undefined)
@@ -491,7 +547,7 @@ export function RequirementManager({
     setFileFailure(undefined)
     setFileBusy(true)
     try {
-      setFileText(await fileRead(detail.id, dir, name))
+      setFileText(await fileRead(detail.id, dir, name, version))
     } catch (error: unknown) {
       setFileFailure(messageOf(error))
     } finally {
@@ -913,13 +969,34 @@ export function RequirementManager({
                       ? <p className={css.sectionNote}>{t('requirement.traceEmpty')}</p>
                       : (
                         <ul className={css.traces}>
-                          {notes.map((entry, index) => (
+                          {notes.map((entry, index) => {
                             // 段没有 id，位置就是它的身份：标注只追加不改写，所以下标在两次
                             // 读取之间是稳定的。
-                            <li key={index} className={css.trace}>
-                              <MarkdownText text={entry} labels={markdownLabels} />
-                            </li>
-                          ))}
+                            const structured = splitNote(entry)
+                            return (
+                              <li key={index} className={css.trace}>
+                                {structured === undefined
+                                  ? <MarkdownText text={entry} labels={markdownLabels} />
+                                  : (
+                                    <>
+                                      {structured.date !== '' && (
+                                        <p className={css.traceDate}>{structured.date}</p>
+                                      )}
+                                      <div className={css.traceSections}>
+                                        {structured.sections.map((section, at) => (
+                                          <div key={`${at}-${section.label}`} className={css.traceSection}>
+                                            <span className={css.traceLabel}>{section.label}</span>
+                                            <div className={css.traceBody}>
+                                              <MarkdownText text={section.body} labels={markdownLabels} />
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </>
+                                  )}
+                              </li>
+                            )
+                          })}
                         </ul>
                       )
                   )}
@@ -981,7 +1058,10 @@ export function RequirementManager({
                       <ul className={css.fileList}>
                         {shown.map(entry => {
                           const key = fileKey(entry.dir, entry.name)
-                          const open = openFile === key
+                          // 正文区对「当前版」和「它的某个历史版」都开；按钮文案只看当前版。
+                          const showingCurrent = openFile === key
+                          const reading = showingCurrent || (openFile?.startsWith(`${key}@`) ?? false)
+                          const past = entry.history ?? []
                           return (
                             <li key={key} className={css.fileRow}>
                               <div className={css.fileHead}>
@@ -990,6 +1070,12 @@ export function RequirementManager({
                                   {sizeText(entry.bytes)}
                                   {' · '}
                                   {shortDate(entry.modifiedAt)}
+                                  {past.length > 0 && (
+                                    <>
+                                      {' · '}
+                                      {t('requirement.fileVersions', { count: String(past.length) })}
+                                    </>
+                                  )}
                                 </span>
                                 <span className={css.fileActions}>
                                   {/* 预测说读不了的就不给这个按钮：点一下再被告知
@@ -1000,7 +1086,18 @@ export function RequirementManager({
                                       className={css.fileAction}
                                       onClick={() => { void readAttachment(entry.dir, entry.name) }}
                                     >
-                                      {open ? t('requirement.fileHide') : t('requirement.fileRead')}
+                                      {showingCurrent ? t('requirement.fileHide') : t('requirement.fileRead')}
+                                    </button>
+                                  )}
+                                  {/* 被覆盖过才给这个按钮：一份没有过去的文件，「历史」是个空抽屉。 */}
+                                  {past.length > 0 && (
+                                    <button
+                                      type="button"
+                                      className={css.fileAction}
+                                      aria-expanded={historyOf === key}
+                                      onClick={() => { setHistoryOf(historyOf === key ? undefined : key) }}
+                                    >
+                                      {t('requirement.fileHistory')}
                                     </button>
                                   )}
                                   <button
@@ -1044,7 +1141,44 @@ export function RequirementManager({
                                 <p className={css.fileNote}>{entry.note}</p>
                               )}
 
-                              {open && (
+                              {/* 被覆盖掉的旧版本。清单复用文件那一行的样式——这是同一件事
+                                  的过去时，多一套视觉只会让读者以为它是另一种东西。 */}
+                              {historyOf === key && past.length > 0 && (
+                                <div className={css.fileText}>
+                                  <p className={css.sectionNote}>{t('requirement.fileHistoryHint')}</p>
+                                  <ul className={css.fileList}>
+                                    {past.map(older => (
+                                      <li key={older.version} className={css.fileRow}>
+                                        <div className={css.fileHead}>
+                                          <span className={css.fileName}>
+                                            {t('requirement.fileVersionOf', { version: String(older.version) })}
+                                          </span>
+                                          <span className={css.fileMeta}>
+                                            {sizeText(older.bytes)}
+                                            {' · '}
+                                            {shortDate(older.modifiedAt)}
+                                          </span>
+                                          <span className={css.fileActions}>
+                                            <button
+                                              type="button"
+                                              className={css.fileAction}
+                                              onClick={() => {
+                                                void readAttachment(entry.dir, entry.name, older.version)
+                                              }}
+                                            >
+                                              {openFile === `${key}@${String(older.version)}`
+                                                ? t('requirement.fileHide')
+                                                : t('requirement.fileRead')}
+                                            </button>
+                                          </span>
+                                        </div>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+
+                              {reading && (
                                 <div className={css.fileText}>
                                   {fileBusy && <p className={css.sectionNote}>{t('requirement.fileReading')}</p>}
                                   {fileFailure !== undefined && (
