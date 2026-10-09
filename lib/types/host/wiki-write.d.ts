@@ -1,8 +1,16 @@
 import type { Context } from '@deepseek-ai/cordis';
 import type { YonWikiService } from './wiki-service.ts';
 import type { WikiStore } from './wiki-store.ts';
-/** Every tool this module owns. */
-export declare const WIKI_WRITE_TOOL_NAMES: readonly ["wiki_write"];
+/**
+ * Every tool this module owns, **in the order `registerYonWikiWriteTools` registers
+ * them**.
+ *
+ * `host-plugin.spec.ts` and `prompt.spec.ts` both take this array as the expectation
+ * for what is registered and in what order. Adding a tool somewhere that reads more
+ * naturally turns them red, and that is the point: either it goes where it is
+ * registered, or the registration moves to it.
+ */
+export declare const WIKI_WRITE_TOOL_NAMES: readonly ["wiki_write", "wiki_page_write"];
 /** What a call can fail with. */
 export declare class WikiWriteError extends Error {
     readonly code: 'invalid-input' | 'not-found' | 'conflict' | 'failed';
@@ -18,6 +26,17 @@ export interface WikiWriteResult {
     /** What was written, in one line. */
     readonly summary: string;
     /** Files touched besides the page itself. */
+    readonly sideEffects: readonly string[];
+}
+/** The outcome of one non-entity page write. */
+export interface WikiPageWriteResult {
+    readonly ok: boolean;
+    readonly vault: string;
+    readonly dir: string;
+    readonly page: string;
+    /** Vault-relative path, ready to hand to `digest_audit`'s `product`. */
+    readonly file: string;
+    readonly summary: string;
     readonly sideEffects: readonly string[];
 }
 /**
