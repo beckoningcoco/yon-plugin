@@ -760,7 +760,12 @@ export function createYonWikiService(
         const log = await readFile(path.join(vault.path, 'log.md'), 'utf8').catch(() => undefined)
         if (log === undefined) continue
         for (const line of log.split(/\r?\n/)) {
-          const m = /^-\s+(\d{4}-\d{2}-\d{2})\s+(.+)$/.exec(line.trim())
+          // Two shapes carry a date, and both are in live use: a hand-kept log runs
+          // `## 2026-06-17 ingest | 标题` down from its title, while `recordWrite`
+          // appends the same date-first line as a list item. Reading only the second
+          // made this answer "nothing was ever written here" over a log.md holding
+          // twenty-odd entries.
+          const m = /^(?:#{2,4}|-)\s+(\d{4}-\d{2}-\d{2})\s+(.+)$/.exec(line.trim())
           if (m === null) continue
           entries.push({
             date: m[1] ?? '',
@@ -770,10 +775,14 @@ export function createYonWikiService(
           })
         }
       }
-      // `log.md` is append-only, so the newest lines are at the end. Reversing gives
-      // newest-first without parsing timestamps the format does not carry — a line
-      // knows its day, not its minute.
-      return entries.reverse().slice(0, wanted)
+      // Newest first by the date an entry carries, not by where it sits in the file.
+      // Position says nothing here — the two writers disagree about direction, one
+      // prepending and one appending — so reversing the file returned the *oldest*
+      // entries as "recent". The sort is stable, so entries sharing a day keep the
+      // order they were read in.
+      return entries
+        .sort((a, b) => (a.date === b.date ? 0 : a.date < b.date ? 1 : -1))
+        .slice(0, wanted)
     },
 
     async gaps(vaultId, limit) {
