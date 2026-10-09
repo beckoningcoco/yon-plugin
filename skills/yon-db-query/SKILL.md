@@ -33,6 +33,18 @@ whenToUse: 使用者要求查某个项目/环境的数据、验证一条 SQL、�
 - 一次只发一条语句，工具返回的是结果集，不做多语句编排；
 - 大结果集会占用上下文：先 `COUNT(*)` 或加 `WHERE`/`ROWNUM`/`LIMIT` 收敛，再取明细。
 
+## 连不上时：先分清是驱动、加密库还是网络
+
+连接信息和驱动由宿主处理，但插件**不会自动安装**驱动。报错基本落在这三类里，**不要**把它当成表名写错或数据问题：
+
+| 报错关键词 | 是什么 | 怎么办 |
+|---|---|---|
+| `缺少 Python 驱动` | 目标机的 python 没装对应驱动 | 按提示装：达梦 `pip install dmPython`、Oracle `pip install oracledb`、MySQL `pip install pymysql`、PostgreSQL `pip install psycopg2-binary` |
+| `[CODE:-70089] 加密模块加载失败` | 达梦的加密库目录 `dmssl`（在 dmPython 旁边或 `DM_HOME` 下）没有被加载 | 查询脚本会自动把它挂上进程的库搜索路径并重启一次；仍失败时确认该目录存在、且与 dmPython 同为 64 位 |
+| `[CODE:-70028] 创建SOCKET连接失败`、`Connection timed out`、`Can't connect` | 网络不通：没连 VPN、IP 白名单没放行、端口不通 | 与驱动无关，请使用者确认网络，不要去改表名或 SQL |
+
+连接失败时错误后面会附一段**环境自检**（解释器、驱动、达梦加密库、到库地址的 TCP 是否可达）。照着那几行判断方向，不要把自检结论当成 SQL 错误。
+
 ## 写操作会被拦下来
 
 `datasource_query` 遇到 `INSERT`、`UPDATE`、`DELETE`、`DROP`、`TRUNCATE`、`ALTER`、`CREATE`
