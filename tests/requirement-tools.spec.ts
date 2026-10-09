@@ -139,7 +139,7 @@ async function bench() {
 }
 
 describe('这一族注册了什么', () => {
-  it('registers exactly the nine declared names', async () => {
+  it('registers exactly the ten declared names', async () => {
     const { registered, dispose } = await bench()
     expect(registered.map(definition => definition.name)).toEqual([...REQUIREMENT_TOOL_NAMES])
     for (const definition of registered) {
@@ -154,7 +154,8 @@ describe('这一族注册了什么', () => {
   it('offers the model nothing that deletes an entry or a file', async () => {
     const { registered } = await bench()
     // 模型能把条目废弃（`requirement_archive`，可恢复），但删不掉它；附件也一样——
-    // 它能读、能列，删只能由面板上的人做。将来谁加了 `requirement_delete` 或
+    // 它能读、能列，删只能由面板上的人做。`requirement_file_import` 只是把使用者
+    // 指出的本机文件复制进来，既不覆盖也不删除。将来谁加了 `requirement_delete` 或
     // `requirement_file_remove`，这条会红。
     expect([...REQUIREMENT_TOOL_NAMES]).toEqual([
       'requirement_list',
@@ -165,6 +166,7 @@ describe('这一族注册了什么', () => {
       'requirement_annotate',
       'requirement_update',
       'requirement_archive',
+      'requirement_file_import',
       'requirement_artifact_write',
     ])
     for (const definition of registered) {

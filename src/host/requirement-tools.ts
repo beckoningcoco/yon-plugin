@@ -70,17 +70,23 @@ import {
   type YonToolDefinition,
 } from './tools.ts'
 
-/** 这个模块拥有的工具。 */
+/**
+ * 这个模块拥有的工具，**顺序与 `registerYonRequirementTools` 的注册顺序一致**。
+ *
+ * 这不是摆设：`host-plugin.spec.ts` 与 `requirement-tools.spec.ts` 都拿它当「注册
+ * 了什么、按什么顺序」的期望值。加工具时随手插在语义上顺眼的位置，测试会红——那
+ * 正是它该提醒的：要么按注册顺序放，要么把注册也挪过去。
+ */
 export const REQUIREMENT_TOOL_NAMES = [
   'requirement_list',
   'requirement_read',
   'requirement_file_list',
   'requirement_file_read',
-  'requirement_file_import',
   'requirement_create',
   'requirement_annotate',
   'requirement_update',
   'requirement_archive',
+  'requirement_file_import',
   'requirement_artifact_write',
 ] as const
 

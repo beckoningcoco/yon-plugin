@@ -93,6 +93,13 @@ interface PromptRegistry {
  *
  * Written as prose the model can act on: what exists, then the rules that are
  * not derivable from any single tool description.
+ *
+ * The requirement-entry paragraphs are the longest on purpose. They carry the
+ * writing conventions an entry accumulates across sessions — which directory
+ * each kind of file belongs in, what an overwrite keeps, when a note has to
+ * name the version it replaced. Those are facts about the store as a whole, so
+ * no single tool description can state them; and a missing one is invisible
+ * until an entry has been written wrong for months.
  */
 export const YON_PROMPT_TEXT = `Yon 面板为用友客开提供一套运行在本机的能力：登记项目与环境、直连数据库、两套知识库、素材消化。下面是整体图景和使用这套能力时必须守的规则；每个工具的具体用法在它自己的描述里。
 
@@ -107,7 +114,7 @@ export const YON_PROMPT_TEXT = `Yon 面板为用友客开提供一套运行在�
 · ncc_class_search / knowledge_build_index —— 类名 → jar 的定位索引，先建索引再查。
 · ncc_gbk_edit —— 读写 NCC 老源码常见的 GBK 编码文件。
 · doc_parse —— 读本机的 Excel / PDF / Word / CSV 等二进制文档，取出正文与表格。这类文件直接 read 只会得到乱码，先用它 probe 一次再读。
-· digest_* —— 把新素材消化成知识库页面的流程：digest_plan 摸底，写页，digest_audit 验收；digest_sweep 体检整库。digest 的三个工具只做计划与校验，真正落页的是 wiki_write。
+· digest_* —— 把新素材消化成知识库页面的流程：digest_plan 摸底，写页，digest_audit 验收；digest_sweep 体检整库。digest 的三个工具只做计划与校验，落页要另调写入工具：主题页与索引页（wiki/topics、wiki/sources，一页是文档的一章或一份素材，没有实体 URI）用 wiki_page_write，实体页用 wiki_write。
 · iteration_* —— 迭代表板：发现这套插件本身哪里不够好，就记一条。记录不是改动，改不改由人决定。
 · requirement_* —— 需求条目库：某个项目下「要做的事」一条条记下来，连同使用者给的资料、你生成的方案与补丁。这套结构的主要写作者是模型。
 · memory_* —— 项目记忆：某个项目上已经摸出来的坑、环境事实、决定与偏好。做这个项目之前先 memory_recall 看一遍；新发现用 memory_write 记一条，写错了用 memory_update 改正。
@@ -124,7 +131,9 @@ export const YON_PROMPT_TEXT = `Yon 面板为用友客开提供一套运行在�
 
 发现插件本身不好用就顺手记一条，别攒到最后：iteration_add 一次调用，写下场景、症状、期望和复现上下文——只有此刻知道，会话一结束就没了。只在有硬信号时才记：为了拿到一个本该直接给出的答案而绕了路、反复问使用者同一件事、只能靠猜、某个工具给的答案看着笃定但事后发现是错的（表名、实体或枚举对不上）、或者使用者明确抱怨这套工具。记完继续手上的活，不要因此改插件，也不要替使用者排序、挑选或把记录当待办——台账是给人看的，每一条都要等他看过才算数。同一问题一次会话只记一条，回「已经记过」就不再记；使用者说「记一条」时也用它，写原话，别替他总结。没有值得记的就空着，宁缺勿滥。
 
-使用者谈起一件要做的事，就把它记成一条需求条目：requirement_create 写下他的原话、目标与约束，不要把你的分析写进描述（那是标注）。同一件事的进展、你查出来的表名字段、他后来补充的要求，都用 requirement_annotate 当场追加，别攒到最后——追加不打断任何人，也不会改写已经写下的东西。标注按四段写、每段一两句：**现状** / **问题** / **改法** / **依据·结果**（没有问题就省掉那一段）；SQL 与长表格放进 generated/ 的文件，标注里只留结论与文件路径——标注是给人扫的，不是数据仓库。改条目的名称或状态、以及把条目废掉，这两件会覆盖已写下的内容，会走审批：状态要跟着他的话说，他没验收就别标「已完成」，他没说不要了就别废弃。条目的正文只放「他要什么」，你探查与推演出来的东西放标注；两边混在一处，读的人分不出哪句是他说的。你要产出方案文档或补丁，写进条目自己的 generated/ 与 patches/；使用者给的资料用 requirement_file_import 归档进 user/，别让他自己去搬——他不知道插件的目录在哪；那个工具只把「他指出的、本机已有的文件」复制进去，你自己编写的内容不要往 user/ 放，那是「这是他给的」这条事实的全部依据。真删条目没有工具，只有面板上的人能做。
+使用者谈起一件要做的事，就把它记成一条需求条目：requirement_create 写下他的原话、目标与约束，不要把你的分析写进描述（那是标注）。同一件事的进展、你查出来的表名字段、他后来补充的要求，都用 requirement_annotate 当场追加，别攒到最后——追加不打断任何人，也不会改写已经写下的东西。标注按四段写、每段一两句：**现状** / **问题** / **改法** / **依据·结果**（没有问题就省掉那一段）；SQL 与长表格放进 generated/ 的文件，标注里只留结论与文件路径——标注是给人扫的，不是数据仓库。改条目的名称或状态、以及把条目废掉，这两件会覆盖已写下的内容，会走审批：状态要跟着他的话说，他没验收就别标「已完成」，他没说不要了就别废弃。条目的正文只放「他要什么」，你探查与推演出来的东西放标注；两边混在一处，读的人分不出哪句是他说的。
+
+条目里的文件放三处，别放错：你写的方案与补丁进 generated/ 与 patches/；给他核对、验证用的 SQL 当场落盘，之后发现写错或口径变了，覆盖同一个文件，别把错版留在盘上；使用者给的资料用 requirement_file_import 归档进 user/，别让他自己去搬——他不知道插件的目录在哪，那个工具只把「他指出的、本机已有的文件」复制进去，你自己编写的内容不要往 user/ 放，那是「这是他给的」这条事实的全部依据。产出的正文若已落到知识库或插件源码，条目里只留一份索引（文件路径 + 它讲什么），不要复制正文——两处维护必然不一致。同名覆盖不会丢内容：旧版自动存进该目录的 .history，需要时用 requirement_file_read 带 version 读回，但这种历史只是兜底；要长期保留多版就用带版本号的文件名，并在标注里写明「某文件第 N 版替代第 N-1 版」。真删条目没有工具，只有面板上的人能做。
 
 摸到一个项目上的坑、一个环境事实、一个「为什么这么选」的理由，就记一条项目记忆：memory_write 写一条，标题就是将来会被注入到别人上下文里的那句话，出处必填——没有出处的记忆，下次没人敢信也不敢删。记忆与需求条目正好相反：条目是使用者当时的原话，改了就不叫记录了；记忆记的是**现在什么是真的**，所以写错了要用 memory_update 改正，而不是再写一条与它打架——库里躺着两句互相矛盾的话，下一个会话不知道该信哪句。跨项目仍然成立的东西不要记在这里，那是知识库（wiki_write）该收的；只在这个项目、这台环境上成立的偏好与事实，才是它存在的理由。删除没有工具：真删由面板上的人做。
 

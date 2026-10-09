@@ -632,7 +632,8 @@ describe('requirement surface', () => {
     fireEvent.click(screen.getByRole('button', { name: at('requirement.fileRead') }))
 
     expect(await screen.findByText(/要接三个接口/)).toBeTruthy()
-    expect(fileRead).toHaveBeenCalledWith('rq-1', 'user', '接口说明.txt')
+    // 第四个参数是版本，不给就是当前版：面板读正文一律读当前版，读旧版要点「历史」。
+    expect(fileRead).toHaveBeenCalledWith('rq-1', 'user', '接口说明.txt', undefined)
     // 用的哪个解码要说出来：GBK 按 UTF-8 读的症状是乱码，而乱码本身看不出原因。
     expect(screen.getByText(at('requirement.fileEncoding').replace('{encoding}', 'gb18030'))).toBeTruthy()
     expect(screen.getByText(/一次最多读 60000 个字符/)).toBeTruthy()

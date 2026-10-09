@@ -114,7 +114,12 @@ describe('the Yon prompt section', () => {
     expect(YON_PROMPT_TEXT).toContain('不要把你的分析写进描述')
     expect(YON_PROMPT_TEXT).toContain('用 requirement_annotate 当场追加')
     expect(YON_PROMPT_TEXT).toContain('他没验收就别标「已完成」')
-    expect(YON_PROMPT_TEXT).toContain('那个目录你不能写')
+    // 「那个目录你不能写」这句在 2026-10-09 被 `requirement_file_import` 取代了：
+    // 模型现在能把使用者指出的本机文件搬进 user/。该守住的那条没变——user/ 里只
+    // 该有「他给的东西」，而现在靠的是字节从磁盘读、不是模型写进去——所以断言换成
+    // 它现在的说法。
+    expect(YON_PROMPT_TEXT).toContain('别让他自己去搬')
+    expect(YON_PROMPT_TEXT).toContain('你自己编写的内容不要往 user/ 放')
     expect(YON_PROMPT_TEXT).toContain('真删条目没有工具')
   })
 

@@ -453,10 +453,14 @@ describe('附件路由', () => {
     )
     expect(written.status).toBe(200)
     expect(json(written)).toEqual(READ)
-    expect(service.fileRead.mock.calls[0]).toEqual(['rq-1', 'user', '华科接口文档.txt'])
+    // 第四个参数是版本：不给就是当前版（undefined），`?version=N` 读被覆盖掉的第 N 版。
+    expect(service.fileRead.mock.calls[0]).toEqual(['rq-1', 'user', '华科接口文档.txt', undefined])
 
     await send(service, '/yon/api/requirements/rq-1/files/a.md?dir=generated', 'GET')
-    expect(service.fileRead.mock.calls[1]).toEqual(['rq-1', 'generated', 'a.md'])
+    expect(service.fileRead.mock.calls[1]).toEqual(['rq-1', 'generated', 'a.md', undefined])
+
+    await send(service, '/yon/api/requirements/rq-1/files/a.md?dir=generated&version=2', 'GET')
+    expect(service.fileRead.mock.calls[2]).toEqual(['rq-1', 'generated', 'a.md', 2])
   })
 
   it('deletes one file, and refuses another verb on it', async () => {
