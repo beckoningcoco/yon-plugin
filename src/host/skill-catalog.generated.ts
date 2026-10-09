@@ -652,9 +652,10 @@ import nc.vo.bd.meta.BatchOperateVO;
 | **审批后自动协同** | 协同、购销协同、自动生单、IPfExchangeService、ISCMPubSaveCommitService、CloudPFlowContext、用户模拟、跨公司 | \`ncc/ncc-dev/references/scenarios/ncc-coding-patterns.md\`（未随包提供） §2 + \`ncc/ncc-dev/references/scenarios/project-ztxx.md\`（未随包提供） §1 |
 | **后台任务** | 后台任务、计划任务、定时任务、定时执行、调度、IBackgroundWorkPlugin、executeTask | \`ncc-background-task\` 子技能 |
 | **资产包接口 / 集成规则** | 资产包接口、第三方系统对接、集成规则、pub_interule、pub_intecontrast、OpenAPI 签名、REST Resource、AbstractRestResource、华科客开 | \`ncc-asset-hawk\` 子技能 |
-| **参照** | 参照、下拉参照、自定义参照、参照过滤、F7 | \`ncc/ncc-dev/references/scenarios/ref-model.md\`（待建） |
+| **参照** | 参照、下拉参照、自定义参照、参照过滤、F7 | \`ncc/ncc-dev/references/scenarios/ref-model.md\`（前端过滤已完成；后端参照模型待补） |
 | **业务扩展** | 业务扩展、扩展点、扩展注册、处理器 | \`ncc/ncc-dev/references/scenarios/biz-extension.md\`（待建） |
 | **编码规则** | 编码规则、单据编号、自动编号、编码生成 | \`ncc/ncc-dev/references/scenarios/coding-rule.md\`（待建） |
+| **前端开发 / 脚手架** | 前端、前端源码、页面开发、列表页、卡片页、list/card、hotwebs、webpack、nc-lightapp-front、参照过滤、前端 GBK | \`ncc/ncc-dev/references/frontend/README.md\`（该目录 8 篇，入口是 README） |
 
 ## 源码分析工作流
 
@@ -1328,6 +1329,18 @@ public void doAction(IBusinessEvent event) throws BusinessException {
 - 一次只发一条语句，工具返回的是结果集，不做多语句编排；
 - 大结果集会占用上下文：先 \`COUNT(*)\` 或加 \`WHERE\`/\`ROWNUM\`/\`LIMIT\` 收敛，再取明细。
 
+## 连不上时：先分清是驱动、加密库还是网络
+
+连接信息和驱动由宿主处理，但插件**不会自动安装**驱动。报错基本落在这三类里，**不要**把它当成表名写错或数据问题：
+
+| 报错关键词 | 是什么 | 怎么办 |
+|---|---|---|
+| \`缺少 Python 驱动\` | 目标机的 python 没装对应驱动 | 按提示装：达梦 \`pip install dmPython\`、Oracle \`pip install oracledb\`、MySQL \`pip install pymysql\`、PostgreSQL \`pip install psycopg2-binary\` |
+| \`[CODE:-70089] 加密模块加载失败\` | 达梦的加密库目录 \`dmssl\`（在 dmPython 旁边或 \`DM_HOME\` 下）没有被加载 | 查询脚本会自动把它挂上进程的库搜索路径并重启一次；仍失败时确认该目录存在、且与 dmPython 同为 64 位 |
+| \`[CODE:-70028] 创建SOCKET连接失败\`、\`Connection timed out\`、\`Can't connect\` | 网络不通：没连 VPN、IP 白名单没放行、端口不通 | 与驱动无关，请使用者确认网络，不要去改表名或 SQL |
+
+连接失败时错误后面会附一段**环境自检**（解释器、驱动、达梦加密库、到库地址的 TCP 是否可达）。照着那几行判断方向，不要把自检结论当成 SQL 错误。
+
 ## 写操作会被拦下来
 
 \`datasource_query\` 遇到 \`INSERT\`、\`UPDATE\`、\`DELETE\`、\`DROP\`、\`TRUNCATE\`、\`ALTER\`、\`CREATE\`
@@ -1986,7 +1999,7 @@ OLE 复合文档，本机没有解析器。按代价从小到大：
 | 后端开发（Service/规则/插件/调度/事件） | \`bip/references/旗舰版/后端开发/\` | 体系化后端规范（IBillQueryRepository、DispatchTask、BIPEventSubscribe 等） |
 | 前端扩展（MDF/ViewModel/页面脚本） | \`bip/references/旗舰版/前端扩展/\` | MDF 开发框架（架构/模型/事件/模式）+ \`bip/references/旗舰版/\` 下代码片段 |
 | 第三方系统集成（WMS/LIMS/MES/SRM…） | \`bip/references/旗舰版/集成/\` | 按业务域子目录匹配（应收应付、总账、仓储、税务等 13 个域） |
-| 报表 SQL 生成（台账/日报/月报） | \`bip/references/旗舰版/报表SQL/\` | 四阶段报表 SQL 生成流程（需求分析→字段分析→SQL构建→校验交付）；\`05-经验-组织树与子级数量统计.md\` 是「组织树 + 统计子级组织数量」类报表的可复用手册（含报表平台参数/筛选器配置） |
+| 报表 SQL 生成（台账/日报/月报） | \`bip/references/旗舰版/报表SQL/\` | 四阶段报表 SQL 生成流程（需求分析→字段分析→SQL构建→校验交付）。经验文档：\`07-经验-语义模型报表开发.md\` 是语义模型报表的通用经验（平台参数硬规则 / 三类静默错误 / 自检与排错方法 / 达梦错误码速查），**与具体业务无关，动手前先读**；\`05-经验-组织树与子级数量统计.md\` 是「组织树 + 统计子级组织数量」类报表的可复用手册（含报表平台参数/筛选器配置）；\`06-金隅-账户直联情况统计表-字段核查.md\` 是字段核查实例 |
 | 公式配置（YonBuilder/UI模板） | \`bip/references/旗舰版/公式/\` | 公式函数参考 + 36 个业务场景示例 |
 | SQL 模板 | \`bip/references/SQL/\` | 每条 SQL 独立一个文件，扫描匹配 |
 | 问题处理类（报错/异常/故障） | \`bip/references/问题处理/\` | \`ls\` 列出文件名 → 按报错关键词匹配 → 读取匹配的文档 |
@@ -2016,6 +2029,7 @@ OLE 复合文档，本机没有解析器。按代价从小到大：
 | 前端扩展 | MDF、ViewModel、页面脚本、字段联动 | \`bip/references/旗舰版/前端扩展/\` |
 | 第三方集成 | WMS、LIMS、MES、SRM、接口对接 | \`bip/references/旗舰版/集成/\` |
 | 报表SQL | 台账、日报、月报、报表SQL | \`bip/references/旗舰版/报表SQL/\` |
+| 语义模型报表（通用经验） | 语义模型、自由报表、报表参数、静默错误、跑通但不对、自检、对拍、达梦报错 | \`bip/references/旗舰版/报表SQL/07-经验-语义模型报表开发.md\` |
 | 组织树报表 | 组织树、子级组织、上卷、父组织汇总、语义模型、筛选器、参数绑定 | \`bip/references/旗舰版/报表SQL/05-经验-组织树与子级数量统计.md\` |
 | 直联/银企报表 | 直联、直连、银企通道、不可直连、未直连成功、直连率、财务公司账户 | \`bip/references/旗舰版/报表SQL/06-金隅-账户直联情况统计表-字段核查.md\` |
 | 公式配置 | 公式、YonBuilder、计算公式 | \`bip/references/旗舰版/公式/\` |

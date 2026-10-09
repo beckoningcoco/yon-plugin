@@ -53,9 +53,10 @@ description: NCC（用友 NC Cloud）开发的总入口。问题里出现 NCC、
 | **审批后自动协同** | 协同、购销协同、自动生单、IPfExchangeService、ISCMPubSaveCommitService、CloudPFlowContext、用户模拟、跨公司 | `ncc/ncc-dev/references/scenarios/ncc-coding-patterns.md`（未随包提供） §2 + `ncc/ncc-dev/references/scenarios/project-ztxx.md`（未随包提供） §1 |
 | **后台任务** | 后台任务、计划任务、定时任务、定时执行、调度、IBackgroundWorkPlugin、executeTask | `ncc-background-task` 子技能 |
 | **资产包接口 / 集成规则** | 资产包接口、第三方系统对接、集成规则、pub_interule、pub_intecontrast、OpenAPI 签名、REST Resource、AbstractRestResource、华科客开 | `ncc-asset-hawk` 子技能 |
-| **参照** | 参照、下拉参照、自定义参照、参照过滤、F7 | `ncc/ncc-dev/references/scenarios/ref-model.md`（待建） |
+| **参照** | 参照、下拉参照、自定义参照、参照过滤、F7 | `ncc/ncc-dev/references/scenarios/ref-model.md`（前端过滤已完成；后端参照模型待补） |
 | **业务扩展** | 业务扩展、扩展点、扩展注册、处理器 | `ncc/ncc-dev/references/scenarios/biz-extension.md`（待建） |
 | **编码规则** | 编码规则、单据编号、自动编号、编码生成 | `ncc/ncc-dev/references/scenarios/coding-rule.md`（待建） |
+| **前端开发 / 脚手架** | 前端、前端源码、页面开发、列表页、卡片页、list/card、hotwebs、webpack、nc-lightapp-front、参照过滤、前端 GBK | `ncc/ncc-dev/references/frontend/README.md`（该目录 8 篇，入口是 README） |
 
 ## 源码分析工作流
 

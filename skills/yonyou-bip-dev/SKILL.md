@@ -88,7 +88,7 @@ description: 用友 BIP 旗舰版（YonBIP / 旗舰版 / BIP）客开技能。�
 | 后端开发（Service/规则/插件/调度/事件） | `bip/references/旗舰版/后端开发/` | 体系化后端规范（IBillQueryRepository、DispatchTask、BIPEventSubscribe 等） |
 | 前端扩展（MDF/ViewModel/页面脚本） | `bip/references/旗舰版/前端扩展/` | MDF 开发框架（架构/模型/事件/模式）+ `bip/references/旗舰版/` 下代码片段 |
 | 第三方系统集成（WMS/LIMS/MES/SRM…） | `bip/references/旗舰版/集成/` | 按业务域子目录匹配（应收应付、总账、仓储、税务等 13 个域） |
-| 报表 SQL 生成（台账/日报/月报） | `bip/references/旗舰版/报表SQL/` | 四阶段报表 SQL 生成流程（需求分析→字段分析→SQL构建→校验交付）；`05-经验-组织树与子级数量统计.md` 是「组织树 + 统计子级组织数量」类报表的可复用手册（含报表平台参数/筛选器配置） |
+| 报表 SQL 生成（台账/日报/月报） | `bip/references/旗舰版/报表SQL/` | 四阶段报表 SQL 生成流程（需求分析→字段分析→SQL构建→校验交付）。经验文档：`07-经验-语义模型报表开发.md` 是语义模型报表的通用经验（平台参数硬规则 / 三类静默错误 / 自检与排错方法 / 达梦错误码速查），**与具体业务无关，动手前先读**；`05-经验-组织树与子级数量统计.md` 是「组织树 + 统计子级组织数量」类报表的可复用手册（含报表平台参数/筛选器配置）；`06-金隅-账户直联情况统计表-字段核查.md` 是字段核查实例 |
 | 公式配置（YonBuilder/UI模板） | `bip/references/旗舰版/公式/` | 公式函数参考 + 36 个业务场景示例 |
 | SQL 模板 | `bip/references/SQL/` | 每条 SQL 独立一个文件，扫描匹配 |
 | 问题处理类（报错/异常/故障） | `bip/references/问题处理/` | `ls` 列出文件名 → 按报错关键词匹配 → 读取匹配的文档 |
@@ -118,6 +118,7 @@ description: 用友 BIP 旗舰版（YonBIP / 旗舰版 / BIP）客开技能。�
 | 前端扩展 | MDF、ViewModel、页面脚本、字段联动 | `bip/references/旗舰版/前端扩展/` |
 | 第三方集成 | WMS、LIMS、MES、SRM、接口对接 | `bip/references/旗舰版/集成/` |
 | 报表SQL | 台账、日报、月报、报表SQL | `bip/references/旗舰版/报表SQL/` |
+| 语义模型报表（通用经验） | 语义模型、自由报表、报表参数、静默错误、跑通但不对、自检、对拍、达梦报错 | `bip/references/旗舰版/报表SQL/07-经验-语义模型报表开发.md` |
 | 组织树报表 | 组织树、子级组织、上卷、父组织汇总、语义模型、筛选器、参数绑定 | `bip/references/旗舰版/报表SQL/05-经验-组织树与子级数量统计.md` |
 | 直联/银企报表 | 直联、直连、银企通道、不可直连、未直连成功、直连率、财务公司账户 | `bip/references/旗舰版/报表SQL/06-金隅-账户直联情况统计表-字段核查.md` |
 | 公式配置 | 公式、YonBuilder、计算公式 | `bip/references/旗舰版/公式/` |
