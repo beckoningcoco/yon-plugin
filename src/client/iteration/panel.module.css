@@ -131,6 +131,22 @@
   border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
   overflow: hidden;
+  /* `flex: none` here is load-bearing, not tidiness.
+
+     This list is an item of the column flex container in `.detailPane`, and the
+     `overflow: hidden` above — which is here only so the 8px corners clip the row
+     borders — costs it its automatic minimum size: per spec an item whose overflow
+     is not `visible` resolves `min-height: auto` to 0. So it was free to be
+     squeezed, and the pane squeezed it: measured at a 640px viewport the list came
+     out 310px tall holding 455px of rows, and `overflow: hidden` then removed the
+     rest with no scrollbar and no way to reach it. The pane below reported "no
+     overflow", so it had nothing to scroll — which is why raising the pane's own
+     `overflow-y` fixes nothing.
+
+     Refusing the squeeze is the fix, rather than giving the list a scroll area of
+     its own: that would nest inside the pane's, and a nested scroll area can never
+     reach its end. */
+  flex: none;
 }
 
 .row + .row {

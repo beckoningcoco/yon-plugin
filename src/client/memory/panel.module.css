@@ -130,6 +130,15 @@
   border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
   overflow: hidden;
+  /* 同 iteration 面板的 `.list`：这一条是承重的，不是整齐。
+
+     本列表是 `.memScrollBody` 里那个纵向 flex 容器的 item，而上面的 `overflow:
+     hidden`（只为 8px 圆角存在）让它失去自动最小尺寸——按规范，overflow 不是
+     `visible` 的 item，`min-height: auto` 解析为 0。于是它可以被压扁，而父容器
+     确实压了它：列表被裁到只显示前几条，多出来的内容被静默切掉，既不滚也没有
+     滚动条。拒绝压缩才是修法；给列表自己开一个滚动区会嵌套在栏的滚动区里，而
+     嵌套的滚动区永远滚不到底。 */
+  flex: none;
 }
 
 .memRow + .memRow {
