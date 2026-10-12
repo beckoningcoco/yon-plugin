@@ -17,6 +17,7 @@ import {
   MEMORY_TOOL_NAMES, META_TOOL_NAMES,
   REQUIREMENT_TOOL_NAMES,
   SKILL_DOMAIN_NAME, WIKI_TOOL_NAMES, WIKI_WRITE_TOOL_NAMES,
+  YON_BROWSER_TOOL_NAMES,
   YON_BUNDLED_SKILLS, YON_PROMPT_ORDER, YON_PROMPT_SECTION, YON_PROMPT_TEXT,
   YON_SKILL_SOURCE, apply, inject, YON_TOOL_NAMES,
 } from '../src/index.ts'
@@ -28,6 +29,10 @@ const ALL_TOOL_NAMES = [
   ...GBK_TOOL_NAMES, ...DOC_PARSE_TOOL_NAMES,
   ...KNOWLEDGE_TOOL_NAMES, ...CLASS_TOOL_NAMES, ...HOME_TOOL_NAMES,
   ...META_TOOL_NAMES, ...BIP_META_TOOL_NAMES, ...DIGEST_TOOL_NAMES, ...ITERATION_TOOL_NAMES,
+  // The browser family registers between iteration and requirement (`index.ts`), and
+  // it was missing from this list for as long as it existed — which is why three
+  // cases here were already failing before the datasource write tool was added.
+  ...YON_BROWSER_TOOL_NAMES,
   ...REQUIREMENT_TOOL_NAMES,
 ]
 

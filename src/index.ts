@@ -2,8 +2,8 @@
  * Yon panel, host half: opens the project, skill-switch and datasource domains,
  * publishes them as `ctx.yonProjects`, `ctx.yonSkills`, `ctx.yonDataSources`,
  * `ctx.yonWiki`, `ctx.yonHomes`, `ctx.yonIteration`, `ctx.yonMemory` and
- * `ctx.yonBrowsers`, offers the projects and the data sources to the agent as
- * tools, contributes
+ * `ctx.yonBrowsers` and `ctx.yonBrowserCdp`, offers projects, data sources and the
+ * debugging browser to the agent as tools, contributes
  * this plugin's own skills to the skill registry, and — where a web server
  * exists — serves all three over `/yon/api`.
  *
@@ -51,6 +51,8 @@ import {
   createYonBrowsersService, BrowserError, type YonBrowsersService,
 } from './host/browser-service.ts'
 import { createSystemPorts } from './host/browser-system.ts'
+import { createYonBrowserCdpService } from './host/browser-cdp-service.ts'
+import { registerYonBrowserTools } from './host/browser-tools.ts'
 import { createIterationStore } from './host/iteration-store.ts'
 import { createYonIterationService, type YonIterationService } from './host/iteration-service.ts'
 import { ITERATION_TOOL_NAMES, registerYonIterationTools } from './host/iteration-tools.ts'
@@ -90,6 +92,7 @@ export { KNOWLEDGE_TOOL_NAMES, KnowledgeError } from './host/knowledge-tools.ts'
 export { CLASS_TOOL_NAMES, ClassIndexError } from './host/class-tools.ts'
 export { WIKI_WRITE_TOOL_NAMES, WikiWriteError } from './host/wiki-write.ts'
 export { DIGEST_TOOL_NAMES } from './host/digest-tools.ts'
+export { YON_BROWSER_TOOL_NAMES } from './host/browser-tools.ts'
 export { YON_PROMPT_SECTION, YON_PROMPT_ORDER, YON_PROMPT_TEXT } from './host/prompt.ts'
 export { createDigestLog, digestLogPath, DIGEST_METRIC_KEYS, DIGEST_METRIC_LABELS } from './host/digest-log.ts'
 export type { DigestLog, DigestLogEntry, DigestLogSummary, DigestOutcome } from './host/digest-log.ts'
@@ -318,7 +321,9 @@ export async function apply(ctx: Context): Promise<void> {
   ctx.provide('yonDataSources', dataSources.service)
 
   ctx.effect(
-    () => registerYonDataSourceTools(ctx, dataSources.service, memoryHint),
+    // The project store goes in with the datasources: a connection can be bound to a
+    // project by name, and resolving that name is the project service's job.
+    () => registerYonDataSourceTools(ctx, dataSources.service, service, memoryHint),
     'yon-panel: datasource tools',
   )
 
@@ -467,6 +472,16 @@ export async function apply(ctx: Context): Promise<void> {
     { ...createSystemPorts(), exists: existsSync, hostRoot: pluginRoot() },
   )
   ctx.provide('yonBrowsers', browsers)
+
+  // The other half of that browser: what the tools may do to an instance the panel
+  // started. It launches nothing and ends nothing — `browser-system.ts` owns a
+  // browser's life, and this is only the conversation with one that is already up.
+  // Nothing to release either: the one thing it remembers is which tabs this process
+  // opened (so `browser_close` cannot touch the operator's), and every call opens and
+  // closes its own connection.
+  const browserCdp = createYonBrowserCdpService(browsers)
+  ctx.provide('yonBrowserCdp', browserCdp)
+  ctx.effect(() => registerYonBrowserTools(ctx, browserCdp), 'yon-panel: browser tools')
 
   // The requirement ledger: what the operator asked for, per project, with the
   // operator's own material kept apart from what the model produced.
