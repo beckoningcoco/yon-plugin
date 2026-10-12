@@ -117,7 +117,11 @@ export const KEY_NAMES: readonly string[] = Object.keys(KEY_SPECS)
  * the click coordinate it feeds is invisible in a unit test of anything else.
  */
 export const PAGE_HELPERS = `
-  const isVisible = (el) => el instanceof HTMLElement
+  // 跨 realm 的可见性判断。脚本在主文档里执行，而 iframe 里的元素 instanceof
+  // HTMLElement 恒为 false（那个构造函数来自另一个 realm），所以只能看能力，不能看
+  // 身份——用身份判断会把 iframe 内的元素整体判成不可见。
+  const isVisible = (el) => el !== null && el !== undefined
+    && typeof el.getClientRects === 'function'
     && (el.offsetWidth > 0 || el.offsetHeight > 0 || el.getClientRects().length > 0)
   const ownText = (el) => Array.from(el.childNodes)
     .filter((n) => n.nodeType === Node.TEXT_NODE)
@@ -209,7 +213,12 @@ export const PAGE_HELPERS = `
       const pool = exact.length > 0 ? exact : all.filter((el) => isVisible(el) && nameText(el).includes(value))
       els = pool.sort((a, b) => depthOf(b) - depthOf(a))
     }
-    return els[index] || null
+    // 可见的排到前面：同一个选择器常常匹配到好几个（NCC 的参照窗在 DOM 里留着若干隐藏
+    // 空壳），而 index 数的是「第几个匹配」。不排的话，第一个命中的可能是个 rect 全 0
+    // 的隐藏元素——点击就落在 (0,0)，读起来像「点了没反应」，实际是点了一个看不见的东西。
+    // sort 在现代 JS 里是稳定的，所以同可见性的元素保持原来的顺序。
+    const ordered = els.slice().sort((a, b) => (isVisible(b) ? 1 : 0) - (isVisible(a) ? 1 : 0))
+    return ordered[index] || null
   }
   const waitFor = async (spec, timeoutMs) => {
     const deadline = Date.now() + timeoutMs
