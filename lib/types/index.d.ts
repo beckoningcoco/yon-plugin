@@ -2,8 +2,8 @@
  * Yon panel, host half: opens the project, skill-switch and datasource domains,
  * publishes them as `ctx.yonProjects`, `ctx.yonSkills`, `ctx.yonDataSources`,
  * `ctx.yonWiki`, `ctx.yonHomes`, `ctx.yonIteration`, `ctx.yonMemory` and
- * `ctx.yonBrowsers`, offers the projects and the data sources to the agent as
- * tools, contributes
+ * `ctx.yonBrowsers` and `ctx.yonBrowserCdp`, offers projects, data sources and the
+ * debugging browser to the agent as tools, contributes
  * this plugin's own skills to the skill registry, and — where a web server
  * exists — serves all three over `/yon/api`.
  *
@@ -49,6 +49,7 @@ export { KNOWLEDGE_TOOL_NAMES, KnowledgeError } from './host/knowledge-tools.ts'
 export { CLASS_TOOL_NAMES, ClassIndexError } from './host/class-tools.ts';
 export { WIKI_WRITE_TOOL_NAMES, WikiWriteError } from './host/wiki-write.ts';
 export { DIGEST_TOOL_NAMES } from './host/digest-tools.ts';
+export { YON_BROWSER_TOOL_NAMES } from './host/browser-tools.ts';
 export { YON_PROMPT_SECTION, YON_PROMPT_ORDER, YON_PROMPT_TEXT } from './host/prompt.ts';
 export { createDigestLog, digestLogPath, DIGEST_METRIC_KEYS, DIGEST_METRIC_LABELS } from './host/digest-log.ts';
 export type { DigestLog, DigestLogEntry, DigestLogSummary, DigestOutcome } from './host/digest-log.ts';
