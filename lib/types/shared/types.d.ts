@@ -193,6 +193,10 @@ export interface SaveDataSourceInput {
     readonly dbType: string;
     readonly host: string;
     readonly port: number;
+    /**
+     * Oracle service name, or the MySQL/PostgreSQL database. Omit to keep whatever
+     * is stored; an empty string clears it.
+     */
     readonly serviceName?: string;
     /**
      * Logins to store, keyed by login name. Omit to keep whatever is stored —

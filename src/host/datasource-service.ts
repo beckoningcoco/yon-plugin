@@ -354,7 +354,12 @@ export function createYonDataSourcesService(
           ...previous,
           host,
           port,
-          service_name: input.serviceName?.trim() ?? '',
+          // Absent means "leave the stored name alone", an empty string means
+          // "clear it" — the same rule the logins follow below, and for the same
+          // reason: a caller that omits a member is patching one field, not
+          // replacing the branch, and a save that cleared a service name nobody
+          // mentioned would be a data loss disguised as an edit.
+          ...input.serviceName === undefined ? {} : { service_name: input.serviceName.trim() },
           // Absent means "leave the stored logins alone": the surface never
           // receives a password, so it cannot send one back unchanged, and a save
           // that silently dropped the secret would be a data loss disguised as an

@@ -62,6 +62,24 @@ function bench(register: (ctx: Context, service: never, hint?: MemoryHintLine) =
   return { render }
 }
 
+/**
+ * The datasource family takes the project store as well, because a write can bind a
+ * connection to a project by name. This suite binds nothing, so the stub is empty —
+ * and the family stays callable through the same three-argument shape the other two
+ * use here.
+ * @param ctx - the recording context.
+ * @param service - the datasource service stand-in.
+ * @param hint - the hint line to inject, when the case wants one.
+ * @returns the family's disposer.
+ */
+function dataSourceTools(
+  ctx: Context,
+  service: never,
+  hint?: MemoryHintLine,
+): () => void {
+  return registerYonDataSourceTools(ctx, service, {} as never, hint)
+}
+
 /** The three services, each answering the least it can be asked for. */
 const sources = {
   query: vi.fn(async () => ({ ok: true, configKey: '水投::test', env: 'test', output: 'ID\n1' })),
@@ -82,11 +100,11 @@ const silent: MemoryHintLine = async () => undefined
 
 describe('the memory signpost the neighbouring tools carry', () => {
   it('appends the line to a datasource query', async () => {
-    const withLine = await bench(registerYonDataSourceTools, sources, loud)
+    const withLine = await bench(dataSourceTools, sources, loud)
       .render('datasource_query', { key: '水投::test', sql: 'SELECT 1' })
     expect(withLine).toContain(LINE)
 
-    const without = await bench(registerYonDataSourceTools, sources)
+    const without = await bench(dataSourceTools, sources)
       .render('datasource_query', { key: '水投::test', sql: 'SELECT 1' })
     expect(without).not.toContain('memory_recall')
   })
@@ -111,7 +129,7 @@ describe('the memory signpost the neighbouring tools carry', () => {
 
   it('says nothing when the hint has nothing to say', async () => {
     // 项目里一条记忆都没有、或者这个会话已经提示过：路牌不出现，而工具照常答话。
-    const quiet = await bench(registerYonDataSourceTools, sources, silent)
+    const quiet = await bench(dataSourceTools, sources, silent)
       .render('datasource_query', { key: '水投::test', sql: 'SELECT 1' })
     expect(quiet).toContain('ID')
     expect(quiet).not.toContain('memory_recall')

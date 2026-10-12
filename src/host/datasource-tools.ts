@@ -1,5 +1,6 @@
 /**
- * The data sources and their statements, exposed to the agent as tools.
+ * The data sources, their statements and their one write, exposed to the agent as
+ * tools.
  *
  * Why tools and not a skill telling the model to run a script: the plugin's
  * installation path differs on every machine, and a skill body is inlined at
@@ -7,9 +8,12 @@
  * learns a path, a connection string, or a password — it names a connection and a
  * statement, and the plugin resolves everything else.
  *
- * The split between the two tools follows the one the operator can see:
+ * The split between the three tools follows the one the operator can see:
  *
  * - `datasource_list` answers "what is there" and reads nothing secret. No gate.
+ * - `datasource_upsert` registers or patches one environment branch. It is gated
+ *   like a destructive write, and a secret only ever travels inward: it is written
+ *   to the operator's document and appears in no answer, no preview and no log.
  * - `datasource_query` runs whatever statement it is given, which is why it is
  *   gated: a statement that could change data stops for the operator's approval,
  *   and a read-only session refuses it outright. The rule is the script's own
@@ -20,14 +24,20 @@
  * reuses rather than redeclaring.
  */
 import type { Context } from '@deepseek-ai/cordis'
-import type { DataSourceView } from '../shared/types.ts'
+import {
+  splitDataSourceKey,
+  type DataSourceProbeResult,
+  type DataSourceView,
+  type SaveDataSourceInput,
+} from '../shared/types.ts'
 import { DataSourceError, type YonDataSourcesService } from './datasource-service.ts'
-import { dispositionOf, permissionsOf } from './tools.ts'
+import { ProjectError, type YonProjectsService } from './service.ts'
+import { dispositionOf, locate, permissionsOf } from './tools.ts'
 import { memoryHintLine, withMemoryHint, type MemoryHintLine } from './memory-session.ts'
 import type { YonTextBlock, YonToolCallView, YonToolDefinition, YonToolExecution } from './tools.ts'
 
 /** Every tool this module owns. */
-export const DATASOURCE_TOOL_NAMES = ['datasource_list', 'datasource_query'] as const
+export const DATASOURCE_TOOL_NAMES = ['datasource_list', 'datasource_upsert', 'datasource_query'] as const
 
 /**
  * Statements that could change data.
@@ -79,6 +89,11 @@ function asString(value: unknown, argument: string): string {
     throw new DataSourceError('invalid-input', `${argument} 必须是非空字符串`)
   }
   return value.trim()
+}
+
+/** Read one argument as trimmed text, answering empty for anything else. */
+function trimmed(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
 }
 
 /** One tool definition over the registry's contract. */
@@ -141,15 +156,267 @@ const QUERY_VALUE = {
   },
 } as const
 
+/** The JSON Schema of a write's answer. */
+const UPSERT_VALUE = {
+  type: 'object',
+  required: ['key', 'created', 'changes', 'source'],
+  properties: {
+    key: { type: 'string' },
+    created: { type: 'boolean' },
+    changes: { type: 'array', items: { type: 'string' } },
+    source: { type: 'object' },
+    verify: { type: 'object' },
+  },
+} as const
+
+/** One upsert call resolved against what is stored: what to write, and what it changes. */
+interface UpsertPlan {
+  /** The composite key, as the caller wrote it. */
+  readonly key: string
+  /** Whether this call brings the branch into existence. */
+  readonly created: boolean
+  /** What the write changes, one line each; empty when nothing would change. */
+  readonly changes: readonly string[]
+  /** Every field as it will be stored — what a create has to show, since it has no diff. */
+  readonly summary: readonly string[]
+  /** The service call's own input, already carrying the values the caller left out. */
+  readonly input: SaveDataSourceInput
+}
+
+/**
+ * Resolve one upsert call: validate it, fill in what the caller left out, and work
+ * out what it would change.
+ *
+ * The fill-in is why this exists rather than a bare call to `sources.save`: that
+ * service replaces a branch with whatever it is given, so a caller patching one
+ * field has to be told every other field's current value first. Reading the store
+ * once here serves all three purposes — the fallbacks, the diff, and the check for
+ * whether this call would drop a stored login's password.
+ * @param sources - the connection service, read and later written.
+ * @param projects - the project store, for resolving a binding by name.
+ * @param args - the raw tool arguments.
+ * @returns the plan.
+ */
+async function planUpsert(
+  sources: YonDataSourcesService,
+  projects: YonProjectsService,
+  args: Record<string, unknown>,
+): Promise<UpsertPlan> {
+  const key = trimmed(args.key)
+  const parts = key === '' ? undefined : splitDataSourceKey(key)
+  if (parts === undefined) {
+    throw new DataSourceError(
+      'invalid-input',
+      `key 要写成「名称::环境」，例如 首创(NCC1909)::test；收到的是「${key}」`,
+    )
+  }
+
+  const payload = await sources.list()
+  const existing = payload.sources.find(
+    row => row.configKey === parts.configKey && row.env === parts.env,
+  )
+
+  const rawType = args.db_type
+  const dbType = rawType === undefined ? existing?.dbType ?? '' : trimmed(rawType)
+  if (dbType === '') {
+    throw new DataSourceError(
+      'invalid-input',
+      rawType === undefined
+        ? '新建数据源必须给 db_type（oracle / dm / mysql / postgresql / oceanbase 等）'
+        : 'db_type 不能为空',
+    )
+  }
+
+  const rawHost = args.host
+  const host = rawHost === undefined ? existing?.host ?? '' : trimmed(rawHost)
+  if (host === '') {
+    throw new DataSourceError(
+      'invalid-input',
+      rawHost === undefined ? '新建数据源必须给 host（数据库地址）' : 'host 不能为空',
+    )
+  }
+
+  const rawPort = args.port
+  const port = rawPort === undefined
+    ? existing?.port ?? Number.NaN
+    : typeof rawPort === 'number'
+      ? rawPort
+      : typeof rawPort === 'string' && rawPort.trim() !== ''
+        ? Number.parseInt(rawPort.trim(), 10)
+        : Number.NaN
+  if (!Number.isInteger(port) || port <= 0) {
+    throw new DataSourceError(
+      'invalid-input',
+      rawPort === undefined
+        ? '新建数据源必须给 port（数据库端口，1–65535）'
+        : `port 必须是 1–65535 的整数（收到「${String(rawPort)}」）`,
+    )
+  }
+
+  // Omitted keeps the stored name; an empty string clears it. Same rule the login
+  // table follows below, and the reason a caller can patch one field at a time.
+  const serviceName = args.service_name === undefined
+    ? existing?.serviceName
+    : trimmed(args.service_name)
+
+  const user = trimmed(args.user)
+  const password = typeof args.password === 'string' ? args.password : undefined
+  if (user === '' && password !== undefined) {
+    throw new DataSourceError(
+      'invalid-input',
+      'password 必须和 user 一起给：要沿用已存登录名（连同密码）就别传这两个',
+    )
+  }
+  if (user !== '' && password === undefined) {
+    throw new DataSourceError(
+      'invalid-input',
+      'user 必须和 password 一起给：只改地址之类的字段就别传 user，密码会原样保留',
+    )
+  }
+  if (password === '') {
+    throw new DataSourceError('invalid-input', 'password 不能是空字符串')
+  }
+
+  // A branch's login table is replaced whole, so a call that names one login on a
+  // branch holding several would take the others' secrets with it. That is a data
+  // loss nobody can undo from the transcript, so it needs saying out loud.
+  const existingLogins = existing?.userNames ?? []
+  if (user !== '' && existingLogins.length > 1 && !existingLogins.includes(user)
+    && args.replace_logins !== true) {
+    throw new DataSourceError(
+      'invalid-input',
+      `「${key}」已存 ${existingLogins.length} 个登录名（${existingLogins.join('、')}），`
+      + '只给一个会把其余的密码一并丢掉；确认要替换就再调一次并带 replace_logins: true，'
+      + '或者改到面板里去编辑。',
+    )
+  }
+
+  let projectId: string | undefined
+  if (typeof args.project === 'string') {
+    const ref = args.project.trim()
+    if (ref === '') {
+      projectId = ''
+    } else {
+      try {
+        projectId = locate(projects, ref).projectId
+      } catch (error) {
+        // `locate` owns the ambiguous/not-found wording so this family cannot grow a
+        // second copy of it; only the error's type has to change, because this tool's
+        // callers map `DataSourceError` onto their own failure shapes.
+        if (error instanceof ProjectError) throw new DataSourceError(error.code, error.message)
+        throw error
+      }
+    }
+  }
+
+  const changes: string[] = []
+  const summary: string[] = [
+    `类型：${dbType}`,
+    `地址：${host}:${port}${serviceName === undefined || serviceName === '' ? '' : ` / service=${serviceName}`}`,
+    user === '' ? '登录名：沿用已存' : `登录名：${user}（密码将写入）`,
+  ]
+
+  if (existing === undefined) {
+    changes.push(`新建数据源「${key}」（${dbType}）`)
+  } else {
+    if (dbType !== existing.dbType) changes.push(`类型：${existing.dbType} → ${dbType}`)
+    if (host !== existing.host) changes.push(`地址：${existing.host} → ${host}`)
+    if (port !== existing.port) changes.push(`端口：${existing.port} → ${port}`)
+    if (serviceName !== undefined && serviceName !== existing.serviceName) {
+      const before = existing.serviceName === '' ? '（无）' : existing.serviceName
+      changes.push(serviceName === '' ? `库名已清空（原 ${before}）` : `库名：${before} → ${serviceName}`)
+    }
+  }
+  if (user !== '') {
+    // Three shapes, because "SCNCC → SCNCC" is what a branch looks like when the
+    // login stays and only the secret is being reset — and a diff that says a thing
+    // moved to where it already was reads as a bug to whoever approves it.
+    if (existingLogins.length === 0) changes.push(`登录名：${user}（密码将写入）`)
+    else if (existingLogins.length === 1 && existingLogins[0] === user) {
+      changes.push(`重设登录名「${user}」的密码`)
+    } else changes.push(`登录名：${existingLogins.join('、')} → ${user}（原密码一并替换）`)
+  }
+
+  if (projectId !== undefined) {
+    if (projectId === '') {
+      summary.push('绑定项目：解绑')
+      if (existing?.binding !== undefined) changes.push(`解绑项目「${existing.binding.projectName}」`)
+    } else {
+      const name = projects.get(projectId)?.name ?? projectId
+      summary.push(`绑定项目：${name}`)
+      if (existing?.binding?.projectId !== projectId) {
+        changes.push(existing?.binding === undefined
+          ? `绑定项目：${name}`
+          : `绑定项目：${existing.binding.projectName} → ${name}`)
+      }
+    }
+  }
+
+  return {
+    key,
+    created: existing === undefined,
+    changes,
+    summary,
+    input: {
+      configKey: parts.configKey,
+      env: parts.env,
+      dbType,
+      host,
+      port,
+      ...serviceName === undefined ? {} : { serviceName },
+      ...user === '' ? {} : { users: { [user]: password as string } },
+      ...projectId === undefined ? {} : { projectId },
+    },
+  }
+}
+
+/** The operator-facing text of one plan: what the approval asks about, and what the call reports. */
+function planText(plan: UpsertPlan): string {
+  if (!plan.created && plan.changes.length === 0) {
+    return `数据源「${plan.key}」没有任何改动（给的字段与已存的一致）。`
+  }
+  const head = plan.created ? `新建数据源「${plan.key}」` : `更新数据源「${plan.key}」`
+  const lines = plan.created ? plan.summary : plan.changes
+  return [head, ...lines.map(line => `· ${line}`)].join('\n')
+}
+
+/**
+ * What one write would do, as the approval card reads it.
+ *
+ * Exported so the gate and the tests read the same sentence. Two rules hold here:
+ * the preview is derived from the same plan the call itself runs, so what the
+ * operator approves is what gets written, and **no secret is ever rendered** — a
+ * password is reported as "will be written", never as a value.
+ * @param sources - the connection service, read for the current values.
+ * @param projects - the project store, for resolving a binding by name.
+ * @param args - the raw tool arguments.
+ * @returns the preview, or undefined when the arguments are unusable (the tool
+ *   itself reports that, and asking about a call that cannot run is noise).
+ */
+export async function previewUpsert(
+  sources: YonDataSourcesService,
+  projects: YonProjectsService,
+  args: unknown,
+): Promise<string | undefined> {
+  if (args === null || typeof args !== 'object' || Array.isArray(args)) return undefined
+  try {
+    return planText(await planUpsert(sources, projects, args as Record<string, unknown>))
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * Register the datasource tools and their write gate.
  * @param ctx - host context carrying the tool registry.
- * @param sources - the service the tools read and run against.
+ * @param sources - the service the tools read, run against and write through.
+ * @param projects - the project store, so a binding can be given by name.
  * @returns the disposer that withdraws every registration.
  */
 export function registerYonDataSourceTools(
   ctx: Context,
   sources: YonDataSourcesService,
+  projects: YonProjectsService,
   hint?: MemoryHintLine,
 ): () => void {
   const disposers: Array<() => void> = []
@@ -185,7 +452,7 @@ export function registerYonDataSourceTools(
     },
     render(value) {
       const list = value as { count: number; sources: readonly DataSourceView[] }
-      if (list.count === 0) return '没有登记任何数据源。可以在 Yon 面板的数据库入口里添加。'
+      if (list.count === 0) return '没有登记任何数据源。可以在 Yon 面板的数据库入口里添加，或让本工具登记。'
       return [
         `${list.count} 个数据源（key · 类型 · 地址 · 登录名）：`,
         ...list.sources.map(source => `  ${summarize(source)}`),
@@ -194,6 +461,104 @@ export function registerYonDataSourceTools(
       ].join('\n')
     },
     presentCall: () => card('列出数据源', 'read'),
+  })))
+
+  disposers.push(ctx.tools.register(defineTool({
+    name: 'datasource_upsert',
+    description: 'Register or update one database connection, one environment branch at a time, under '
+      + 'a composite key (`名称::环境`, for example "首创(NCC1909)::test"). Fields left out keep their '
+      + 'stored value — an omitted service_name stays as it is, an empty string clears it, and omitting '
+      + 'user/password keeps the stored logins — so a call that only changes the address cannot wipe the '
+      + 'rest. A password travels inward only: it is written to the operator\'s configuration file and '
+      + 'never appears in any answer, so only pass one the operator gave you. The call stops for the '
+      + 'operator\'s approval unless the session has been told not to ask, and a read-only session '
+      + 'refuses it. Use `project` to bind the connection group to a project by id, exact name or code; '
+      + 'an empty string unbinds it. This is the same document the Yon panel edits, so a connection '
+      + 'written here shows up there immediately.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['key'],
+      properties: {
+        key: {
+          type: 'string',
+          description: 'The connection key, "名称::环境" (for example "首创(NCC1909)::test"). '
+            + 'A key that does not exist yet is created.',
+        },
+        db_type: {
+          type: 'string',
+          description: 'Database type: oracle / dm / mysql / postgresql / oceanbase. '
+            + 'Required when the key is new; kept as stored when omitted.',
+        },
+        host: { type: 'string', description: 'Database address. Required when the key is new.' },
+        port: { type: 'integer', description: 'Database port, 1–65535. Required when the key is new.' },
+        service_name: {
+          type: 'string',
+          description: 'Oracle service name, or the MySQL/PostgreSQL database. '
+            + 'Omitted keeps the stored one; an empty string clears it.',
+        },
+        user: {
+          type: 'string',
+          description: 'Login name to store, together with `password`. '
+            + 'Omit both to keep the stored logins unchanged.',
+        },
+        password: {
+          type: 'string',
+          description: 'The secret for `user`. Written only — it is never returned by any tool.',
+        },
+        project: {
+          type: 'string',
+          description: 'Bind the connection group to this project (id, exact name or code); '
+            + 'an empty string unbinds it; omit to leave the binding alone.',
+        },
+        replace_logins: {
+          type: 'boolean',
+          description: 'Set true to accept replacing a branch that holds several logins with the single '
+            + 'one given, losing the others\' passwords. Defaults to false, which refuses that.',
+        },
+        verify: {
+          type: 'boolean',
+          description: 'Run SELECT 1 after the write and report whether the connection answers. '
+            + 'Defaults to false.',
+        },
+      },
+    },
+    outputSchema: UPSERT_VALUE,
+    async execute(args) {
+      const plan = await planUpsert(sources, projects, args)
+      const source = await sources.save(plan.input)
+      // A probe is evidence about the network, not about the write: the connection is
+      // stored whether or not it answers, and the answer says which of the two failed.
+      const verify = args.verify === true ? await sources.probe(source.key) : undefined
+      return {
+        key: source.key,
+        created: plan.created,
+        changes: plan.changes,
+        source,
+        ...verify === undefined ? {} : { verify },
+      }
+    },
+    render(value) {
+      const lines = [`已写入：${value.key}（${value.created ? '新建' : '更新'}）`]
+      if (value.changes.length === 0) {
+        lines.push('· 没有任何改动（写入的值与已存的一致）')
+      } else {
+        lines.push(...value.changes.map(change => `· ${change}`))
+      }
+      const verify = value.verify as DataSourceProbeResult | undefined
+      if (verify === undefined) {
+        lines.push('连通性可在面板点「测试连接」，或再调一次 datasource_query 跑 SELECT 1 验证。')
+      } else if (verify.ok) {
+        lines.push(`探活：连通，用时 ${verify.latencyMs} 毫秒`
+          + `${verify.rowCount === undefined ? '' : `，返回 ${verify.rowCount} 行`}`)
+      } else {
+        lines.push(`写入已完成，但探活失败：${verify.error ?? '（没有更多信息）'}`)
+      }
+      return lines.join('\n')
+    },
+    presentCall(args) {
+      return card(`写入数据源 ${trimmed(args.key)}`, 'other', trimmed(args.key))
+    },
   })))
 
   disposers.push(ctx.tools.register(defineTool({
@@ -245,11 +610,29 @@ export function registerYonDataSourceTools(
     },
   }, hint)))
 
-  // The gate. A read never reaches it; a statement that could change data
-  // inherits exactly the disposition the project tools use for their writes, so
-  // one session-wide permission preset governs both, and an unapproved write
-  // still cannot run.
+  // The gate. Two kinds of call reach it: a connection write, which always stops,
+  // and a statement that could change data, which inherits exactly the disposition
+  // the project tools use for their writes — so one session-wide permission preset
+  // governs all of them, and an unapproved write still cannot run.
   disposers.push(ctx.on('tools/pre-execute', (exec, next) => {
+    if (exec.name === 'datasource_upsert') {
+      // Deliberately always "destructive": whether this call replaces a stored branch
+      // or brings a new one into being is a fact on disk, not in the arguments, and a
+      // silently overwritten password costs more than one click. A create could be
+      // argued down to "additive" later; the judge would have to read the store.
+      const disposition = dispositionOf(true, permissionsOf(exec.agent?.session))
+      if (disposition === 'run') return next()
+      if (disposition === 'refuse') {
+        return {
+          kind: 'deny' as const,
+          reason: '当前会话是「仅可查看」权限，不能改动数据源配置。'
+            + '要完成改动，请把会话切到「工作区内修改」或「完全权限」（/permission workspace-write）。',
+        }
+      }
+      return previewUpsert(sources, projects, exec.arguments).then(
+        preview => (preview === undefined ? next() : { kind: 'ask' as const, reason: preview }),
+      )
+    }
     if (exec.name !== 'datasource_query') return next()
     const args = exec.arguments
     const sql = args !== null && typeof args === 'object' && !Array.isArray(args)
