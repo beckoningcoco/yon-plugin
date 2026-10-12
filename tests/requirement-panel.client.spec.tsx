@@ -16,7 +16,7 @@
  * `MarkdownText` 把文本原样画出来（这一屏不测 markdown 渲染本身，只测哪一份文本被交给它）。
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ReactElement } from 'react'
 import type {
   ProjectSummary, RequirementCreated, RequirementDir, RequirementFile, RequirementFileImport,
@@ -719,5 +719,42 @@ describe('requirement surface', () => {
     expect(await screen.findByText(/附件清单读不出来/)).toBeTruthy()
     expect(screen.getByText('要接三个接口。')).toBeTruthy()
     expect(screen.getByRole('button', { name: at('requirement.archive') })).toBeTruthy()
+  })
+
+  it('keeps showing the entry that was opened last, even when the first one answers later', async () => {
+    // 这一条钉的是一个真实发生过的现象：在某条需求的追溯里读到了**另一条需求**的正文。
+    // 成因不在盘上（一条需求一个 `entry.md`，宿主按 id 读、逐条串行），而在这一屏自己：
+    // `openEntry` 把请求结果无条件写进 `detail`——谁后回来谁说了算，没有一处断言「画出来
+    // 的这一份属于眼下打开的那一个 id」。甲慢、乙快时，甲的回包会覆盖掉乙的整块详情。
+    //
+    // 代价不止是看错：此时追加标注、改状态、废掉都用 `detail.id` 定位，人在这条需求的
+    // 页面上做的动作会落到另一条需求的文件里。
+    const rows = [row({ id: 'rq-1', name: '接口对接' }), row({ id: 'rq-2', name: '报表上卷' })]
+    const stub = stubApi(rows)
+    let releaseFirst: () => void = () => {}
+    const gate = new Promise<void>(resolve => { releaseFirst = resolve })
+    stub.read.mockImplementation(async (id: string) => {
+      if (id === 'rq-1') await gate
+      const found = rows.find(candidate => candidate.id === id) ?? row({ id })
+      return view(found, id === 'rq-1'
+        ? { prose: '甲的正文', notes: ['甲的追溯'] }
+        : { prose: '乙的正文', notes: ['乙的追溯'] })
+    })
+    render(<Manager {...stub.api} t={seatOver(zh)} onClose={vi.fn()} />)
+
+    // 打开甲，不等它回来就退回列表，再打开乙（乙立刻回）。
+    fireEvent.click(await head('接口对接'))
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(at('requirement.back')) }))
+    fireEvent.click(await head('报表上卷'))
+    expect(await screen.findByText('乙的正文')).toBeTruthy()
+
+    // 现在甲的回包到了。屏幕上必须还是乙——正文、追溯、标题都不许换人。
+    releaseFirst()
+    await act(async () => { await gate })
+
+    expect(screen.getByText('乙的正文')).toBeTruthy()
+    expect(screen.getByText('乙的追溯')).toBeTruthy()
+    expect(screen.queryByText('甲的正文')).toBeNull()
+    expect(screen.queryByText('甲的追溯')).toBeNull()
   })
 })

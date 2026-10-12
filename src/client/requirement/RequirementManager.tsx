@@ -43,7 +43,7 @@
  * 骗了人」；反过来 docx 连按钮都不给，只在行下写一句为什么——让人点一下再被告知「读不
  * 了」，是拿一次等待换一句他本来就看得到的话。
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button, MarkdownText, Modal, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
@@ -255,6 +255,20 @@ export function RequirementManager({
   const [detailFailure, setDetailFailure] = useState<string | undefined>(undefined)
   const [traceOpen, setTraceOpen] = useState(true)
 
+  /**
+   * 眼下真的开着哪一条，写给**回来的请求**看的。
+   *
+   * 与 `openId` 并存的理由只有一个：回包要能问一句「我还是不是当前那一条」。`openId` 是
+   * state，回包闭包里拿到的是发起那一刻的值，问不出答案——甲慢乙快时，甲的回包会把自己
+   * 写进 `detail`，屏幕上就成了「开着乙、画着甲」。
+   *
+   * 这不是显示问题。追加标注、改状态、废掉、删掉都按 `detail.id` 定位，`detail` 一旦换人，
+   * 人在这条需求的页面上做的事就落到另一条需求的文件里——看错一条还能重看，写错一条就得
+   * 靠翻追溯才发现。所以每个回包写 state 之前都要过这一关，`files` 那几份同理（附件属于
+   * 条目，跟着哪个条目走由它决定，不由谁先回来决定）。
+   */
+  const openRef = useRef<string | undefined>(undefined)
+
   const [confirm, setConfirm] = useState<'archive' | 'delete' | undefined>(undefined)
   const [note, setNote] = useState('')
   const [noteError, setNoteError] = useState<string | undefined>(undefined)
@@ -338,17 +352,22 @@ export function RequirementManager({
   const loadFiles = useCallback(async (id: string): Promise<void> => {
     setFilesBusy(true)
     try {
-      setFiles(await fileList(id))
+      const payload = await fileList(id)
+      if (openRef.current !== id) return
+      setFiles(payload)
       setFilesFailure(undefined)
     } catch (error: unknown) {
+      if (openRef.current !== id) return
       setFilesFailure(messageOf(error))
     } finally {
-      setFilesBusy(false)
+      if (openRef.current === id) setFilesBusy(false)
     }
   }, [fileList])
 
   /** 打开一条：正文、追溯、附件一起取（只有 `history: true` 才有 `prose` 与 `notes`）。 */
   const openEntry = useCallback(async (id: string) => {
+    // 领号：这次打开的每一条回包都要凭它验明自己还是不是当前那一条。
+    openRef.current = id
     setOpenId(id)
     setDetail(undefined)
     setConfirm(undefined)
@@ -370,11 +389,13 @@ export function RequirementManager({
     setFileCopied(undefined)
     try {
       const [entry] = await Promise.all([read(id, { history: true }), loadFiles(id)])
+      if (openRef.current !== id) return
       setDetail(entry)
     } catch (error: unknown) {
+      if (openRef.current !== id) return
       setDetailFailure(messageOf(error))
     } finally {
-      setDetailBusy(false)
+      if (openRef.current === id) setDetailBusy(false)
     }
   }, [read, loadFiles])
 
@@ -385,14 +406,19 @@ export function RequirementManager({
    */
   const reloadDetail = useCallback(async (id: string) => {
     try {
-      setDetail(await read(id, { history: true }))
+      const entry = await read(id, { history: true })
+      if (openRef.current !== id) return
+      setDetail(entry)
       setDetailFailure(undefined)
     } catch (error: unknown) {
+      if (openRef.current !== id) return
       setDetailFailure(messageOf(error))
     }
   }, [read])
 
   const backToList = useCallback(() => {
+    // 清单先撤，回包再回来就无处可写——退回列表之后，那一条已经不是在读的那一条了。
+    openRef.current = undefined
     setOpenId(undefined)
     setDetail(undefined)
     setDetailFailure(undefined)
