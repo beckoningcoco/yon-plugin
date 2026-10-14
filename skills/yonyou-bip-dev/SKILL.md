@@ -129,6 +129,7 @@ description: 用友 BIP 旗舰版（YonBIP / 旗舰版 / BIP）客开技能。�
 | **表样插列 / 删列 / 往单元格写字 / 找列** | 加一列、删一列、写表头、写不进去、找列、列索引对不上、有偏差、改了看不出变化、画布变空白、字段绑定 | `bip/references/旗舰版/报表设计器/03-表样结构操作与结果验证.md` —— **先拿 `hot` 实例**（`fiber.stateNode.hotInstance`）**再用它的 API 读写**；**列索引唯一可靠来源 = `hot.getDataAtRow(1).indexOf('列名')`**（DOM 列头字母 / `th` 数量 / x 坐标对齐 / `data-col` **全都给偏差**）；插列 = `hot.selectColumns(col)` + 顶部「插入→列」；**写字只能用「编辑→粘贴」**（`Set-Clipboard` 放字 + `hot.selectCell` 选中 + 保存）；**`setDataAtCell` 会搞出空白画布**；**刷新后先看「未保存改动」弹窗，拿不准就"刷新 + 点否"回滚** |
 | **语义脚本编辑器** | 语义脚本、SQL 脚本抽屉、参数、固定值替换、执行验证 | 技能 `yonyou-bip-semantic-script-editor`；手册 `bip/references/旗舰版/语义脚本编辑器/` |
 | 公式配置 | 公式、YonBuilder、计算公式 | `bip/references/旗舰版/公式/` |
+| **性能诊断 / 录一段看慢在哪** | 录 SPR、开录制、结束录制、性能报告、链路追踪、慢 SQL、接口慢、TraceId、Jaeger、BPR、哈勃 | 技能 `yonyou-bip-recording`（入口三步 + 结束后的对话框 + 两份报告怎么进）；`bip/references/旗舰版/操作录制与性能报告.md`（入口 + 哈勃/BPR 双报告 + 底层接口 + 实测样本）；`bip/references/旗舰版/BIP微服务与库schema地图.md`（微服务名 / 库 schema / 三个身份 id / CloudRemoteCall 与 CAS 换票）。**注意：旗舰版没有 NCC 的 SPR**，别去 `/spr/` 找 |
 
 ## 源码索引配置
 
