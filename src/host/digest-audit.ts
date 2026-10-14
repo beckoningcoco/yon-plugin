@@ -37,6 +37,7 @@ import { readFile, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { compilePatterns, type DigestConfig } from './digest-config.ts'
 import { headingsOf } from './digest-plan.ts'
+import { resolveInVault, vaultPathKey } from './vault-path.ts'
 
 /** 一个「命中数 / 总数」对，比率为 null 表示该项不适用。 */
 export interface CountRate {
@@ -178,11 +179,27 @@ export interface DigestAudit {
   readonly passed: boolean
   /** 配置来源说明：路径，以及读配置时遇到的问题。 */
   readonly configNote: string
+  /**
+   * 本次用的知识库根。
+   *
+   * 报告里要把它说出来：`source`/`product` 可能是库内相对路径，离开根部就
+   * 无从定位；而那个根此前只存在于 `wiki_config.json` 里，报告只字不提，
+   * 于是调用者拿着一个相对路径只能去翻配置文件。
+   */
+  readonly vault?: string
 }
 
 /** 一个待检查的产物文件。 */
 interface Page {
+  /**
+   * 调用者给的写法——报告与流水账里用这个。
+   *
+   * 调用者给相对路径时这里就是库内相对形态：它可移植，换个盘符、换台机器
+   * 照样能指回同一个文件。绝对路径只活在 `abs` 里，不进报告、不进流水账。
+   */
   readonly file: string
+  /** 实际读盘用的绝对路径。只在本进程内用于 I/O 与对账。 */
+  readonly abs: string
   readonly text: string
 }
 
@@ -192,15 +209,27 @@ async function readText(file: string): Promise<string> {
 }
 
 /**
- * 路径对账用的键。
+ * 把调用者给的写法解析成读盘用的绝对路径。
  *
- * 产物路径来自 `collectProduct`（可能是扫描目录拼出来的，也可能是调用方直接
- * 给的），扫描时的是 `path.join(vaultRoot, scope, name)`——斜杠方向与大小写都
- * 不保证一致。对不上不会报错，只会**静默地一个产物都排不掉**，于是重叠率又
- * 回到「量产物自己」的老样子，而报告照样理直气壮。
+ * 相对路径的基准是知识库根，**不是**进程的工作目录——后者与知识库毫无关系，
+ * 拿它兜底就是那串 `ENOENT …\.dsh\profiles\desktop\…` 的来源。没有基准时
+ * 明确报错，不猜。
  */
-function fileKey(file: string): string {
-  return path.resolve(file).split(path.sep).join('/').toLowerCase()
+function absOf(file: string, root: string | undefined): string {
+  const abs = resolveInVault(root, file)
+  if (abs === undefined) {
+    throw new Error(
+      `路径「${file}」是相对路径，但没有给出知识库根（vault），无从确定它相对谁。`
+      + '请改用绝对路径，或同时给出 vault。相对路径不会退回当前工作目录去猜。',
+    )
+  }
+  return abs
+}
+
+/** 读一页：`file` 保留调用者写法，`abs` 只用于读盘。 */
+async function readPage(file: string, root: string | undefined): Promise<Page> {
+  const abs = absOf(file, root)
+  return { file, abs, text: await readText(abs) }
 }
 
 /** 没给 label 时的默认标签：单文件用文件名，一组文件用「首名 等 N 页」。 */
@@ -220,29 +249,35 @@ function defaultLabel(product: string | readonly string[]): string {
  * 129 页文档拆成 10 页，单拿其中一页去比只有 12%–43%，十页合起来才是 98.7%。
  * 按源分组、合并验收才是对的口径。
  *
- * @param target - 文件、目录，或一组文件。
+ * @param target - 文件、目录，或一组文件；绝对路径或库内相对路径都收。
+ * @param root - 知识库根，相对路径的基准。相对路径而没给基准会明确报错。
  * @returns 产物文件列表。
  */
-async function collectProduct(target: string | readonly string[]): Promise<readonly Page[]> {
+async function collectProduct(
+  target: string | readonly string[],
+  root: string | undefined,
+): Promise<readonly Page[]> {
   if (typeof target !== 'string') {
     const pages: Page[] = []
-    for (const file of target) pages.push({ file, text: await readText(file) })
+    for (const file of target) pages.push(await readPage(file, root))
     return pages
   }
-  const info = await stat(target)
-  if (info.isFile()) {
-    return [{ file: target, text: await readText(target) }]
-  }
+  const dir = absOf(target, root)
+  const info = await stat(dir)
+  if (info.isFile()) return [await readPage(target, root)]
   const pages: Page[] = []
-  const walk = async (dir: string): Promise<void> => {
-    for (const entry of await readdir(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name)
-      if (entry.isDirectory()) { await walk(full); continue }
+  // 扫目录时`file` 也拼成相对于调用者所给形态的样子：给的是库内相对目录，
+  // 出来的每一页就都是库内相对路径，报告里不会突然冒出一串绝对路径。
+  const walk = async (abs: string, shown: string): Promise<void> => {
+    for (const entry of await readdir(abs, { withFileTypes: true })) {
+      const full = path.join(abs, entry.name)
+      const as = path.join(shown, entry.name)
+      if (entry.isDirectory()) { await walk(full, as); continue }
       if (!/\.(md|txt)$/i.test(entry.name)) continue
-      pages.push({ file: full, text: await readText(full) })
+      pages.push({ file: as, abs: full, text: await readText(full) })
     }
   }
-  await walk(target)
+  await walk(dir, target)
   return pages
 }
 
@@ -628,7 +663,7 @@ async function checkOverlap(
       const full = path.join(dir, entry.name)
       const text = await readFile(full, 'utf8').catch(() => '')
       scanned += 1
-      const isProduct = exclude?.has(fileKey(full)) ?? false
+      const isProduct = exclude?.has(vaultPathKey(vaultRoot, full)) ?? false
       if (isProduct) excludedFiles += 1
       for (const match of text.matchAll(/[A-Za-z_][A-Za-z0-9_]{2,}/g)) {
         const term = match[0].toLowerCase()
@@ -682,12 +717,18 @@ export async function auditDigest(input: {
   readonly source: string
   readonly product: string | readonly string[]
   readonly config: DigestConfig
+  /**
+   * 知识库根**路径**。
+   *
+   * 两个用途，其实是同一件事：既作第 6 项重叠扫描的根，也作 `source`/`product`
+   * 里相对路径的基准。调用方（`digest-tools.ts`）已经把 vault id 解析成路径了。
+   */
   readonly vault?: string
   readonly label?: string
   readonly configNote?: string
 }): Promise<DigestAudit> {
-  const sourceText = await readText(input.source)
-  const pages = await collectProduct(input.product)
+  const sourceText = await readText(absOf(input.source, input.vault))
+  const pages = await collectProduct(input.product, input.vault)
   const productText = pages.map(page => page.text).join('\n\n')
   // 逐文件剥 frontmatter：正则锚定行首，先拼成一个大字符串再处理的话，只有
   // 第一份的 frontmatter 会被剥掉，后面几份的字段名全被当成正文标识符报成臆造
@@ -704,7 +745,10 @@ export async function auditDigest(input: {
     sourceText,
     input.vault,
     input.config,
-    new Set(pages.map(page => fileKey(page.file))),
+    // 键一律先归一到库内相对：产物给的是绝对路径、扫描给的是
+    // `path.join(vaultRoot, scope, name)`，而调用者还可能给库内相对路径——
+    // 三种写法必须在同一把尺子上，否则排除静默失效、重叠率虚高。
+    new Set(pages.map(page => vaultPathKey(input.vault, page.abs))),
   )
   const addressable = checkAddressable(sourceText, productText, input.config)
 
@@ -736,8 +780,13 @@ export async function auditDigest(input: {
 
   return {
     label: input.label ?? defaultLabel(input.product),
+    // source/product 一律保留调用者的原写法，**不**换成解析后的绝对路径：
+    // 这两个值会进流水账，记成绝对路径就等于把机器写进了账本——换台机器、
+    // 把知识库挪个盘，那条账就成了死链。要读盘有 absOf，要对账有 vaultPathKey。
     source: input.source,
     product: input.product,
+    // 基准单独说一次，报告里要印出来
+    ...(input.vault === undefined ? {} : { vault: input.vault }),
     pages: pages.length,
     structure,
     coverage,

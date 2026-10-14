@@ -26,11 +26,14 @@
  * 它会判合格。正确性必须对照真实环境。
  */
 import type { Context } from '@deepseek-ai/cordis'
+import { stat } from 'node:fs/promises'
+import path from 'node:path'
 import { auditDigest, type DigestAudit, type OverlapCheck } from './digest-audit.ts'
 import { planDigest, type DigestPlan } from './digest-plan.ts'
-import { sourceKey, sweepDigests, type DigestSweep, type SweepVerdict } from './digest-sweep.ts'
+import { sweepDigests, type DigestSweep, type SweepVerdict } from './digest-sweep.ts'
 import { createDigestLog, type DigestLog, type DigestLogEntry } from './digest-log.ts'
 import { loadDigestConfig, type DigestConfig } from './digest-config.ts'
+import { isAbsolutePath, vaultPathKey } from './vault-path.ts'
 import type { YonWikiService } from './wiki-service.ts'
 import type { YonTextBlock, YonToolCallView, YonToolDefinition } from './tools.ts'
 
@@ -63,6 +66,63 @@ function productNameOf(product: string | readonly string[]): string {
   if (product.length === 0) return '(空产物)'
   const head = product.slice(0, 3).join('、')
   return product.length <= 3 ? head : `${head} … 共 ${product.length} 页`
+}
+
+/**
+ * 给一组相对路径找基准（知识库根）。
+ *
+ * `digest_audit` 的 `source`/`product` 收两种写法：绝对路径，或相对知识库根的
+ * 库内路径——后者是 `wiki_page_write` 自己吐出来的形态（它的 render 里明说
+ * 「把 file 交给 digest_audit 的 product」）。给了 `vault` 就用它；没给而参数里
+ * 确实有相对路径时，只在**已登记的知识库**里找那些其下真有这些文件的：
+ *
+ * - 恰好一个 → 用它
+ * - 一个都没有，或不止一个都符合 → 报错，把候选根都列出来让人指定
+ *
+ * **绝不用进程的工作目录兜底。** 那个基准与知识库毫无关系，正是
+ * `ENOENT …\.dsh\profiles\desktop\…` 那一串的来源；而且它错的时候不会报错，
+ * 只会把路径指到别的目录上去。
+ *
+ * @param paths - 待解析的路径，绝对与相对混在一起也行。
+ * @param given - 调用者已经指定的基准；给了就不猜。
+ * @param list - 取已登记知识库；只在确实要猜的时候才会调用。
+ * @returns 基准路径；路径全是绝对且没指定基准时返回 undefined。
+ */
+async function baseForRelative(
+  paths: readonly string[],
+  given: string | undefined,
+  list: () => Promise<readonly { readonly id: string, readonly path: string }[]>,
+): Promise<string | undefined> {
+  const rel = paths.filter(p => !isAbsolutePath(p))
+  if (rel.length === 0 || given !== undefined) return given
+  const vaults = await list()
+
+  const candidates: string[] = []
+  for (const entry of vaults) {
+    const found = await Promise.all(rel.map(async one =>
+      stat(path.join(entry.path, one)).then(() => true).catch(() => false)))
+    if (found.every(Boolean)) candidates.push(entry.path)
+  }
+
+  const listed = vaults.length === 0
+    ? '（一个都没登记）'
+    : vaults.map(v => `  ${v.id} → ${v.path}`).join('\n')
+  if (candidates.length === 0) {
+    throw new Error(
+      `这些路径是相对路径：${rel.join('、')}\n`
+      + '但没有任何一个已登记的知识库能在其下找到它们，无从确定基准。\n'
+      + `已登记的知识库：\n${listed}\n`
+      + '请用 vault 指定基准，或改用绝对路径。相对路径不会退回当前工作目录去猜。',
+    )
+  }
+  if (candidates.length > 1) {
+    throw new Error(
+      `这些相对路径在多个知识库下都存在：${rel.join('、')}\n`
+      + candidates.map(c => `  ${c}`).join('\n')
+      + '\n请用 vault 指定按哪一个解析。',
+    )
+  }
+  return candidates[0]
 }
 
 /**
@@ -206,6 +266,10 @@ function renderAudit(audit: DigestAudit, config: DigestConfig, gateOnly = false)
   const lines: string[] = []
   lines.push(`消化验收：${audit.label}`)
   lines.push(`  源文档  ${audit.source}   ${(audit.volume.sourceBytes / 1024).toFixed(0)} KB`)
+  // 库根得说出来：source/product 常常是库内相对路径，离开根部就无从定位，
+  // 而它此前只活在 wiki_config.json 里，报告只字不提——拿着相对路径的人
+  // 只能去翻配置文件。
+  if (audit.vault !== undefined) lines.push(`  知识库  ${audit.vault}`)
   if (gateOnly) {
     lines.push('  产物    （未给 product——本次只跑重叠门禁）')
     if (audit.configNote !== '') lines.push(`  配置    ${audit.configNote}`)
@@ -515,22 +579,28 @@ export function registerYonDigestTools(
       properties: {
         source: {
           type: 'string',
-          description: 'Absolute path to the source material — the extracted text of the PDF or document being digested.',
+          description: 'The source material — the extracted text of the PDF or document being digested. '
+            + 'An absolute path, or a vault-relative one such as "raw/articles/x.md" (resolved against the vault root, '
+            + 'never against the current working directory).',
         },
         product: {
           oneOf: [
             { type: 'string' },
             { type: 'array', items: { type: 'string' } },
           ],
-          description: 'Absolute path to the produced knowledge page, or a directory of them; or an array of paths '
+          description: 'The produced knowledge page, or a directory of them; or an array of paths '
             + 'when one digestion\'s pages live in different directories (topic pages in topics/, the index page in '
-            + 'sources/). Omit to run only the overlap gate. Prefer the real paths inside the vault — a copy placed '
+            + 'sources/). Absolute, or vault-relative — which is the form wiki_page_write returns, so its `file` can be '
+            + 'passed straight in. Omit to run only the overlap gate. Prefer the real paths inside the vault — a copy placed '
             + 'elsewhere cannot be excluded from the overlap scan, so the overlap figure would then measure the '
             + 'product against itself.',
         },
         vault: {
           type: 'string',
-          description: 'Vault id (e.g. "bip") or absolute vault path, used for the overlap gate. Omit to skip that check.',
+          description: 'Vault id (e.g. "bip") or absolute vault path. It is both the root for the overlap gate — omit it '
+            + 'and that check is skipped — and the base for any relative `source`/`product`. With relative paths and no '
+            + '`vault`, a registered vault is used only when exactly one of them actually contains them; otherwise the '
+            + 'call fails and lists the candidates.',
         },
         label: { type: 'string', description: 'Label for the report; the product basename when omitted.' },
       },
@@ -556,7 +626,7 @@ export function registerYonDigestTools(
       }
       const input = args as Record<string, unknown>
       const source = typeof input.source === 'string' ? input.source.trim() : ''
-      if (source === '') throw new Error('digest_audit 需要 source（源文档的绝对路径）')
+      if (source === '') throw new Error('digest_audit 需要 source（源文档路径：绝对路径，或相对 vault 根的库内路径）')
       // 一组产物常常分居两个目录（主题页在 topics/、索引页在 sources/），而 product
       // 只收一个目录时唯一的办法是把它们复制到别处——那样从重叠扫描里排掉的是副本
       // 路径，库里的原件照旧算作「已有内容」：实测把 47.8% 虚报成 88.9%，一份合格
@@ -597,6 +667,16 @@ export function registerYonDigestTools(
         ? `${loaded.path}${loaded.problem === undefined ? '' : `（${loaded.problem}）`}`
         : `${loaded.path} 不存在，用内置默认值`
 
+      // 给了 vault 就用它作基准；没给而参数里确实有相对路径时，在已登记的知识库里
+      // 找唯一一个其下真有这些文件的。见 baseForRelative：找不到或有歧义都报错，
+      // 不退回工作目录猜——那正是「wiki/topics/x.md 被解析到 .dsh\profiles\desktop\
+      // 下」这个 bug 的成因。
+      const resolved = await baseForRelative(
+        [...productList, source],
+        vaultPath,
+        () => wiki.list(),
+      )
+
       const started = Date.now()
       // 只跑门禁时产物给的是源文档自身——这样体积、覆盖等项自然不是重点，
       // 报告里第 6 项仍然完整。
@@ -604,7 +684,7 @@ export function registerYonDigestTools(
         source,
         product: product ?? source,
         config: loaded.config,
-        ...(vaultPath === undefined ? {} : { vault: vaultPath }),
+        ...(resolved === undefined ? {} : { vault: resolved }),
         ...(typeof input.label === 'string' && input.label !== '' ? { label: input.label } : {}),
         configNote: note,
       })
@@ -684,7 +764,7 @@ export function registerYonDigestTools(
       if (vaultArg === '') throw new Error('digest_sweep 需要 vault（知识库 id 或绝对路径）')
 
       let root: string
-      if (/^[A-Za-z]:[\\/]/.test(vaultArg) || vaultArg.startsWith('/')) {
+      if (isAbsolutePath(vaultArg)) {
         root = vaultArg
       } else {
         const vaults = await wiki.list()
@@ -703,7 +783,7 @@ export function registerYonDigestTools(
       const verdicts = new Map<string, SweepVerdict>()
       for (const entry of await log.read()) {
         if (entry.outcome !== 'pass' && entry.outcome !== 'fail') continue
-        const key = sourceKey(entry.source)
+        const key = vaultPathKey(root, entry.source)
         const seen = verdicts.get(key)
         // 同一个源可能被验过多轮（返工后再验）；取时间戳最大的那次。
         // 时间戳是 ISO 串，字典序即时间序。

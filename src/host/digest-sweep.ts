@@ -46,6 +46,7 @@ import { readFile, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { auditDigest, type DigestAudit } from './digest-audit.ts'
 import type { DigestConfig } from './digest-config.ts'
+import { vaultPathKey } from './vault-path.ts'
 
 /** 一组产物在体检里的结局。 */
 export type SweepStatus =
@@ -79,20 +80,6 @@ export interface SweepVerdict {
   readonly outcome: 'pass' | 'fail'
   /** 判定时刻，ISO 字符串。 */
   readonly at: string
-}
-
-/**
- * 源文件路径在对账时用的键。
- *
- * 两个来源的写法不保证一致：日志里是运行当时手敲或拼出来的绝对路径，这边是
- * `path.join(root, rel)` 拼出来的。斜杠方向与大小写都可能不同，所以两边都先
- * 归一化再比——否则对账会静默地一条都配不上，然后把全部组报成「从未验收」。
- *
- * @param file - 源文件的绝对路径。
- * @returns 归一化后的键。
- */
-export function sourceKey(file: string): string {
-  return path.resolve(file).split(path.sep).join('/').toLowerCase()
 }
 
 /** 体检结果里的一行。 */
@@ -370,7 +357,11 @@ export async function sweepDigests(input: {
     // 库里根本不需要任何验收记录。缺了这一项，报告会把「从没验过」和「验过且
     // 合格」显示成同一件事——实测里那份文档正是这样，判定合格的那次验收发生在
     // 仪表之外，面板上却显示「2 次检查、合格 0」。
-    const verdict = input.verdicts?.get(sourceKey(sourceAbs))
+    // 对账键一律先归一到库内相对：这边是 `path.join(root, rel)` 拼的，流水账里
+    // 则是运行当时调用者给的写法（可能是绝对路径，也可能是库内相对路径）。两者
+    // 必须折到同一把尺子上，否则对账会静默地一条都配不上，然后把全部组报成
+    // 「从未验收」。
+    const verdict = input.verdicts?.get(vaultPathKey(input.root, sourceAbs))
     if (verdict === undefined) neverAudited += 1
     audited.push({
       products: productRels,

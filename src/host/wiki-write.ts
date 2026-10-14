@@ -99,7 +99,19 @@ export interface WikiWriteResult {
   readonly mode: string
   readonly vault: string
   readonly page: string
+  /** Vault-relative. Resolve it against `root`, never against the working directory. */
   readonly file: string
+  /**
+   * The vault root this `file` is relative to.
+   *
+   * Reported because `file` alone is not addressable: every reader resolves a
+   * relative path against the vault root, and that root otherwise lives only in
+   * `wiki_config.json`. Measured cost of leaving it out — the write tool handed out
+   * `wiki/topics/x.md` and told the caller to give it to `digest_audit`, which
+   * resolved it against its own working directory and reported a path nobody had
+   * ever written.
+   */
+  readonly root: string
   /** What was written, in one line. */
   readonly summary: string
   /** Files touched besides the page itself. */
@@ -569,13 +581,14 @@ function describePageWrite(args: Record<string, unknown>): string {
 /** The JSON Schema of a non-entity page write's answer. */
 const PAGE_VALUE = {
   type: 'object',
-  required: ['ok', 'vault', 'dir', 'page', 'file', 'summary'],
+  required: ['ok', 'vault', 'dir', 'page', 'file', 'root', 'summary'],
   properties: {
     ok: { type: 'boolean' },
     vault: { type: 'string' },
     dir: { type: 'string' },
     page: { type: 'string' },
     file: { type: 'string' },
+    root: { type: 'string' },
     summary: { type: 'string' },
     sideEffects: { type: 'array', items: { type: 'string' } },
   },
@@ -589,6 +602,8 @@ export interface WikiPageWriteResult {
   readonly page: string
   /** Vault-relative path, ready to hand to `digest_audit`'s `product`. */
   readonly file: string
+  /** The vault root `file` is relative to; see `WikiWriteResult.root`. */
+  readonly root: string
   readonly summary: string
   readonly sideEffects: readonly string[]
 }
@@ -596,13 +611,14 @@ export interface WikiPageWriteResult {
 /** The JSON Schema of a write's answer. */
 const WRITE_VALUE = {
   type: 'object',
-  required: ['ok', 'mode', 'vault', 'page', 'file', 'summary'],
+  required: ['ok', 'mode', 'vault', 'page', 'file', 'root', 'summary'],
   properties: {
     ok: { type: 'boolean' },
     mode: { type: 'string' },
     vault: { type: 'string' },
     page: { type: 'string' },
     file: { type: 'string' },
+    root: { type: 'string' },
     summary: { type: 'string' },
     sideEffects: { type: 'array', items: { type: 'string' } },
   },
@@ -758,6 +774,7 @@ export function registerYonWikiWriteTools(
           ok: true,
           mode,
           vault: vault.id,
+          root: vault.path,
           page,
           file: path.relative(vault.path, target).split(path.sep).join('/'),
           summary: `新建页面 ${page}（${platformVersion}，${status}，来源 ${sourceType}）`,
@@ -801,6 +818,7 @@ export function registerYonWikiWriteTools(
           ok: true,
           mode,
           vault: vault.id,
+          root: vault.path,
           page,
           file,
           summary: `往「${page}」追加章节「${section}」（原 ${before.length} → ${after.length} 字节，原内容未改动）`,
@@ -858,6 +876,7 @@ export function registerYonWikiWriteTools(
             ok: true,
             mode,
             vault: vault.id,
+            root: vault.path,
             page,
             file,
             summary: `「${page}」的字段已经是目标值，未改动。`,
@@ -873,6 +892,7 @@ export function registerYonWikiWriteTools(
           ok: true,
           mode,
           vault: vault.id,
+          root: vault.path,
           page,
           file,
           summary: `更正「${page}」：${changes.join('；')}`,
@@ -886,7 +906,7 @@ export function registerYonWikiWriteTools(
       const result = value as WikiWriteResult
       return [
         `✅ ${result.summary}`,
-        `   vault ${result.vault}   ${result.file}`,
+        `   vault ${result.vault}   ${result.file}   （根：${result.root}）`,
         ...(result.sideEffects.length === 0 ? [] : ['', '同时更新：', ...result.sideEffects.map(line => `   ${line}`)]),
         '',
         '索引缓存已失效，下次 wiki_lookup 会重建并包含这次写入。',
@@ -1057,6 +1077,7 @@ export function registerYonWikiWriteTools(
         dir,
         page,
         file: rel,
+        root: vault.path,
         summary: `新建 ${dir} 页「${page}」（${status}，来源 ${sourceType}）`,
         sideEffects: touched as unknown as readonly string[],
       }
@@ -1065,10 +1086,11 @@ export function registerYonWikiWriteTools(
       const result = value as WikiPageWriteResult
       return [
         `✅ ${result.summary}`,
-        `   vault ${result.vault}   ${result.file}`,
+        `   vault ${result.vault}   ${result.file}   （根：${result.root}）`,
         ...(result.sideEffects.length === 0 ? [] : ['', '同时更新：', ...result.sideEffects.map(line => `   ${line}`)]),
         '',
         `验收这一页时把 ${result.file} 交给 digest_audit 的 product（同一份素材的多页传数组）。`,
+        `它是库内相对路径，按 vault ${result.vault} 的根解析——带上 vault 就不会被当成工作目录下的文件。`,
         '它不在 wiki_lookup 的索引里 —— 那是实体页的索引 —— 要读请按路径读。',
       ].join('\n')
     },

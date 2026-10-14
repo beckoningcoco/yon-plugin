@@ -32,17 +32,6 @@ export interface SweepVerdict {
     /** 判定时刻，ISO 字符串。 */
     readonly at: string;
 }
-/**
- * 源文件路径在对账时用的键。
- *
- * 两个来源的写法不保证一致：日志里是运行当时手敲或拼出来的绝对路径，这边是
- * `path.join(root, rel)` 拼出来的。斜杠方向与大小写都可能不同，所以两边都先
- * 归一化再比——否则对账会静默地一条都配不上，然后把全部组报成「从未验收」。
- *
- * @param file - 源文件的绝对路径。
- * @returns 归一化后的键。
- */
-export declare function sourceKey(file: string): string;
 /** 体检结果里的一行。 */
 export interface SweepEntry {
     /** 这次验收涵盖的产物，相对 root 的路径。合并验收时会有多页。 */

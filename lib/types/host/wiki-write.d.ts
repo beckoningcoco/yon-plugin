@@ -22,7 +22,19 @@ export interface WikiWriteResult {
     readonly mode: string;
     readonly vault: string;
     readonly page: string;
+    /** Vault-relative. Resolve it against `root`, never against the working directory. */
     readonly file: string;
+    /**
+     * The vault root this `file` is relative to.
+     *
+     * Reported because `file` alone is not addressable: every reader resolves a
+     * relative path against the vault root, and that root otherwise lives only in
+     * `wiki_config.json`. Measured cost of leaving it out — the write tool handed out
+     * `wiki/topics/x.md` and told the caller to give it to `digest_audit`, which
+     * resolved it against its own working directory and reported a path nobody had
+     * ever written.
+     */
+    readonly root: string;
     /** What was written, in one line. */
     readonly summary: string;
     /** Files touched besides the page itself. */
@@ -36,6 +48,8 @@ export interface WikiPageWriteResult {
     readonly page: string;
     /** Vault-relative path, ready to hand to `digest_audit`'s `product`. */
     readonly file: string;
+    /** The vault root `file` is relative to; see `WikiWriteResult.root`. */
+    readonly root: string;
     readonly summary: string;
     readonly sideEffects: readonly string[];
 }

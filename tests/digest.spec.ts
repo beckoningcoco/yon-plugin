@@ -22,7 +22,8 @@ import {
   auditDigest, bodyOnly, chineseTerms, constraints, identifierCounts, identifiers, sections,
   type OverlapCheck,
 } from '../src/host/digest-audit.ts'
-import { sourceKey, sourcePathOf, sweepDigests } from '../src/host/digest-sweep.ts'
+import { sourcePathOf, sweepDigests } from '../src/host/digest-sweep.ts'
+import { isAbsolutePath, resolveInVault, vaultPathKey } from '../src/host/vault-path.ts'
 import { overlapLines } from '../src/host/digest-tools.ts'
 
 const config = DEFAULT_DIGEST_CONFIG
@@ -397,10 +398,31 @@ describe('批量体检', () => {
     expect(sweep.unreadableDirs).toEqual([])
   })
 
-  it('sourceKey 抹平斜杠方向与大小写', () => {
-    // 日志里是运行当时拼出来的绝对路径，这边是 path.join 拼的，斜杠方向与大小写
-    // 都不保证一致。对不上不会报错，只会静默地把全部组报成「从未验收」。
-    expect(sourceKey('C:/Users/x/raw/A.md')).toBe(sourceKey('c:\\users\\x\\raw\\a.md'))
+  it('vaultPathKey 把「库内相对」与「同一库下的绝对」折成同一个键', () => {
+    // 日志里是运行当时调用者给的写法（可能是绝对路径，也可能是库内相对路径），
+    // 这边是 path.join 拼的绝对路径。对不上不会报错，只会静默地把全部组报成
+    // 「从未验收」——所以要钉住两种写法等价。
+    const root = 'C:/Users/x/vault'
+    expect(vaultPathKey(root, 'raw/articles/a.md')).toBe(vaultPathKey(root, 'c:\\users\\x\\vault\\raw\\articles\\A.md'))
+    // 斜杠方向与大小写也要抹平
+    expect(vaultPathKey(root, 'raw/A.md')).toBe(vaultPathKey(root, 'raw\\a.md'))
+    // 库外的绝对路径老实保留绝对形态，不伪装成库内相对
+    expect(vaultPathKey(root, 'D:/elsewhere/a.md')).toBe('d:/elsewhere/a.md')
+    // 没有基准时只归一，配不上任何绝对写法——那是调用者的错，由解析处报出来
+    expect(vaultPathKey(undefined, 'raw\\A.md')).toBe('raw/a.md')
+  })
+
+  it('相对路径有基准才解析得出来；没基准就是 undefined，不退回工作目录', () => {
+    expect(isAbsolutePath('raw/articles/a.md')).toBe(false)
+    expect(isAbsolutePath('E:\\vault\\a.md')).toBe(true)
+    expect(isAbsolutePath('/home/x/a.md')).toBe(true)
+    expect(isAbsolutePath('\\\\server\\share\\a.md')).toBe(true)
+
+    expect(resolveInVault('C:/v', 'wiki/topics/x.md')).toBe(path.resolve('C:/v', 'wiki/topics/x.md'))
+    expect(resolveInVault('C:/v', 'D:/other/x.md')).toBe(path.resolve('D:/other/x.md'))
+    // 关键：没有基准时返回 undefined，而不是拿进程的工作目录当基准去猜。
+    // 实测那串 `ENOENT …\.dsh\profiles\desktop\wiki\topics\x.md` 正是猜出来的。
+    expect(resolveInVault(undefined, 'wiki/topics/x.md')).toBeUndefined()
   })
 
   it('把「验过没有」注入体检：没验过的那组单独一档', async () => {
@@ -418,7 +440,7 @@ describe('批量体检', () => {
     }
 
     // 只有 a 有判定记录，b 从没验过
-    const verdicts = new Map([[sourceKey(path.join(root, 'raw', 'articles', 'a.md')),
+    const verdicts = new Map([[vaultPathKey(root, path.join(root, 'raw', 'articles', 'a.md')),
       { outcome: 'pass' as const, at: '2026-09-30T01:00:00.000Z' }]])
 
     const sweep = await sweepDigests({ root, config, verdicts })
@@ -496,5 +518,119 @@ describe('重叠门禁', () => {
     expect(audit.overlap?.excludeMissed).toBe(true)
     // 一个都没排掉，两个口径必然相等——报告据此就能判断该不该信这个数
     expect(audit.overlap?.rate).toBe(audit.overlap?.rateWithProducts)
+  })
+})
+
+describe('路径基准：相对路径按知识库根解析', () => {
+  let dir: string | undefined
+
+  afterEach(async () => {
+    if (dir !== undefined) await rm(dir, { recursive: true, force: true })
+    dir = undefined
+  })
+
+  /** 和上一组同构的迷你库，返回的都是**绝对**路径。 */
+  async function scaffold(): Promise<{ root: string, source: string, product: string }> {
+    dir = await mkdtemp(path.join(tmpdir(), 'digest-vault-'))
+    const root = dir
+    const { mkdir } = await import('node:fs/promises')
+    await mkdir(path.join(root, 'raw', 'articles'), { recursive: true })
+    await mkdir(path.join(root, 'wiki', 'topics'), { recursive: true })
+    await mkdir(path.join(root, 'wiki', 'sources'), { recursive: true })
+
+    const source = path.join(root, 'raw', 'articles', 'src.md')
+    await writeFile(source,
+      '第一章 基本概念\n用 MessageChannel 与 rpcTemplate 发送，字段 esnData 必填。\n', 'utf8')
+    const product = path.join(root, 'wiki', 'topics', 'msg.md')
+    await writeFile(product,
+      '---\ntags: [x]\nsources: [raw/articles/src.md]\n---\n\n# 消息\n\nMessageChannel rpcTemplate esnData\n', 'utf8')
+    await writeFile(path.join(root, 'wiki', 'sources', 'other.md'),
+      '---\ntags: [x]\n---\n\n# 别的\n\nunrelatedThing\n', 'utf8')
+    return { root, source, product }
+  }
+
+  it('库内相对路径能被验收，报告与结果里保留原写法，并说出库根', async () => {
+    const { root, source, product } = await scaffold()
+    // wiki_page_write 交出来的就是这种形态，它的 render 里明说「把 file 交给
+    // digest_audit 的 product」。此前这个用法直接 ENOENT 在一个谁也没写过的
+    // 工作目录下（\.dsh\profiles\desktop\wiki\topics\msg.md）。
+    const audit = await auditDigest({
+      source: 'raw/articles/src.md',
+      product: 'wiki/topics/msg.md',
+      config,
+      vault: root,
+    })
+    expect(audit.pages).toBe(1)
+    // 原写法一律保留：这两个值要进流水账，记成绝对路径就是把机器写进了账本
+    expect(audit.source).toBe('raw/articles/src.md')
+    expect(audit.product).toBe('wiki/topics/msg.md')
+    // 库根单独报一次，否则拿着相对路径的人只能去翻 wiki_config.json
+    expect(audit.vault).toBe(root)
+
+    // 两种写法的判定必须一致——差别只在印出来的路径本身，不在测出来的东西
+    const abs = await auditDigest({ source, product, config, vault: root })
+    expect(audit.failed).toEqual(abs.failed)
+    expect(audit.coverage.level1.rate).toBe(abs.coverage.level1.rate)
+    expect(audit.fidelity.rate).toBe(abs.fidelity.rate)
+    expect(audit.overlap?.hit).toBe(abs.overlap?.hit)
+  })
+
+  it('产物给库内相对路径时，重叠门禁照样把它排掉', async () => {
+    const { root } = await scaffold()
+    // 这是修复前的**静默**失效：产物是相对的，扫描出来的是绝对的，两边的键
+    // 配不上，于是一个都排不掉——不报错，只是重叠率退回「量产物自己」的虚高值。
+    const audit = await auditDigest({
+      source: 'raw/articles/src.md',
+      product: 'wiki/topics/msg.md',
+      config,
+      vault: root,
+    })
+    expect(audit.overlap?.excludedFiles).toBe(1)
+    expect(audit.overlap?.excludeMissed).toBe(false)
+    // 库内只剩那份无关页面：一个都不中
+    expect(audit.overlap?.hit).toBe(0)
+  })
+
+  it('既有库内相对、又有绝对路径时，两种写法都能验收', async () => {
+    const { root, product } = await scaffold()
+    const audit = await auditDigest({
+      source: 'raw/articles/src.md',
+      product: [product, path.join(root, 'wiki', 'sources', 'other.md')],
+      config,
+      vault: root,
+    })
+    expect(audit.pages).toBe(2)
+    // 排掉的是产物自己那两份，不是一份
+    expect(audit.overlap?.excludedFiles).toBe(2)
+  })
+
+  it('相对路径而没有库根时明确报错，不退回工作目录猜', async () => {
+    await scaffold()
+    // 猜会猜错，而且猜错时不吭声——那正是这次事故的形态。宁可报错。
+    await expect(auditDigest({
+      source: 'raw/articles/src.md',
+      product: 'wiki/topics/msg.md',
+      config,
+    })).rejects.toThrow(/相对路径.*vault/s)
+  })
+
+  it('流水账里记的是库内相对写法时，「验过没有」照样配得上', async () => {
+    const { root } = await scaffold()
+    const { mkdir } = await import('node:fs/promises')
+    await mkdir(path.join(root, 'wiki'), { recursive: true })
+    await writeFile(path.join(root, 'wiki', 'msg.md'),
+      '---\ntags: [x]\nsources: [raw/articles/src.md]\n---\n\n# 消息\n\nMessageChannel rpcTemplate esnData\n',
+      'utf8')
+
+    // 调用者给的是相对写法（新工具链的常态），体检那边算的是绝对路径：
+    // 两边必须在同一把尺子上，否则这一组会被报成「从未验收」。
+    const verdicts = new Map([[
+      vaultPathKey(root, 'raw/articles/src.md'),
+      { outcome: 'pass' as const, at: '2026-10-01T01:00:00.000Z' },
+    ]])
+    const sweep = await sweepDigests({ root, config, verdicts })
+    const entry = sweep.entries.find(e => e.source === 'raw/articles/src.md')
+    expect(entry?.verdict?.outcome).toBe('pass')
+    expect(sweep.neverAudited).toBe(0)
   })
 })

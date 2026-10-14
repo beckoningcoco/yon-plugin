@@ -134,6 +134,14 @@ export interface DigestAudit {
     readonly passed: boolean;
     /** 配置来源说明：路径，以及读配置时遇到的问题。 */
     readonly configNote: string;
+    /**
+     * 本次用的知识库根。
+     *
+     * 报告里要把它说出来：`source`/`product` 可能是库内相对路径，离开根部就
+     * 无从定位；而那个根此前只存在于 `wiki_config.json` 里，报告只字不提，
+     * 于是调用者拿着一个相对路径只能去翻配置文件。
+     */
+    readonly vault?: string;
 }
 /**
  * 英文标识符：带分隔符的名、驼峰词、纯大写缩写。
@@ -253,6 +261,12 @@ export declare function auditDigest(input: {
     readonly source: string;
     readonly product: string | readonly string[];
     readonly config: DigestConfig;
+    /**
+     * 知识库根**路径**。
+     *
+     * 两个用途，其实是同一件事：既作第 6 项重叠扫描的根，也作 `source`/`product`
+     * 里相对路径的基准。调用方（`digest-tools.ts`）已经把 vault id 解析成路径了。
+     */
     readonly vault?: string;
     readonly label?: string;
     readonly configNote?: string;
