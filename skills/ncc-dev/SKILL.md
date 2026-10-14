@@ -1,6 +1,6 @@
 ---
 name: ncc-dev
-description: NCC（用友 NC Cloud）开发的总入口。问题里出现 NCC、NC Cloud、NCC2111、NCC2312、NCC2207 时先用本技能，由本技能的场景路由分发。自带跨场景复用的共享素材：各模块 VO 参考（应收应付、总账、库存、采购、销售、基础档案等）、通用 API、事件码、单据类型、编码规范、元数据与 bmf 对应、单据主子表、前端开发，以及 NCC 数据库查询与 SQL 自验证；参照 / 自定义参照 / F7、业务扩展 / 扩展点、编码规则 / 单据编号这几类场景也在本技能。写业务插件 / 事件监听器（IBusinessListener、doAction）请用 ncc-plugin-dev；写后台任务 / 调度任务请用 ncc-background-task；写资产包接口、配置集成规则 pub_interule、接第三方 OpenAPI 请用 ncc-asset-hawk。旗舰版（BIP / YonBIP）是另一条产品线，用 yonyou-bip-dev，表结构、实体名与类名互不相通。
+description: NCC（用友 NC Cloud）开发的总入口。问题里出现 NCC、NC Cloud、NCC2111、NCC2312、NCC2207 时先用本技能，由本技能的场景路由分发。自带跨场景复用的共享素材：各模块 VO 参考（应收应付、总账、库存、采购、销售、基础档案等）、通用 API、事件码、单据类型、编码规范、元数据与 bmf 对应、单据主子表、前端开发，以及 NCC 数据库查询与 SQL 自验证；参照 / 自定义参照 / F7、业务扩展 / 扩展点、编码规则 / 单据编号、SPR 性能报告分析与 SPR 报告录制（后者单独见 `ncc-spr-recording`）这几类场景也在本技能。写业务插件 / 事件监听器（IBusinessListener、doAction）请用 ncc-plugin-dev；写后台任务 / 调度任务请用 ncc-background-task；写资产包接口、配置集成规则 pub_interule、接第三方 OpenAPI 请用 ncc-asset-hawk。旗舰版（BIP / YonBIP）是另一条产品线，用 yonyou-bip-dev，表结构、实体名与类名互不相通。
 ---
 
 # NCC 定制开发总指南
@@ -40,6 +40,8 @@ description: NCC（用友 NC Cloud）开发的总入口。问题里出现 NCC、
 | `ncc-plugin-dev` | 业务插件 / 事件监听器（IBusinessListener、doAction） | 要写的是「挂到单据事件上的类」 |
 | `ncc-background-task` | 后台任务 / 调度任务 | 要写的是「定时/计划执行的插件」 |
 | `ncc-asset-hawk` | 资产包接口、集成规则 pub_interule、三方 OpenAPI 签名、NCC 源码走查与问题记录 | 要对接第三方系统 / 配集成规则 / 查 NCC 源码 |
+| `ncc-spr-recording` | 在前台录制 SPR 性能报告（头像菜单开关录制 → 做操作 → 结束 → 取 `/spr/temp/*.html` 报告） | 要「录一份 SPR」「抓一次性能报告」时；报告拿到**之后**怎么读，见下文场景路由的「SPR 性能报告分析」 |
+| `ncc-call-chain` | 走查某个业务动作的调用链（入口类 → Service 实现 → 落库 SQL），并把结果沉淀成实体档案 | 要「打通某动作的调用链」「这个按钮对应哪个类」「保存写哪几张表」「规则链在哪」时；**先读它指的档案索引**，别一上来翻 jar |
 
 > 这三条都要回过头来读本技能的 `ncc/ncc-dev/references/common/`（VO 参考、事件码、单据类型、编码规范、通用 API），所以走它们时**本技能也一起加载**。
 
@@ -57,6 +59,9 @@ description: NCC（用友 NC Cloud）开发的总入口。问题里出现 NCC、
 | **业务扩展** | 业务扩展、扩展点、扩展注册、处理器 | `ncc/ncc-dev/references/scenarios/biz-extension.md`（待建） |
 | **编码规则** | 编码规则、单据编号、自动编号、编码生成 | `ncc/ncc-dev/references/scenarios/coding-rule.md`（待建） |
 | **前端开发 / 脚手架** | 前端、前端源码、页面开发、列表页、卡片页、list/card、hotwebs、webpack、nc-lightapp-front、参照过滤、前端 GBK | `ncc/ncc-dev/references/frontend/README.md`（该目录 8 篇，入口是 README） |
+| **SPR 录制** | 录 SPR、SPR 录制、开录制、结束录制、抓一份性能报告、SPR 怎么开 | `ncc-spr-recording` 技能（录制这一段）→ 紧接着 `ncc/ncc-dev/references/scenarios/spr-log-analysis.md`（报告怎么读） |
+| **SPR 性能报告分析** | SPR、SPR 日志、性能报告、慢、很卡、耗时分析、远程调用耗时、sql耗时TOP10、callid、工作桌面慢、页面加载慢、性能瓶颈排查 | `ncc/ncc-dev/references/scenarios/spr-log-analysis.md`（报告从哪来见 `ncc-spr-recording` 技能） |
+| **调用链走查 / 行为→表 / 规则链** | 调用链、源码走查、这个动作从哪进、保存调了什么、行为对应哪张表、保存写哪几张表、反编译、cfr、类在哪个 jar、客开钩子在哪、IRule、业务规则、规则链、pub_pluginitem | `ncc-call-chain` 子技能（走查方法 + 三档力度 + cfr 模板 + 公共骨架）。**档案缓存：先读** `ncc/ncc-dev/references/scenarios/_call-chain-archive-index.md`（总索引）→ 命中就读对应实体档案（已建：`客户档案保存调用链.md`，20 跳全链 + 表落点 + 事件规则链）。**机制**：`ncc-event-and-rule-mechanism.md`（`IBusinessListener` 事件订阅 vs `IRule` + `RuleCollection` + `pub_pluginitem` 插件链）。配套：类→jar 用 `ncc_class_search`，实体/表/字段用 `ncc_meta_find` + `ncc_meta_detail` |
 
 ## 源码分析工作流
 
