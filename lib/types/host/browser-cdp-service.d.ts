@@ -37,7 +37,7 @@
  */
 import type { BrowserRunView } from '../shared/types.ts';
 import type { YonBrowsersService } from './browser-service.ts';
-import { type CaptureOptions, type ElementTarget, type FillOutcome, type PageElement, type ScrapeField, type SelectMatch } from './browser-interact.ts';
+import { type CaptureOptions, type ClickMode, type ClickOptions, type DragDelivery, type DragEndReport, type DragMode, type DragOptions, type DragVerification, type ElementTarget, type FillOutcome, type HitReport, type HitRelation, type MouseButton, type PageElement, type ScrapeField, type SelectMatch } from './browser-interact.ts';
 import { type PageTip } from './browser-tips.ts';
 /** Why a browser operation could not be carried out. */
 export type BrowserCdpErrorCode = 
@@ -108,6 +108,51 @@ export interface CdpClickResult {
     readonly page: CdpPageView;
     readonly tag: string;
     readonly text: string;
+    /** Which route the click took: `real` is the CDP pointer, the other three are in-page. */
+    readonly via: ClickMode;
+    /** Which button pressed. */
+    readonly button: MouseButton;
+    /**
+     * 按下之前，那一点底下是谁。「点了没反应」时第一个要看的东西：按点被别的东西占着，
+     * 事件就发到了那个东西身上。页面内的三条路（`dom`/`seq`/`react`）没有指针，三者皆空。
+     */
+    readonly hitTag: string;
+    readonly hitText: string;
+    readonly hitRelation: HitRelation;
+}
+/** What one hover settled on. */
+export interface CdpHoverResult {
+    readonly page: CdpPageView;
+    readonly tag: string;
+    readonly text: string;
+    /** What the pointer actually rests on — not necessarily the element we aimed at. */
+    readonly hitTag: string;
+    readonly hitText: string;
+    /** How that hit relates to the element aimed at. */
+    readonly hitRelation: HitRelation;
+}
+/** What one drag did. */
+export interface CdpDragResult {
+    readonly page: CdpPageView;
+    readonly mode: DragMode;
+    /** How the pointer sequence was played, as opposed to which mode was asked for. */
+    readonly delivery: DragDelivery;
+    /** What the browser itself could confirm; `unavailable` for a mouse-only drag. */
+    readonly verification: DragVerification;
+    /** Where the drag started: what was located there, and how the locator matched it. */
+    readonly from: DragEndReport;
+    /** Where it was dropped: same, for the other end. */
+    readonly to: DragEndReport;
+    /** Who was under the pointer when it pressed. */
+    readonly fromPressHit: HitReport;
+    /** Who was under the drop point before the gesture began. */
+    readonly toBeforeHit: HitReport;
+    /** Who was under the drop point after the last move, before the drop — often the page's own proxy. */
+    readonly toMidHit: HitReport;
+    /** Who was under the drop point after the release. */
+    readonly toReleaseHit: HitReport;
+    /** Whether real HTML5 drag data moved; always false for `mouse`. */
+    readonly intercepted: boolean;
 }
 /** What one value write produced, so the caller can confirm rather than assume. */
 export interface CdpSetValueResult {
@@ -208,9 +253,18 @@ export interface YonBrowserCdpService {
         readonly maxChars?: number;
     }, signal: AbortSignal): Promise<CdpEvalResult>;
     close(input: PageRef, signal: AbortSignal): Promise<CdpPageView>;
+    activate(input: PageRef, signal: AbortSignal): Promise<CdpPageView>;
     click(input: PageRef & {
         readonly target: ElementTarget;
-    }, signal: AbortSignal): Promise<CdpClickResult>;
+    } & ClickOptions, signal: AbortSignal): Promise<CdpClickResult>;
+    drag(input: PageRef & {
+        readonly from: ElementTarget;
+        readonly to: ElementTarget;
+    } & DragOptions, signal: AbortSignal): Promise<CdpDragResult>;
+    hover(input: PageRef & {
+        readonly target: ElementTarget;
+        readonly holdMs?: number;
+    }, signal: AbortSignal): Promise<CdpHoverResult>;
     type(input: PageRef & {
         readonly text: string;
         readonly target?: ElementTarget;

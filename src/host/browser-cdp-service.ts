@@ -41,9 +41,12 @@ import type { BrowserRunView } from '../shared/types.ts'
 import type { YonBrowsersService } from './browser-service.ts'
 import {
   InteractError,
-  capturePage, clickAt, collectElements, fillFields, goBack, goForward, pressKey,
+  capturePage, clickAt, collectElements, dragBetween, fillFields, goBack, goForward, hoverAt, pressKey,
   readValueOf, reloadPage, scrapeRows, scrollPage, selectOption, setValueOf, typeText, waitForPage,
-  type CaptureOptions, type ElementTarget, type FillField, type FillOutcome, type PageElement,
+  type CaptureOptions, type ClickMode, type ClickOptions, type DragDelivery, type DragEndReport,
+  type DragMode, type DragOptions, type DragVerification,
+  type ElementTarget, type FillField,
+  type FillOutcome, type HitReport, type HitRelation, type MouseButton, type PageElement,
   type ScrapeField, type SelectMatch,
 } from './browser-interact.ts'
 import { collectPageTips, type PageTip } from './browser-tips.ts'
@@ -135,6 +138,53 @@ export interface CdpClickResult {
   readonly page: CdpPageView
   readonly tag: string
   readonly text: string
+  /** Which route the click took: `real` is the CDP pointer, the other three are in-page. */
+  readonly via: ClickMode
+  /** Which button pressed. */
+  readonly button: MouseButton
+  /**
+   * 按下之前，那一点底下是谁。「点了没反应」时第一个要看的东西：按点被别的东西占着，
+   * 事件就发到了那个东西身上。页面内的三条路（`dom`/`seq`/`react`）没有指针，三者皆空。
+   */
+  readonly hitTag: string
+  readonly hitText: string
+  readonly hitRelation: HitRelation
+}
+
+/** What one hover settled on. */
+export interface CdpHoverResult {
+  readonly page: CdpPageView
+  readonly tag: string
+  readonly text: string
+  /** What the pointer actually rests on — not necessarily the element we aimed at. */
+  readonly hitTag: string
+  readonly hitText: string
+  /** How that hit relates to the element aimed at. */
+  readonly hitRelation: HitRelation
+}
+
+/** What one drag did. */
+export interface CdpDragResult {
+  readonly page: CdpPageView
+  readonly mode: DragMode
+  /** How the pointer sequence was played, as opposed to which mode was asked for. */
+  readonly delivery: DragDelivery
+  /** What the browser itself could confirm; `unavailable` for a mouse-only drag. */
+  readonly verification: DragVerification
+  /** Where the drag started: what was located there, and how the locator matched it. */
+  readonly from: DragEndReport
+  /** Where it was dropped: same, for the other end. */
+  readonly to: DragEndReport
+  /** Who was under the pointer when it pressed. */
+  readonly fromPressHit: HitReport
+  /** Who was under the drop point before the gesture began. */
+  readonly toBeforeHit: HitReport
+  /** Who was under the drop point after the last move, before the drop — often the page's own proxy. */
+  readonly toMidHit: HitReport
+  /** Who was under the drop point after the release. */
+  readonly toReleaseHit: HitReport
+  /** Whether real HTML5 drag data moved; always false for `mouse`. */
+  readonly intercepted: boolean
 }
 
 /** What one value write produced, so the caller can confirm rather than assume. */
@@ -236,7 +286,10 @@ export interface YonBrowserCdpService {
   read(input: PageRef & { readonly format?: 'text' | 'html'; readonly maxChars?: number }, signal: AbortSignal): Promise<CdpReadResult>
   evaluate(input: PageRef & { readonly expression: string; readonly maxChars?: number }, signal: AbortSignal): Promise<CdpEvalResult>
   close(input: PageRef, signal: AbortSignal): Promise<CdpPageView>
-  click(input: PageRef & { readonly target: ElementTarget }, signal: AbortSignal): Promise<CdpClickResult>
+  activate(input: PageRef, signal: AbortSignal): Promise<CdpPageView>
+  click(input: PageRef & { readonly target: ElementTarget } & ClickOptions, signal: AbortSignal): Promise<CdpClickResult>
+  drag(input: PageRef & { readonly from: ElementTarget; readonly to: ElementTarget } & DragOptions, signal: AbortSignal): Promise<CdpDragResult>
+  hover(input: PageRef & { readonly target: ElementTarget; readonly holdMs?: number }, signal: AbortSignal): Promise<CdpHoverResult>
   type(input: PageRef & { readonly text: string; readonly target?: ElementTarget }, signal: AbortSignal): Promise<CdpPageView>
   setValue(input: PageRef & { readonly target: ElementTarget; readonly value: string }, signal: AbortSignal): Promise<CdpSetValueResult>
   pressKey(input: PageRef & { readonly key: string }, signal: AbortSignal): Promise<CdpPageView>
@@ -308,7 +361,10 @@ function asCdpError(error: unknown): BrowserCdpError {
     const code: BrowserCdpErrorCode =
       error.code === 'not-found' ? 'not-found'
         : error.code === 'invalid-target' ? 'invalid-input'
-          : 'protocol'
+          // 「元素在，但这一按到不了它」不是找不到：调用者要改的是点法（换 mode、先展开容器、
+          // 把定位写稳），所以按输入问题上报，而不是按目标不存在——后者的对策是重新定位。
+          : error.code === 'not-hit' ? 'invalid-input'
+            : 'protocol'
     return new BrowserCdpError(code, error.message)
   }
   if (error instanceof CdpError) {
@@ -536,11 +592,34 @@ export function createYonBrowserCdpService(browsers: YonBrowsersService): YonBro
     }
   }
 
+  /**
+   * Wake a page Chrome has frozen.
+   *
+   * A tab left alone long enough enters the frozen lifecycle state to save power, and in
+   * that state a **synchronous** expression still evaluates while **timers and network do
+   * not advance**. So `1+1` answers instantly, a 2-second `setTimeout` does not fire in
+   * twenty, and `fetch` never settles — which means `Runtime.evaluate` with `awaitPromise`
+   * never answers and the tool call hangs until the transport gives up. Measured on a real
+   * page: frozen, a 2s timer timed out at 20s; after this call, it fired in 2.2s and a GET
+   * came back in 33ms.
+   *
+   * Failure is ignored on purpose: an older Chromium without the method should still be
+   * driven exactly as before.
+   */
+  async function wakePage(context: Attached): Promise<void> {
+    try {
+      await context.connection.send('Page.setWebLifecycleState', { state: 'active' }, context.sessionId)
+    } catch {
+      // Unsupported here; carry on as before.
+    }
+  }
+
   /** Run one expression in an attached session and return its value as text. */
   async function evaluateIn(
     context: Attached,
     expression: string,
   ): Promise<string> {
+    await wakePage(context)
     const result = await context.connection.send('Runtime.evaluate', {
       expression,
       returnByValue: true,
@@ -585,10 +664,95 @@ export function createYonBrowserCdpService(browsers: YonBrowsersService): YonBro
   return {
     pages: pagesOf,
 
+    /**
+     * Bring one page to the front.
+     *
+     * `Target.activateTarget` is a BROWSER-level command: it takes a target id and wants no
+     * session, which is exactly why this cannot ride on `withPage` — that attaches to the page
+     * first, and an attached session is what the command does not want. The connection here is
+     * already browser-level (`probeEndpoint` asks the browser for its own
+     * `webSocketDebuggerUrl`), so this needs nothing new.
+     *
+     * It moves the operator's window, so it is a deliberate, visible act rather than a
+     * formality: call it before a WRITING action, not before a read.
+     */
+    async activate(input, signal) {
+      const run = await resolveRun(input.run)
+      requireChromium(run)
+
+      let connection: CdpConnection | undefined
+      try {
+        const opened = await connect(run, signal)
+        connection = opened.connection
+        const pages = await listPages(connection)
+        const page = matchPage(pages, input.page)
+        await connection.send('Target.activateTarget', { targetId: page.targetId })
+        return page
+      } catch (error) {
+        throw asCdpError(error)
+      } finally {
+        connection?.close()
+      }
+    },
+
     async click(input, signal) {
       return await withPage(input, signal, async (context, page) => {
-        const outcome = await clickAt(context, input.target)
-        return { page, tag: outcome.tag, text: outcome.text }
+        const options: ClickOptions = {
+          ...(input.mode === undefined ? {} : { mode: input.mode }),
+          ...(input.hoverMs === undefined ? {} : { hoverMs: input.hoverMs }),
+          ...(input.button === undefined ? {} : { button: input.button }),
+        }
+        const outcome = await clickAt(context, input.target, options)
+        return {
+          page,
+          tag: outcome.tag,
+          text: outcome.text,
+          via: outcome.via,
+          button: outcome.button,
+          hitTag: outcome.hitTag,
+          hitText: outcome.hitText,
+          hitRelation: outcome.hitRelation,
+        }
+      }, WRITE_TIPS)
+    },
+
+    async hover(input, signal) {
+      // Deliberately NOT WRITE_TIPS: a hover writes nothing, and pushing the tip cursor here
+      // would swallow whatever the page had already said before the pointer even arrived.
+      return await withPage(input, signal, async (context, page) => {
+        const outcome = await hoverAt(context, input.target, input.holdMs)
+        return {
+          page,
+          tag: outcome.tag,
+          text: outcome.text,
+          hitTag: outcome.hitTag,
+          hitText: outcome.hitText,
+          hitRelation: outcome.hitRelation,
+        }
+      })
+    },
+
+    async drag(input, signal) {
+      return await withPage(input, signal, async (context, page) => {
+        const options: DragOptions = {
+          ...(input.mode === undefined ? {} : { mode: input.mode }),
+          ...(input.steps === undefined ? {} : { steps: input.steps }),
+          ...(input.stepMs === undefined ? {} : { stepMs: input.stepMs }),
+        }
+        const outcome = await dragBetween(context, input.from, input.to, options)
+        return {
+          page,
+          mode: outcome.mode,
+          delivery: outcome.delivery,
+          verification: outcome.verification,
+          from: outcome.from,
+          to: outcome.to,
+          fromPressHit: outcome.fromPressHit,
+          toBeforeHit: outcome.toBeforeHit,
+          toMidHit: outcome.toMidHit,
+          toReleaseHit: outcome.toReleaseHit,
+          intercepted: outcome.intercepted,
+        }
       }, WRITE_TIPS)
     },
 
@@ -598,7 +762,6 @@ export function createYonBrowserCdpService(browsers: YonBrowsersService): YonBro
         return page
       }, WRITE_TIPS)
     },
-
     async setValue(input, signal) {
       return await withPage(input, signal, async (context, page) => {
         const outcome = await setValueOf(context, input.target, input.value)

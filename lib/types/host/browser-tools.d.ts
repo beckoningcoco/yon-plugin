@@ -57,6 +57,6 @@ export declare function registerYonBrowserTools(ctx: Context, cdp: YonBrowserCdp
  * as the family existed, invisible because the spec's own list did not name these
  * tools yet. The registration order is the truth; this now states it.
  */
-export declare const YON_BROWSER_TOOL_NAMES: readonly ["browser_targets", "browser_attach", "browser_open", "browser_read", "browser_eval", "browser_close", "browser_click", "browser_set_value", "browser_type", "browser_key", "browser_scroll", "browser_screenshot", "browser_snapshot", "browser_get_value", "browser_wait", "browser_back", "browser_forward", "browser_refresh", "browser_select", "browser_fill", "browser_scrape", "browser_messages"];
+export declare const YON_BROWSER_TOOL_NAMES: readonly ["browser_targets", "browser_attach", "browser_open", "browser_read", "browser_eval", "browser_close", "browser_activate", "browser_click", "browser_hover", "browser_drag", "browser_set_value", "browser_type", "browser_key", "browser_scroll", "browser_screenshot", "browser_snapshot", "browser_get_value", "browser_wait", "browser_back", "browser_forward", "browser_refresh", "browser_select", "browser_fill", "browser_scrape", "browser_messages"];
 /** Re-exported so the module's public surface names what it registers. */
 export type { CdpEvalResult, CdpPageListing, CdpPageView, CdpReadResult };
