@@ -309,19 +309,22 @@ describe('requirement_read 与 requirement_list', () => {
 
   it('lists newest change first, filters by project name and status, and shows the library root', async () => {
     const { render, root } = await bench()
-    await render('requirement_create', { project: 'prj-1', name: 'A' })
-    await render('requirement_create', { project: '天九', name: 'B' })
-    await render('requirement_create', { project: 'prj-1', name: 'C' })
+    // 条目名故意用中文：这段渲染里带着知识库根目录（一个随机临时路径），拿单个英文字母当名字去
+    // 断言，路径里撞上那个字母就会让「不含 B」凭空失败、让「含 A」凭空通过。中文字符不会出现在
+    // 临时目录名里，断言量的才是条目的名字。
+    await render('requirement_create', { project: 'prj-1', name: '甲' })
+    await render('requirement_create', { project: '天九', name: '乙' })
+    await render('requirement_create', { project: 'prj-1', name: '丙' })
 
     const all = await render('requirement_list', {})
-    expect(all).toContain('A')
-    expect(all).toContain('B')
+    expect(all).toContain('甲')
+    expect(all).toContain('乙')
     expect(all).toContain(root)
 
     const scoped = await render('requirement_list', { project: '现代保险 NC65 集成' })
-    expect(scoped).toContain('A')
-    expect(scoped).toContain('C')
-    expect(scoped).not.toContain('B')
+    expect(scoped).toContain('甲')
+    expect(scoped).toContain('丙')
+    expect(scoped).not.toContain('乙')
 
     const none = await render('requirement_list', { status: 'done' })
     expect(none).toContain('没有符合条件的条目')

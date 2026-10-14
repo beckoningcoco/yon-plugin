@@ -215,3 +215,12 @@ hotwebs/nccloud/resources/{领域}/{模块}/{节点}/{list|card}/index.html + in
 2. **dev 与 prod 的 `output.path` 不同**（`config/dist` vs `hotwebs/dist`），别混淆。
 3. **`CleanWebpackPlugin` 只清本次要产出的目录**（由 entries 反推），所以**切换 `buildEntryPath` 后旧产物会留在 `dist`**。
 4. **`src/platform/*.js` 是运行时库本体**（react.js、axios.js、redux.js、echarts.js、polyfill.js、moment.js）。dev 时靠 `contentBase=src` 直接取用；`webpack.dev.config.js:105-110` 有一段**被注释掉**的拷贝逻辑，正是因为 contentBase 已经覆盖了它。
+5. **自带的示例页跑不起来：`Page` 已不是平台 API**（2026-10 实测）。工程里 `src/domain/module/node/page/index.js` 写的是
+   `import { Page } from 'nc-lightapp-front'; class X extends Page`，而 NCC1909 的 `nc-lightapp-front`
+   **不导出 `Page`**：实测 `window['nc-lightapp-front']` 共 62 个键，只有 `createPage` / `base` / `high` /
+   `shell` / `viewModel` / `ESAPI` 等，`Page`、`base.Page`、`high.Page` 全是 `undefined`——
+   **本地后端和线上环境（10.10.10.71:9003）完全一致**，不是环境问题。
+   症状：页面 HTML 与 bundle 都 200 加载，但 `#app` 为空，重复执行 bundle 报
+   `TypeError: Super expression must either be null or a function, not undefined`（抛在 `_inherits`）。
+   修法：普通 React 组件 + `createPage({})(Component)` 包装，页面 API 从 `this.props` 取，渲染正常。
+   > 排查同类"白屏但资源全 200"时，先确认页面用的平台导出在当前 `nc-lightapp-front` 里存不存在。

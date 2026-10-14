@@ -4,13 +4,18 @@
 > 与平台 API 文档的分工：**平台给了什么 API** 看 `ncc/ncc-dev/references/common/frontend-dev.md`；
 > **在这个脚手架工程里怎么落地** 看这里。
 >
-> 分析样本：`E:\NCProject\NCC2005\touziwuye\hotwebs`（NCC2005，客户"投资物业"）
+> 分析样本：`E:\NCProject\NCC2005\touziwuye\hotwebs`（NCC2005，客户"投资物业"）；
+> `startup-and-troubleshooting.md` 另有样本 `E:\NCProject\NCC1909\shouchuang\NCC_1909_2005_hotwebs\hotwebs`
+> （NCC1909-2005，客户"首创"，已在 Node 14.21.3 上完整跑通）。
 
 ## 按问题找文档
 
 | 我要做什么 | 读这篇 |
 | --- | --- |
 | 搞清这个工程怎么组织、怎么编译、产物部署到哪 | `scaffold-overview.md` |
+| **把脚手架从零跑起来**：装依赖、配后端代理、起 dev、验证链路 | `startup-and-troubleshooting.md` |
+| 已经起来了但**页面白屏 / 走了不该走的后端 / 代理 404** | `startup-and-troubleshooting.md` |
+| 手里只有**编译过的 bundle**（别人的环境 / 线上 chunk / 补丁包），要还原源码 | `reading-built-bundles.md` |
 | 确认该用哪种页面范式、`this.props` 里有什么、事件往哪挂 | `page-patterns.md` |
 | 新建/改写一个**列表页**（8 个文件逐个可复制） | `list-page-template.md` |
 | 新建/改写一个**卡片页**；理解保存、提交、公式校验流程 | `card-page-template.md` |
@@ -28,5 +33,5 @@
 
 ## 覆盖范围与边界
 
-- 已覆盖：工程与构建、三种页面范式、list/card 模板、平台 API 速查、参照过滤、编码与工具、本工程二开现状；
+- 已覆盖：**启动与排障（装依赖 / 代理分流 / 白屏定位）**、**从编译产物还原源码**、工程与构建、三种页面范式、list/card 模板、平台 API 速查、参照过滤、编码与工具、本工程二开现状；
 - **尚未覆盖**（后续可补）：`transfer/` 转单页三件套、`widget/` 小部件、`verificationsheet/verifyap` 核销单、`card/events/initTemplate.js` 与列表版的差异。
