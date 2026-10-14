@@ -11,7 +11,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
 import {
-  BIP_META_TOOL_NAMES, CLASS_TOOL_NAMES, DATASOURCE_TOOL_NAMES, DIGEST_TOOL_NAMES, DOC_PARSE_TOOL_NAMES,
+  BIP_API_TOOL_NAMES, BIP_META_TOOL_NAMES, CLASS_TOOL_NAMES, DATASOURCE_TOOL_NAMES, DIGEST_TOOL_NAMES, DOC_PARSE_TOOL_NAMES,
   DOMAIN_NAME,
   GBK_TOOL_NAMES, HOME_TOOL_NAMES, ITERATION_TOOL_NAMES, KNOWLEDGE_TOOL_NAMES,
   MEMORY_TOOL_NAMES, META_TOOL_NAMES,
@@ -33,6 +33,10 @@ const ALL_TOOL_NAMES = [
   // it was missing from this list for as long as it existed — which is why three
   // cases here were already failing before the datasource write tool was added.
   ...YON_BROWSER_TOOL_NAMES,
+  // The API-document pair registers immediately after the browser family (`index.ts`),
+  // because it reads through that same CDP service: the console's interfaces answer to a
+  // browser login, so a host-side request would be refused.
+  ...BIP_API_TOOL_NAMES,
   ...REQUIREMENT_TOOL_NAMES,
 ]
 
