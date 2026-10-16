@@ -490,6 +490,60 @@ DRIVER_HINTS = {
 
 
 # ============ 输出格式化 ============
+# LOB 单元格的展示上限。全文进不了模型的上下文，超出部分只能截断——但**列本身必须留下**：
+# 整张结果因为一个 CLOB 而一行都拿不到，才是这里真正的损失。
+LOB_PREVIEW_MAX = 2000
+
+
+def _lob_name(value) -> str:
+    """这一格是哪种 LOB。oracledb 的类名一律是 `LOB`，但它自己知道是 CLOB 还是 BLOB。"""
+    described = str(getattr(value, "dbtype", "") or "")
+    if described.startswith("DB_TYPE_"):
+        return described[len("DB_TYPE_"):]
+    return type(value).__name__
+
+
+def _flatten_cell(value):
+    """一个单元格 → json 与表格都能直接写出的东西。
+
+    驱动给的 LOB 是**定位器**，正文要等 `read()` 才从服务器取；oracledb 的 `LOB.__str__`
+    做的就是这件事，而 `json.dumps(..., default=str)` 会调用它。原来 fetch 之后立刻
+    `conn.close()`，于是那一刻 `read()` 抛 DatabaseError，整个 SELECT 一行都拿不到——一个
+    CLOB 列足以让整张结果消失，而报出来的是 Python 异常栈，看起来像查询本身错了。
+
+    所以正文在这里读掉（连接还开着的时候），读不出来就降级成占位符。BLOB 只报字节数：
+    它是二进制，把正文塞进回答对读的人没有用。
+    """
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+
+    reader = getattr(value, "read", None)
+    if callable(reader):
+        try:
+            data = reader()
+        except Exception as e:  # 这一格读不出来，只损失这一格
+            return f"<{_lob_name(value)} 读不出来: {e}>"
+        if isinstance(data, (bytes, bytearray)):
+            return f"<{_lob_name(value)} {len(data)} 字节>"
+        text = data if isinstance(data, str) else str(data)
+        if len(text) > LOB_PREVIEW_MAX:
+            return f"{text[:LOB_PREVIEW_MAX]}…（共 {len(text)} 字符，已截断）"
+        return text
+
+    if isinstance(value, (bytes, bytearray)):
+        return f"<{type(value).__name__} {len(value)} 字节>"
+
+    return value
+
+
+def _json_default(value):
+    """`json.dumps` 的兜底：取不出文字也不许让整个回答作废。"""
+    try:
+        return str(value)
+    except Exception as e:
+        return f"<{type(value).__name__} 读不出来: {e}>"
+
+
 def format_as_table(columns: list, rows: list) -> str:
     if not rows:
         return "(空结果)"
@@ -640,12 +694,17 @@ def main():
     rows = cursor.fetchall()
     columns = [d[0] for d in cursor.description] if cursor.description else []
 
+    # LOB 正文必须在连接关掉之前读出来。oracledb 给的是**定位器**，连接一关连 str() 都会
+    # 抛异常，而 `json.dumps(default=str)` 恰好在那一刻调用它——一个 CLOB 列因此能让整条
+    # SELECT 一行都拿不到（见 _flatten_cell）。
+    rows = [tuple(_flatten_cell(value) for value in row) for row in rows]
+
     cursor.close()
     conn.close()
 
     if args.json:
         result = [dict(zip(columns, row)) for row in rows]
-        print(json.dumps(result, ensure_ascii=False, default=str, indent=2))
+        print(json.dumps(result, ensure_ascii=False, default=_json_default, indent=2))
     else:
         print(format_as_table(columns, rows))
 
