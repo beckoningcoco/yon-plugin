@@ -1559,3 +1559,242 @@ export interface MemoryCreated {
   /** false 表示同项目内已有一条标题一模一样的，没有重复添加。 */
   readonly created: boolean
 }
+
+// ── Arthas 运行时调试：面板那一半 ─────────────────────────────────────────────
+//
+// 工具那一半（`host/arthas-tools.ts`）是模型用的，这一半是人用的，而设计文档第九节
+// 把两者的关系写得很清楚：**审计优先**。原因是 `ognl` 等于任意代码执行 —— 模型在一个
+// 正在服务的进程里执行过什么，人必须一眼看得见，而不是去翻会话记录。
+//
+// 所以这里的视图都刻意「可复述」：一个会话要能说出它跑的是哪条命令、命中了没有、
+// 失败在哪；一条审计要能说出是谁在哪个进程上做了什么、是不是危险那一类。
+
+/** 一个已登记或已下载的 Arthas。 */
+export interface ArthasEnvView {
+  readonly id: string
+  /** `arthas-boot.jar` 的路径。 */
+  readonly path: string
+  /** 版本；Arthas 首次 attach 才会把自己解压到 `~/.arthas/lib`，在那之前是空串。 */
+  readonly version: string
+  /** 启动用的 JDK bin 目录；空串表示借目标 Home 的 ufjdk。 */
+  readonly jdk: string
+  readonly isDefault: boolean
+  /** true 是插件自己下载的，false 是使用者指过来的。 */
+  readonly managed: boolean
+}
+
+/**
+ * 一个可以 attach 的进程。
+ *
+ * `attached` 的含义比它看起来窄：**agent 的端口是全局的，同一时刻只有一个进程持有它**，
+ * 所以这里 true 的至多一行。早先的实现按「端口通不通」逐个进程判断，结果把机器上每个
+ * JVM 都标成已挂载 —— 那不只是一个显示错误，它会让命令打到别的进程上而输出看不出区别。
+ */
+export interface ArthasTargetView {
+  readonly pid: number
+  readonly mainClass: string
+  /** `ncc` 表示这个进程带着 `-Dnc.server.location=`，也就是一个 NCC 安装。 */
+  readonly kind: 'ncc' | 'java'
+  /** NCC 进程服务的安装目录。 */
+  readonly home?: string
+  /** 这个进程是不是 agent 的宿主。 */
+  readonly attached: boolean
+}
+
+/** 一次进程扫描。 */
+export interface ArthasTargetsPayload {
+  readonly port: number
+  /** agent 实际所在的 PID；没有 agent 时缺席。 */
+  readonly agentPid?: number
+  /** 用来列进程的 `jps` 路径，出错时也回空串。 */
+  readonly jps: string
+  readonly targets: readonly ArthasTargetView[]
+  /**
+   * 扫描失败的原因。
+   *
+   * 与其余载荷的 `error` 同一个理由：扫不出来和「没有 JVM」在界面上长得一模一样，
+   * 而它们要人做的事完全不同（一个去登记 Home，一个是等 NCC 起来）。
+   */
+  readonly error?: string
+}
+
+/** 一个观测会话在面板上的样子。 */
+export interface ArthasSessionView {
+  readonly id: string
+  readonly pid: number
+  readonly port: number
+  /** 完整的 Arthas 命令行，原样回放给人看。 */
+  readonly command: string
+  /** 被观测的类；手工用 `arthas_exec` 挂的会话没有。 */
+  readonly className?: string
+  readonly startedAt: number
+  /** `-n` 的值，也就是这个会话最多会有几次命中。 */
+  readonly expected: number
+  readonly state: 'watching' | 'settled' | 'failed' | 'stopped'
+  /** 已拿到的 `watch` 结果条数。 */
+  readonly hits: number
+  /** 失败原因，含 Arthas 自己的话（ANSI 已剥）。 */
+  readonly message?: string
+}
+
+/**
+ * 一条结构化结果。
+ *
+ * 字段是 `results` 数组各 `type` 的并集而不是一个判别联合：类型由 Arthas 决定，
+ * 一个这里没见过的 `type` 不该让整条结果解析失败。
+ */
+export interface ArthasEventView {
+  readonly type: string
+  /** `watch`：命中时刻。 */
+  readonly ts?: string
+  readonly className?: string
+  readonly methodName?: string
+  readonly accessPoint?: string
+  /** `watch`：调用耗时（毫秒）。 */
+  readonly cost?: number
+  /** `watch`：表达式渲染出来的文本。 */
+  readonly value?: string
+  /** `enhancer`：增强有没有注册上。 */
+  readonly success?: boolean
+  readonly classCount?: number
+  readonly methodCount?: number
+  /** `status`：0 成功、-1 失败。`state` 字段不代表这个。 */
+  readonly statusCode?: number
+  readonly message?: string
+}
+
+/** 一个会话连同它已经产出的结果。 */
+export interface ArthasSessionDetail {
+  readonly session: ArthasSessionView
+  readonly events: readonly ArthasEventView[]
+}
+
+/**
+ * 操作审计的一条。
+ *
+ * 「一条」的粒度是一次工具调用，不是一次 HTTP 请求：面板要回答的是「**模型**做了什么」，
+ * 而一次 `arthas_exec` 可能内部发好几条命令（`arthas_watch_stop` 的 reset 循环就是）。
+ * 所以命令原文按调用记，内部循环不计。
+ */
+export interface ArthasAuditView {
+  readonly at: number
+  /** 工具名去掉前缀：`exec` / `sc` / `watch_start` / `capture` / `attach` / `stop`。 */
+  readonly kind: string
+  readonly pid: number
+  readonly port: number
+  readonly command: string
+  /**
+   * 这一条属于「等于任意代码执行」的那一类（`ognl`）。
+   *
+   * 面板据此高亮。设计文档第九节把它列为安全要求而不是偏好：模型在服务上执行过什么，
+   * 人必须一眼看得见。
+   */
+  readonly risky: boolean
+  /** 结果的一句话，成功或失败都写。 */
+  readonly outcome?: string
+}
+
+/** 面板一次读回来的全部状态。 */
+export interface ArthasPanelPayload {
+  /** 登记文件的位置，给人一个能去翻的地方。 */
+  readonly storePath: string
+  readonly env: readonly ArthasEnvView[]
+  readonly agents: ArthasTargetsPayload
+  readonly sessions: readonly ArthasSessionView[]
+  readonly audit: readonly ArthasAuditView[]
+  /**
+   * 危险命令当前是否被解锁。
+   *
+   * P1 恒为 false：解锁属于面板动作，而「模型不能自己放开」是设计文档第九节写死的。
+   * 这个字段现在就出现，是为了让界面能如实显示「已禁用」，而不是等解锁做出来再补。
+   */
+  readonly unlocked: boolean
+}
+
+/** `POST /yon/api/arthas/attach` 的请求体。 */
+export interface ArthasAttachInput {
+  readonly pid: number
+  readonly port?: number
+}
+
+// ── 现场重放（P2）：把 capture 落的 .ser 离线跑一遍 ───────────────────────────
+//
+// 这些类型住在 shared 而不是 host，因为它们**是**面板要显示的东西：一个环境、一个现场、
+// 一次回放、一次对比。让客户端 import host 的类型会跨过两半之间那条界，而这个库把那条界
+// 划在「数据形状共享、行为各半」上。
+
+/** 一个准备好的离线回放环境。 */
+export interface ReplayEnvironment {
+  readonly id: string
+  readonly className: string
+  /** 取 classpath 的那个加载器。 */
+  readonly hash: string
+  readonly jarPath: string
+  readonly jarBytes: number
+  /** 装了多少条 classpath。 */
+  readonly entries: number
+  /** `java -cp` 的起点（`Replay.class` 在这里）。 */
+  readonly dir: string
+  readonly builtAt: number
+}
+
+/** 一个 capture 落在盘上的现场。 */
+export interface ReplayDump {
+  readonly name: string
+  readonly path: string
+  readonly bytes: number
+  readonly at: number
+  /**
+   * 抓这个现场的那次 capture 记下的来源，侧车文件在时才有。
+   *
+   * 没有它，回放就得靠谁记得「这个 .ser 是哪个类的哪个方法产出的」再手打一遍——
+   * 而那个手打正是离线循环想省掉的东西。
+   */
+  readonly origin?: {
+    readonly className: string
+    readonly methodName: string
+    readonly expression: string
+    readonly accessPoint: string
+    readonly pid: number
+  }
+}
+
+/** 一次回放。 */
+export interface ReplayRun {
+  readonly id: string
+  readonly dump: string
+  readonly className: string
+  readonly methodName: string
+  readonly outPath: string
+  readonly ok: boolean
+  /** 离线方法自己的耗时，从它写的头里读出来。 */
+  readonly costMs?: number
+  readonly at: number
+  readonly output: string
+}
+
+/** 差异里的一行。 */
+export interface ReplayDiffLine {
+  readonly kind: 'same' | 'left' | 'right'
+  readonly text: string
+}
+
+/** 两次回放的对比。 */
+export interface ReplayDiff {
+  readonly left: ReplayRun
+  readonly right: ReplayRun
+  readonly lines: readonly ReplayDiffLine[]
+  /** 有几行不同；0 表示这次改动没有可观察的差异。 */
+  readonly changed: number
+  /** 被当作噪声忽略的行（每次都会变的 cost 头）。 */
+  readonly ignored: readonly string[]
+}
+
+/** 面板一次读回来的重放状态。 */
+export interface ReplayPanelPayload {
+  readonly workDir: string
+  readonly environments: readonly ReplayEnvironment[]
+  readonly dumps: readonly ReplayDump[]
+  readonly runs: readonly ReplayRun[]
+}
+

@@ -24,7 +24,7 @@ export type { YonPanelItemOwnerProps, YonPanelRootFace, YonPanelSnapshot } from 
 export type { DataSourceItemFace, ProjectItemFace, SkillItemFace, WikiItemFace } from './slots.ts';
 export type { BrowserItemFace, DigestItemFace, HomeItemFace, IterationItemFace } from './slots.ts';
 export type { RequirementItemFace } from './slots.ts';
-export type { MemoryItemFace } from './slots.ts';
+export type { ArthasItemFace, MemoryItemFace } from './slots.ts';
 export type { YonPanelKey } from './locales.ts';
 declare module '@deepseek-ai/dsh-client-ui-slots' {
     interface LocaleNamespaceMap {

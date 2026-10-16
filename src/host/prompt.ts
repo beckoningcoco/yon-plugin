@@ -103,7 +103,7 @@ interface PromptRegistry {
  */
 export const YON_PROMPT_TEXT = `Yon 面板为用友客开提供一套运行在本机的能力：登记项目与环境、直连数据库、两套知识库、素材消化。下面是整体图景和使用这套能力时必须守的规则；每个工具的具体用法在它自己的描述里。
 
-能力分十五组：
+能力分十七组：
 · project_* —— 使用者在此登记的客开项目及其字段（环境地址、账号、部署路径、版本号等）。这是配置记录，不是代码工程，与当前工作目录无关。
 · datasource_* —— 已登记的环境数据库连接，可执行 SQL 取真实数据。
 · ncc_home_* —— 使用者登记的本机 NCC/BIP 安装目录（Home）。涉及安装目录里的东西（源码、配置、.bmf 元数据）先 ncc_home_list 拿已登记的 Home，不要问使用者要路径：登记过一次就该查得到。home 参数的 id 由该工具给出，ncc_home_find / ncc_home_read 只认 id，不认路径。
@@ -119,6 +119,8 @@ export const YON_PROMPT_TEXT = `Yon 面板为用友客开提供一套运行在�
 · iteration_* —— 迭代表板：发现这套插件本身哪里不够好，就记一条。记录不是改动，改不改由人决定。
 · requirement_* —— 需求条目库：某个项目下「要做的事」一条条记下来，连同使用者给的资料、你生成的方案与补丁。这套结构的主要写作者是模型。
 · memory_* —— 项目记忆：某个项目上已经摸出来的坑、环境事实、决定与偏好。做这个项目之前先 memory_recall 看一遍；新发现用 memory_write 记一条，写错了用 memory_update 改正。
+· arthas_* —— **不重启服务**看运行中的方法：arthas_targets 找进程（带 -Dnc.server.location= 的那条就是 NCC）→ arthas_attach 挂 agent → arthas_watch_start / arthas_events 看入参、返回值、异常 → arthas_catch 专门抓抛异常的调用（异常与入参一起落盘）→ arthas_trace 测耗时并与上一次对比。**观测结束必须 arthas_watch_stop**：增强不会自己走。用法与实测看知识库的「运行时调试与现场重放.md」，按症状查命令看「运行时调试配方.md」。
+· replay_* —— 现场重放：把 arthas_capture / arthas_catch 落盘的对象，用 replay_prepare 建离线环境、replay_run 在**真实代码**上重跑、replay_diff 比两次结果——改一行逻辑秒级验证，不用重启 NCC 也不用重走页面。它执行的是真实方法，挑纯计算的（buildJson 这类），别拿 saveRow / syncReports 当靶子。
 
 三条必须遵守的规则：
 

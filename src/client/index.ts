@@ -33,6 +33,7 @@ import { createDataSourceApi } from './datasource/api.ts'
 import { createDigestApi } from './digest/api.ts'
 import { createHomeApi } from './home/api.ts'
 import { createIterationApi } from './iteration/api.ts'
+import { createArthasApi } from './arthas/api.ts'
 import { createMemoryApi } from './memory/api.ts'
 import { createProjectApi } from './project/api.ts'
 import { createRequirementApi } from './requirement/api.ts'
@@ -43,6 +44,7 @@ import { DataSourceItem } from './DataSourceItem.tsx'
 import { DigestItem } from './DigestItem.tsx'
 import { HomeItem } from './HomeItem.tsx'
 import { IterationItem } from './IterationItem.tsx'
+import { ArthasItem } from './ArthasItem.tsx'
 import { MemoryItem } from './MemoryItem.tsx'
 import { ProjectItem } from './ProjectItem.tsx'
 import { RequirementItem } from './RequirementItem.tsx'
@@ -55,7 +57,7 @@ export type { YonPanelItemOwnerProps, YonPanelRootFace, YonPanelSnapshot } from 
 export type { DataSourceItemFace, ProjectItemFace, SkillItemFace, WikiItemFace } from './slots.ts'
 export type { BrowserItemFace, DigestItemFace, HomeItemFace, IterationItemFace } from './slots.ts'
 export type { RequirementItemFace } from './slots.ts'
-export type { MemoryItemFace } from './slots.ts'
+export type { ArthasItemFace, MemoryItemFace } from './slots.ts'
 export type { YonPanelKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -98,6 +100,7 @@ export function apply(ctx: ClientContext): void {
   const iterationApi = createIterationApi()
   const browserApi = createBrowserApi()
   const requirementApi = createRequirementApi()
+  const arthasApi = createArthasApi()
   const memoryApi = createMemoryApi()
 
   // A fresh list id adds this action beside the shipped footer actions, above
@@ -282,4 +285,22 @@ export function apply(ctx: ClientContext): void {
       pushOverlay: () => panel.pushOverlay(),
     }),
   }, MemoryItem))
+
+  // The runtime debugger, tenth — and the only cell whose subject is something the
+  // model *did* rather than something it wrote down. A memory, an iteration entry and
+  // a requirement are all conclusions; this is a record of actions taken inside a
+  // running process, where `ognl` is arbitrary code execution. That is why the audit
+  // sits beside the observations instead of behind a tab — see
+  // `arthas/ArthasManager.tsx`.
+  //
+  // It is also the one surface here pointed at something *live*: the sessions it
+  // lists belong to the agent, and they end when the agent does.
+  ctx.slots.inject('yon.panel.item', () => ctx.slots.register({
+    name: 'yon.panel.item',
+    id: 'arthas',
+    order: 110,
+    locale: NS,
+    label: () => t('item.arthas'),
+    inject: () => ({ ...arthasApi, pushOverlay: () => panel.pushOverlay() }),
+  }, ArthasItem))
 }

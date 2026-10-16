@@ -11,7 +11,7 @@ import {
   BIP_API_TOOL_NAMES, BIP_META_TOOL_NAMES, CLASS_TOOL_NAMES, DATASOURCE_TOOL_NAMES, DIGEST_TOOL_NAMES,
   DOC_PARSE_TOOL_NAMES, GBK_TOOL_NAMES,
   HOME_TOOL_NAMES, ITERATION_TOOL_NAMES, KNOWLEDGE_TOOL_NAMES, MEMORY_TOOL_NAMES, META_TOOL_NAMES,
-  REQUIREMENT_TOOL_NAMES, WIKI_TOOL_NAMES,
+  ARTHAS_TOOL_NAMES, REPLAY_TOOL_NAMES, REQUIREMENT_TOOL_NAMES, WIKI_TOOL_NAMES,
   WIKI_WRITE_TOOL_NAMES, YON_PROMPT_ORDER, YON_PROMPT_SECTION, YON_PROMPT_TEXT, YON_TOOL_NAMES,
 } from '../src/index.ts'
 
@@ -23,6 +23,11 @@ const ALL_TOOL_NAMES = [
   ...KNOWLEDGE_TOOL_NAMES, ...CLASS_TOOL_NAMES, ...HOME_TOOL_NAMES,
   ...META_TOOL_NAMES, ...BIP_META_TOOL_NAMES, ...DIGEST_TOOL_NAMES, ...ITERATION_TOOL_NAMES,
   ...BIP_API_TOOL_NAMES, ...REQUIREMENT_TOOL_NAMES,
+  // The runtime-debugging half — and it was missing from this list for as long as it has
+  // existed, which is exactly why the prompt said nothing about `arthas_*` / `replay_*`
+  // while the tools worked. This list is what the guard below compares against, so a group
+  // absent from it is a group nobody notices is unreachable.
+  ...ARTHAS_TOOL_NAMES, ...REPLAY_TOOL_NAMES,
 ]
 
 describe('the Yon prompt section', () => {

@@ -20,6 +20,7 @@
 | 新建/改写一个**列表页**（8 个文件逐个可复制） | `list-page-template.md` |
 | 新建/改写一个**卡片页**；理解保存、提交、公式校验流程 | `card-page-template.md` |
 | 忘了某个平台 API 的名字、参数或返回结构 | `api-cheatsheet.md` |
+| **新增/修改页面按钮**：按钮从哪来、要不要先在平台注册、注册完为什么不显示 | `app-register-and-buttons.md` |
 | 做**参照过滤**（客开高频）；判断要不要动后端 | `../scenarios/ref-model.md`（已提升为「参照」场景文档） |
 | 动手改文件前：GBK 编码陷阱、本机工具可用性、已知坑 | `encoding-and-tools.md` |
 | 判断某处代码是不是客户改的、升级会不会被覆盖 | `project-status.md` |

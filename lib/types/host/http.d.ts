@@ -1,14 +1,16 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { type YonProjectsService } from './service.ts';
+import type { YonReplayService } from './replay-service.ts';
 import { type YonSkillsService } from './skill-registry.ts';
 import { type YonDataSourcesService } from './datasource-service.ts';
 import { type YonWikiService } from './wiki-service.ts';
 import { type DigestLog } from './digest-log.ts';
 import { type YonHomesService } from './home-service.ts';
+import type { YonArthasService } from './arthas-service.ts';
 import { type YonIterationService } from './iteration-service.ts';
 import { type YonMemoryService } from './memory-service.ts';
 import { type YonBrowsersService } from './browser-service.ts';
 import { type YonRequirementsService } from './requirement-service.ts';
 import type { YonMetaService } from './meta-service.ts';
 import type { YonClassService } from './class-service.ts';
-export declare function registerYonApi(ctx: Context, service: YonProjectsService, skills: YonSkillsService, sources: YonDataSourcesService, wiki: YonWikiService, digestLog: DigestLog, homes: YonHomesService, meta: YonMetaService, classes: YonClassService, iteration: YonIterationService, browsers: YonBrowsersService, requirements: YonRequirementsService, memory: YonMemoryService): () => void;
+export declare function registerYonApi(ctx: Context, service: YonProjectsService, skills: YonSkillsService, sources: YonDataSourcesService, wiki: YonWikiService, digestLog: DigestLog, homes: YonHomesService, meta: YonMetaService, classes: YonClassService, iteration: YonIterationService, browsers: YonBrowsersService, requirements: YonRequirementsService, memory: YonMemoryService, arthas: YonArthasService, replay: YonReplayService): () => void;

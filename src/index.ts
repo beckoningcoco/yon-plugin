@@ -19,6 +19,7 @@
  */
 
 import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { DOMAIN_NAME, YON_DOMAIN } from './host/domain.ts'
 import { createYonProjectsService, type YonProjectsService } from './host/service.ts'
@@ -73,6 +74,12 @@ import { buildMetaIndex, writeMetaIndex } from './host/meta-index.ts'
 import { createYonMetaService, type YonMetaService } from './host/meta-service.ts'
 import { registerYonMetaTools } from './host/meta-tools.ts'
 import { registerYonBipMetaTools } from './host/bip-meta-tools.ts'
+import { createArthasStore } from './host/arthas-store.ts'
+import { createYonArthasService } from './host/arthas-service.ts'
+import { ARTHAS_TOOL_NAMES, registerYonArthasTools } from './host/arthas-tools.ts'
+import { REPLAY_TOOL_NAMES, registerYonReplayTools } from './host/replay-tools.ts'
+import { createYonReplayService } from './host/replay-service.ts'
+import type { RunSubprocess } from './host/datasource-probe.ts'
 import { registerYonPromptSection } from './host/prompt.ts'
 
 export { DOMAIN_NAME, YON_DOMAIN } from './host/domain.ts'
@@ -124,6 +131,19 @@ export type { WikiIndex, WikiPage, WikiVault } from './host/wiki-index.ts'
 export { defaultStorePath } from './host/datasource-store.ts'
 export { createHomeStore, defaultHomeStorePath } from './host/home-store.ts'
 export type { HomeStore, StoredHome } from './host/home-store.ts'
+export { createArthasStore, defaultArthasStorePath, defaultArthasDistDir, defaultArthasWorkDir } from './host/arthas-store.ts'
+export type { ArthasStore, ArthasConfig, ArthasStoreRead, StoredArthas } from './host/arthas-store.ts'
+export { ARTHAS_TOOL_NAMES } from './host/arthas-tools.ts'
+export { REPLAY_TOOL_NAMES } from './host/replay-tools.ts'
+export { createYonReplayService, manifestLines } from './host/replay-service.ts'
+export type { YonReplayService, ReplayServiceDeps } from './host/replay-service.ts'
+export { createYonArthasService } from './host/arthas-service.ts'
+export type { YonArthasService, ArthasWatchHandle, ArthasWatchState } from './host/arthas-service.ts'
+export { ArthasError } from './host/arthas-errors.ts'
+export { execArthas, ARTHAS_HTTP_PORT, ARTHAS_TELNET_PORT } from './host/arthas-http.ts'
+export type { ArthasResponse, ArthasResult } from './host/arthas-http.ts'
+export { listJavaProcesses, resolveJps, toTargets } from './host/arthas-targets.ts'
+export type { ArthasTarget, JavaProcess, ClassLocation } from './host/arthas-targets.ts'
 export { createYonHomesService, HomeError } from './host/home-service.ts'
 export type { YonHomesService, HomeFindQuery } from './host/home-service.ts'
 export { probeHome } from './host/home-probe.ts'
@@ -461,6 +481,56 @@ export async function apply(ctx: Context): Promise<void> {
   ctx.provide('yonIteration', iteration)
   ctx.effect(() => registerYonIterationTools(ctx, iteration), 'yon-panel: iteration tools')
 
+  // The runtime debugger: Arthas against a process that is already running, for
+  // the questions that reading code cannot answer — what a variable actually
+  // held, which branch ran, what a method was handed.
+  //
+  // Three measured facts shape every tool in it (see `docs/yon-arthas-design.md`):
+  // `state: "SUCCEEDED"` does not mean the command worked; an `exec` is atomic, so
+  // an observation is "start it, trigger the action, read the result" rather than
+  // a stream; and a class name does not identify a class without a classloader
+  // hash, which is why `arthas_sc` exists as a tool of its own. The dangerous
+  // commands are refused rather than gated, for the reason `arthas-tools.ts` gives.
+  //
+  // The JDK directory comes from the registered Homes: attaching with the JDK that
+  // launched the target is the one combination certain to work, and a JDK 8 attach
+  // needs that JDK's own lib/tools.jar — which its `ufjdk` has.
+  // The observation sessions live in the service rather than in the tools, because
+  // the panel is a second reader of them: one list of sessions both halves see, and
+  // one audit ledger of what the model ran inside a serving process.
+  const arthasStore = createArthasStore()
+  // One JDK lookup for both halves of the debugger: an Arthas attach and an offline
+  // replay both need the JDK that launched the target, and two copies of "which
+  // Home's ufjdk" would be two answers to the same question.
+  const jdkBins = async (): Promise<readonly string[]> => {
+    const list = await homes.service.list()
+    return list.homes.map(home => join(home.path, 'ufjdk', 'bin'))
+  }
+  const arthas = createYonArthasService({
+    store: arthasStore,
+    jdkBins,
+    subprocess: () => ctx.get('subprocess') as RunSubprocess | undefined,
+  })
+  ctx.effect(() => arthas.dispose, 'yon-panel: arthas sessions')
+  ctx.provide('yonArthas', arthas.service)
+  ctx.effect(
+    () => registerYonArthasTools(ctx, arthas.service, arthasStore),
+    'yon-panel: arthas tools',
+  )
+
+  // Offline replay: the other half of the loop `arthas_capture` opens. A capture on
+  // its own is a souvenir — what makes it worth doing is running the real method
+  // again against it, offline, in about four seconds instead of restarting NCC.
+  //
+  // The service is created here rather than inside the tools, for the same reason the
+  // session table is: the panel reads the same environments and runs over HTTP.
+  const replay = createYonReplayService({
+    jdkBins,
+    subprocess: () => ctx.get('subprocess') as RunSubprocess | undefined,
+  })
+  ctx.provide('yonReplay', replay)
+  ctx.effect(() => registerYonReplayTools(ctx, replay), 'yon-panel: replay tools')
+
   // The debug browser: which browsers this machine has, the path and profile directory
   // each one is remembered by, and the instances this panel started.
   //
@@ -540,7 +610,7 @@ export async function apply(ctx: Context): Promise<void> {
   ctx.inject(['webServer'], (web) => {
     web.effect(
       () => registerYonApi(web, service, skills.service, dataSources.service, wiki, digestLog,
-        homes.service, meta, classes, iteration, browsers, requirements, memory),
+        homes.service, meta, classes, iteration, browsers, requirements, memory, arthas.service, replay),
       'yon-panel: project api',
     )
   })

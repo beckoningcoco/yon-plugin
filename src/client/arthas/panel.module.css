@@ -1,0 +1,338 @@
+/*
+ * 运行时调试那一屏的样式。
+ *
+ * 布局跟着这一屏要回答的问题走，而不是跟着「四个区块」走：
+ *
+ * - **审计和会话并排**，不折叠、不筛选。设计文档第九节把「看得见模型在服务里执行了
+ *   什么」定成要求，而任何需要先点一下才看得见的东西，在真出事的那一刻都不算看得见。
+ * - **危险命令那一行左边有一条竖线**，不靠颜色单独承担：只靠红色的话，色觉差异、
+ *   深色主题、投影仪三种情况里至少有一种会把它抹平。
+ * - 进程与会话是表格，因为它们本来就是「一行一件事、可以纵向比较」的东西；事件流不是
+ *   表格，因为一条 `watch` 的值可以很长，把它塞进单元格只会换来横向滚动。
+ */
+
+/*
+ * `base.body` — the container this screen borrows — is the **two-pane** one: `display: flex`,
+ * row, gap 16px, which is what a list beside a detail pane wants. This screen's content is a
+ * vertical stack (tab strip, toolbar, note, three sections), so inheriting that row laid all
+ * six children side by side and gave each roughly a seventh of the card's width. At 640px
+ * that is about 90px per child: a tab reading 观/测/现/场/重/放 one character per line, and a
+ * three-column table squeezed until every cell wrapped per character.
+ *
+ * Doubling the class is how this package already outranks an imported module's rule (see
+ * `.manager.manager`), and it is needed rather than merely tidy: `base.body` and this are both
+ * a single class, so which one wins would otherwise come down to which style tag was injected
+ * first.
+ */
+.arthasScrollBody.arthasScrollBody {
+  display: block;
+  overflow: auto;
+  max-height: 100%;
+}
+
+.arthasTabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgb(128 128 128 / 0.25);
+}
+
+.arthasTab {
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 12px;
+  color: inherit;
+  opacity: 0.65;
+  cursor: pointer;
+}
+
+.arthasTabOn {
+  opacity: 1;
+  font-weight: 600;
+  border-bottom-color: currentColor;
+}
+
+.arthasToolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.arthasNote {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  opacity: 0.72;
+}
+
+.arthasSection {
+  margin-bottom: 18px;
+}
+
+.arthasSectionTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.arthasSectionHint {
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.6;
+}
+
+/* ── 目标进程 ─────────────────────────────────────────────────────────────── */
+
+.arthasTargets {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.arthasTargets th {
+  text-align: left;
+  font-weight: 500;
+  opacity: 0.6;
+  padding: 4px 8px 4px 0;
+  border-bottom: 1px solid rgb(128 128 128 / 0.25);
+}
+
+.arthasTargets td {
+  padding: 6px 8px 6px 0;
+  vertical-align: top;
+  border-bottom: 1px solid rgb(128 128 128 / 0.12);
+}
+
+.arthasTargetPid {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.arthasTargetClass {
+  word-break: break-all;
+  opacity: 0.85;
+}
+
+.arthasTargetHome {
+  display: block;
+  font-size: 11px;
+  opacity: 0.6;
+  word-break: break-all;
+}
+
+/* agent 在谁那里——一行里最重要的一格，所以它不参与「其余都是灰的」那套 */
+.arthasHost {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.arthasNotHost {
+  opacity: 0.45;
+  white-space: nowrap;
+}
+
+/* ── 观测会话 ─────────────────────────────────────────────────────────────── */
+
+.arthasSessions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.arthasSessionRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgb(128 128 128 / 0.07);
+  font-size: 12px;
+}
+
+.arthasSessionRow[data-open='true'] {
+  outline: 1px solid rgb(128 128 128 / 0.35);
+}
+
+.arthasSessionOpen {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.arthasSessionId {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.arthasSessionState {
+  white-space: nowrap;
+  opacity: 0.75;
+}
+
+.arthasSessionCommand {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  opacity: 0.85;
+}
+
+.arthasSessionHits {
+  white-space: nowrap;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 事件流 ───────────────────────────────────────────────────────────────── */
+
+.arthasEvents {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.arthasEvent {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgb(128 128 128 / 0.06);
+}
+
+.arthasEventHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.arthasEventType {
+  font-weight: 600;
+}
+
+.arthasEventWhere {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+}
+
+.arthasEventMeta {
+  margin-left: auto;
+  opacity: 0.6;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.arthasEventValue {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: rgb(128 128 128 / 0.1);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.arthasEventFailed {
+  border-left: 3px solid rgb(200 80 80 / 0.85);
+}
+
+/* ── 审计 ─────────────────────────────────────────────────────────────────── */
+
+.arthasAudit {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.arthasAuditRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border-left: 3px solid transparent;
+}
+
+/*
+ * 危险那一类（ognl）加了左边这条竖线。颜色也加，但**不单独承担**这个信息：
+ * 色觉差异、深色主题、投影仪三种情况里至少有一种会把纯颜色抹平。
+ */
+.arthasAuditRisky {
+  border-left-color: rgb(200 120 40 / 0.9);
+  background: rgb(200 120 40 / 0.08);
+}
+
+.arthasAuditAt {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
+.arthasAuditKind {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.arthasAuditPid {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.arthasAuditCommand {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+  opacity: 0.9;
+}
+
+.arthasAuditOutcome {
+  opacity: 0.65;
+  white-space: nowrap;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.arthasEmpty {
+  padding: 14px 0;
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.arthasFailure {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border-radius: 6px;
+  background: rgb(200 80 80 / 0.12);
+  font-size: 12px;
+}

@@ -60,6 +60,16 @@
  *   GET    /yon/api/memories/<id>           one memory, body included
  *   DELETE /yon/api/memories/<id>           delete one (panel only — the model has no such tool)
  *
+ *   GET    /yon/api/arthas                  everything the debugger panel shows, in one read
+ *   POST   /yon/api/arthas/attach           attach an agent to one PID (the same call the tool makes)
+ *   GET    /yon/api/arthas/sessions/<id>    one session and the results it collected
+ *   DELETE /yon/api/arthas/sessions/<id>    stop it and clean up (the tool's own reset loop)
+ *
+ *   GET    /yon/api/replay                  environments, captures and past runs, in one read
+ *   POST   /yon/api/replay/run              replay one capture offline, against the real code
+ *   POST   /yon/api/replay/diff             compare two runs — the point of the module
+ *   POST   /yon/api/replay/prepare          build the manifest classpath jar for one loader
+ *
  *   GET    /yon/api/browsers                registrations, running instances, scan state
  *   POST   /yon/api/browsers/scan           re-scan this machine and store what was found
  *   PUT    /yon/api/browsers/<id>           edit one row (id / family / product are immutable)
@@ -106,11 +116,13 @@ import {
   type UpdateProjectInput,
 } from '../shared/types.ts'
 import { ProjectError, type YonProjectsService } from './service.ts'
+import type { YonReplayService } from './replay-service.ts'
 import { SkillError, type YonSkillsService } from './skill-registry.ts'
 import { DataSourceError, type YonDataSourcesService } from './datasource-service.ts'
 import { WikiError, type YonWikiService } from './wiki-service.ts'
 import { digestLogPath, type DigestLog } from './digest-log.ts'
 import { HomeError, type YonHomesService } from './home-service.ts'
+import type { YonArthasService } from './arthas-service.ts'
 import { IterationError, type YonIterationService } from './iteration-service.ts'
 import { MemoryError, type YonMemoryService } from './memory-service.ts'
 import { BrowserError, type YonBrowsersService } from './browser-service.ts'
@@ -1455,6 +1467,183 @@ async function handleBrowsers(
   sendFailure(res, 404, 'not-found', `no route for ${method} /yon/api/browsers/...`)
 }
 
+/**
+ * `/yon/api/arthas/...` — the panel's read of the debugger state.
+ *
+ * Every route here does something the model can already do through a tool, and
+ * nothing it cannot: attaching is the same service call `arthas_attach` makes, and
+ * stopping a session runs the tool's own reset loop. The panel is a **second
+ * reader**, not a second capability — what it adds is that a person can see what
+ * the first reader did.
+ *
+ * There is deliberately no route that unlocks a refused command. That decision
+ * belongs to a person, and a URL the model can reach would be the model granting
+ * it to itself, which is the one thing the restriction exists to prevent.
+ *
+ * @param req - the request, for its body on the attach route.
+ * @param res - where the answer goes.
+ * @param method - the HTTP method.
+ * @param segments - the path split on `/`.
+ * @param arthas - the sessions, the audit ledger and the process scan.
+ */
+async function handleArthas(
+  req: IncomingMessage,
+  res: ServerResponse,
+  method: string,
+  segments: readonly string[],
+  arthas: YonArthasService,
+): Promise<void> {
+  const first = segments[1]
+
+  // /yon/api/arthas
+  if (first === undefined) {
+    if (method !== 'GET') {
+      sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+      return
+    }
+    sendJson(res, 200, await arthas.panel())
+    return
+  }
+
+  // /yon/api/arthas/attach
+  if (first === 'attach') {
+    if (method !== 'POST') {
+      sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+      return
+    }
+    const body = await objectBody(req)
+    const pid = body.pid
+    if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) {
+      sendFailure(res, 400, 'invalid-input', 'pid 必须是正整数')
+      return
+    }
+    const port = typeof body.port === 'number' ? body.port : undefined
+    sendJson(res, 200, await arthas.attach(pid, port))
+    return
+  }
+
+  // /yon/api/arthas/sessions/<id>
+  if (first === 'sessions') {
+    const id = segments[2]
+    if (segments[3] !== undefined) {
+      sendFailure(res, 404, 'not-found', `no route for ${method} /yon/api/arthas/sessions/...`)
+      return
+    }
+    if (id === undefined) {
+      if (method !== 'GET') {
+        sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+        return
+      }
+      // Read through `panel()` rather than a second listing method: one source for
+      // "what sessions exist" is what keeps the two readers from disagreeing.
+      sendJson(res, 200, { sessions: (await arthas.panel()).sessions })
+      return
+    }
+    if (method === 'GET') {
+      const detail = arthas.detail(id)
+      if (detail === undefined) {
+        sendFailure(res, 404, 'not-found', `没有这个观测会话：${id}`)
+        return
+      }
+      sendJson(res, 200, detail)
+      return
+    }
+    if (method === 'DELETE') {
+      sendJson(res, 200, await arthas.stop(id))
+      return
+    }
+    sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+    return
+  }
+
+  sendFailure(res, 404, 'not-found', `no route for ${method} /yon/api/arthas/...`)
+}
+
+/**
+ * `/yon/api/replay/...` — the offline half of the debugger panel.
+ *
+ * Same rule as the arthas routes: every one of these does what a tool already does,
+ * and nothing more. The panel is a second reader of the same environments and runs —
+ * what it adds is that a person can see the diff without reading a transcript.
+ *
+ * @param req - the request, for its body.
+ * @param res - where the answer goes.
+ * @param method - the HTTP method.
+ * @param segments - the path split on `/`.
+ * @param replay - the offline replay service.
+ */
+async function handleReplay(
+  req: IncomingMessage,
+  res: ServerResponse,
+  method: string,
+  segments: readonly string[],
+  replay: YonReplayService,
+): Promise<void> {
+  const first = segments[1]
+
+  // /yon/api/replay
+  if (first === undefined) {
+    if (method !== 'GET') {
+      sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+      return
+    }
+    const [environments, dumps, runs] = await Promise.all([
+      replay.environments(),
+      replay.dumps(),
+      replay.runs(),
+    ])
+    sendJson(res, 200, { workDir: replay.workDir, environments, dumps, runs })
+    return
+  }
+
+  if (method !== 'POST') {
+    sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+    return
+  }
+  const body = await objectBody(req)
+  const field = (name: string): string => {
+    const value = body[name]
+    return typeof value === 'string' ? value.trim() : ''
+  }
+
+  if (first === 'run') {
+    const env = field('env')
+    const dump = field('dump')
+    const className = field('className')
+    const methodName = field('methodName')
+    if (env === '' || dump === '' || className === '' || methodName === '') {
+      sendFailure(res, 400, 'invalid-input', 'env / dump / className / methodName 都必填')
+      return
+    }
+    sendJson(res, 200, await replay.run({ env, dump, className, methodName }))
+    return
+  }
+
+  if (first === 'diff') {
+    const left = field('left')
+    const right = field('right')
+    if (left === '' || right === '') {
+      sendFailure(res, 400, 'invalid-input', 'left / right 都必填')
+      return
+    }
+    sendJson(res, 200, await replay.diff(left, right))
+    return
+  }
+
+  if (first === 'prepare') {
+    const pid = body.pid
+    const className = field('className')
+    if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0 || className === '') {
+      sendFailure(res, 400, 'invalid-input', 'pid 与 className 都必填')
+      return
+    }
+    sendJson(res, 200, await replay.prepare({ pid, className }))
+    return
+  }
+
+  sendFailure(res, 404, 'not-found', `no route for POST /yon/api/replay/${first}`)
+}
+
 export function registerYonApi(
   ctx: Context,
   service: YonProjectsService,
@@ -1469,6 +1658,8 @@ export function registerYonApi(
   browsers: YonBrowsersService,
   requirements: YonRequirementsService,
   memory: YonMemoryService,
+  arthas: YonArthasService,
+  replay: YonReplayService,
 ): () => void {
   const carrier = ctx.get('webServer') as RouteRegistrar | undefined
   if (carrier === undefined) {
@@ -1509,6 +1700,14 @@ export function registerYonApi(
         }
         if (segments[0] === 'homes') {
           await handleHomes(req, res, method, segments, homes, meta, classes, url.searchParams)
+          return
+        }
+        if (segments[0] === 'arthas') {
+          await handleArthas(req, res, method, segments, arthas)
+          return
+        }
+        if (segments[0] === 'replay') {
+          await handleReplay(req, res, method, segments, replay)
           return
         }
         if (segments[0] === 'browsers') {

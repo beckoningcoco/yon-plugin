@@ -1,4 +1,5 @@
 /** Slot contract this package owns: the button seat inside the Yon panel. */
+import type { ArthasClientApi } from './arthas/api.ts';
 import type { BrowserApi } from './browser/api.ts';
 import type { RequirementApi } from './requirement/api.ts';
 import type { DataSourceApi } from './datasource/api.ts';
@@ -179,6 +180,23 @@ export type MemoryItemFace = MemoryApi & {
     listProjects: ProjectApi['listProjects'];
     /**
      * Announce a layer standing above the panel (the memory surface).
+     * @returns the release for that layer.
+     */
+    pushOverlay(): () => void;
+};
+/**
+ * Data face the panel's debugger entry receives.
+ *
+ * Narrower than the others on purpose, and the narrowness is the design: the model's
+ * observations are readable here, and the only two things a person can *do* are
+ * attach an agent and stop a session — both of which are the same service calls the
+ * tools make. There is no operation for unlocking a refused command, because that
+ * decision belongs to a person and an operation the model can reach would be the
+ * model granting it to itself.
+ */
+export type ArthasItemFace = ArthasClientApi & {
+    /**
+     * Announce a layer standing above the panel (the debugger surface).
      * @returns the release for that layer.
      */
     pushOverlay(): () => void;
