@@ -155,17 +155,19 @@ describe('the memory signpost the neighbouring tools carry', () => {
       {
         tool: 'datasource_query',
         args: { key: '水投::test', sql: 'SELECT 1' },
-        mount: (ctx, hint) => dataSourceTools(ctx, sources, hint),
+        // 这三个 stub 只实现被测工具真正会调的那一个方法，所以断言成 never——与 `bench`
+        // 把它们交给工具族时的做法一致（`register(ctx, service as never, hint)`）。
+        mount: (ctx, hint) => dataSourceTools(ctx, sources as never, hint),
       },
       {
         tool: 'wiki_lookup',
         args: { term: '订单' },
-        mount: (ctx, hint) => registerYonWikiTools(ctx, wiki, hint),
+        mount: (ctx, hint) => registerYonWikiTools(ctx, wiki as never, hint),
       },
       {
         tool: 'ncc_meta_find',
         args: { home: 'home-1', kind: 'entity', q: '订单' },
-        mount: (ctx, hint) => registerYonMetaTools(ctx, meta, hint),
+        mount: (ctx, hint) => registerYonMetaTools(ctx, meta as never, hint),
       },
     ]
 
