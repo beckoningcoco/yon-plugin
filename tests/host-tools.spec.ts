@@ -16,6 +16,7 @@ import {
   type YonPermissions, type YonSessionLike, type YonToolDefinition, type YonToolExecution,
 } from '../src/host/tools.ts'
 import { createYonProjectsService, type YonProjectsService } from '../src/host/service.ts'
+import { schemaViolations } from './output-schema.ts'
 import type { ProjectFieldRow, ProjectRow, YonDomain } from '../src/host/domain.ts'
 import type { JsonValue } from '../src/shared/types.ts'
 
@@ -150,6 +151,28 @@ describe('project tools', () => {
     expect(YON_WRITE_TOOL_NAMES.every(name => isYonWriteTool(name))).toBe(true)
     expect(isYonWriteTool('project_list')).toBe(false)
     expect(isYonWriteTool('project_read')).toBe(false)
+  })
+
+  it('never answers outside the schema it declared', async () => {
+    // 上面那条只证明每个工具"声明了" schema；这条证明返回值真的落在里面。两者曾经不一致：
+    // project_read 把记忆库的整条记录（九个字段）塞进只声明三个字段的 items，
+    // additionalProperties: false 之下整次调用被宿主丢掉。TypeScript 看不见这个洞——更宽的
+    // 对象赋给更窄的接口是合法的——所以它只能由这样的用例来守。记忆那一半在
+    // `memory-injection.spec.ts`（这里没有记忆库，memories 永远是空数组）。
+    const { tool, call, seed } = bench()
+    await seed('用友 NCC 客开', 'NCC-1', { '环境信息': '10.0.0.1' })
+
+    const calls: ReadonlyArray<readonly [string, unknown]> = [
+      ['project_list', {}],
+      ['project_read', { project: '用友 NCC 客开' }],
+      ['project_create', { name: '新项目' }],
+      ['project_update', { project: '用友 NCC 客开', set_fields: { '环境信息': '10.0.0.9' } }],
+      ['project_delete', { project: '新项目' }],
+    ]
+    for (const [name, args] of calls) {
+      const value = await call(name, args)
+      expect(schemaViolations(value, tool(name).output.schema), name).toEqual([])
+    }
   })
 
   it('withdraws every registration on teardown', () => {

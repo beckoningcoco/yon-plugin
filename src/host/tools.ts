@@ -418,6 +418,25 @@ interface MemoryHintValue {
 }
 
 /**
+ * Project one stored memory onto the three fields the injection carries.
+ *
+ * Not decoration. `READ_VALUE.memories` declares exactly these three properties with
+ * `additionalProperties: false`, while the service hands back a whole
+ * {@link MemorySummary} — seven fields more. TypeScript accepts that, because a wider
+ * object is assignable to a narrower interface, so the value and the schema agreed at
+ * compile time and disagreed at run time: the host validated the value, named every
+ * extra field (`"value.memories[0].projectId" is not a declared property`) and threw
+ * the whole call away, project fields included. A project whose bank was empty passed,
+ * so only the projects that actually had a memory ever failed. Narrowing here, at the
+ * one place that writes the injected value, is what keeps the two in step.
+ * @param memory - one memory as the bank reports it.
+ * @returns the same memory as the injection's contract carries it.
+ */
+function memoryHintOf(memory: MemorySummary): MemoryHintValue {
+  return { id: memory.id, type: memory.type, title: memory.title }
+}
+
+/**
  * The memory block one `project_read` answer ends with, or nothing at all.
  *
  * The empty case is the important one. A project with no memories gets no header, no
@@ -682,12 +701,15 @@ export function registerYonProjectTools(
   const memoriesOf = async (
     projectId: string,
     exec: YonToolExecution,
-  ): Promise<readonly MemorySummary[]> => {
+  ): Promise<readonly MemoryHintValue[]> => {
     if (memory === undefined) return []
     const session = exec.agent?.session
     memory.sessions.note(session, projectId)
     if (!memory.sessions.claim(session, projectId)) return []
-    return await memory.recent(projectId, MEMORY_HINT_LIMIT)
+    // Narrowed to the injection's own three fields here, so the promise this returns
+    // cannot be wider than the answer `READ_VALUE` promises (see {@link memoryHintOf}).
+    const recent = await memory.recent(projectId, MEMORY_HINT_LIMIT)
+    return recent.map(memoryHintOf)
   }
 
   register(defineYonTool({

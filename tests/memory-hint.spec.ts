@@ -17,6 +17,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { registerYonDataSourceTools } from '../src/host/datasource-tools.ts'
 import { registerYonWikiTools } from '../src/host/wiki-tools.ts'
 import { registerYonMetaTools } from '../src/host/meta-tools.ts'
+import { schemaViolations } from './output-schema.ts'
 import type { MemoryHintLine } from '../src/host/memory-session.ts'
 import type { YonToolDefinition, YonToolExecution } from '../src/host/tools.ts'
 
@@ -59,7 +60,12 @@ function bench(register: (ctx: Context, service: never, hint?: MemoryHintLine) =
     const value = await tool(name).execute(args, execution())
     return tool(name).output.render(args, value).map(block => block.text).join('\n')
   }
-  return { render }
+  /** Run one call and return the raw value beside the schema it has to satisfy. */
+  const raw = async (name: string, args: unknown): Promise<{ value: unknown; schema: Record<string, unknown> }> => ({
+    value: await tool(name).execute(args, execution()),
+    schema: tool(name).output.schema as Record<string, unknown>,
+  })
+  return { render, raw }
 }
 
 /**
@@ -133,5 +139,41 @@ describe('the memory signpost the neighbouring tools carry', () => {
       .render('datasource_query', { key: '水投::test', sql: 'SELECT 1' })
     expect(quiet).toContain('ID')
     expect(quiet).not.toContain('memory_recall')
+  })
+
+  it('keeps the injected field inside each tool\'s declared schema', async () => {
+    // 这一行是**加**在值上的一个字段（`withMemoryHint`），而每个工具的输出 schema 是它自己
+    // 声明的：哪一族一旦写上 additionalProperties: false，注入就不再是「多一句话」，而是
+    // 「整个工具不可用」——宿主校验不过会丢掉整次调用，与 project_read 上发生过的一模一样
+    // （那里多带的是记忆的字段）。所以每个接过这一行的工具都要在这里过一遍；`bip_meta_find`
+    // 不在这里，与上面几个用例同一个理由。
+    const families: ReadonlyArray<{
+      readonly tool: string
+      readonly args: unknown
+      readonly mount: (ctx: Context, hint?: MemoryHintLine) => () => void
+    }> = [
+      {
+        tool: 'datasource_query',
+        args: { key: '水投::test', sql: 'SELECT 1' },
+        mount: (ctx, hint) => dataSourceTools(ctx, sources, hint),
+      },
+      {
+        tool: 'wiki_lookup',
+        args: { term: '订单' },
+        mount: (ctx, hint) => registerYonWikiTools(ctx, wiki, hint),
+      },
+      {
+        tool: 'ncc_meta_find',
+        args: { home: 'home-1', kind: 'entity', q: '订单' },
+        mount: (ctx, hint) => registerYonMetaTools(ctx, meta, hint),
+      },
+    ]
+
+    for (const family of families) {
+      const { raw } = bench((ctx, _service, hint) => family.mount(ctx, hint), {} as never, loud)
+      const answer = await raw(family.tool, family.args)
+      expect((answer.value as { memoryHint?: string }).memoryHint, family.tool).toBe(LINE)
+      expect(schemaViolations(answer.value, answer.schema), family.tool).toEqual([])
+    }
   })
 })

@@ -16,6 +16,7 @@ import { createMemoryStore } from '../src/host/memory-store.ts'
 import { createYonMemoryService, type YonMemoryHints } from '../src/host/memory-service.ts'
 import { registerYonProjectTools, type YonToolDefinition, type YonToolExecution } from '../src/host/tools.ts'
 import { createYonProjectsService } from '../src/host/service.ts'
+import { schemaViolations } from './output-schema.ts'
 import type { ProjectFieldRow, ProjectRow, YonDomain } from '../src/host/domain.ts'
 import type { JsonValue } from '../src/shared/types.ts'
 
@@ -134,10 +135,25 @@ async function bench(options: { readonly withMemory?: boolean } = {}) {
     return { memories: value.memories, text }
   }
 
-  return { memory, service: handle.service, read, dispose }
+  return { memory, service: handle.service, read, tool, dispose }
 }
 
 describe('the memory a project read carries', () => {
+  it('answers inside the schema it declared, memories and all', async () => {
+    // 守的是一个只在运行期才现形的不一致：注入的记忆由记忆库给出（`MemorySummary`，九个
+    // 字段），而 `output.schema` 只声明 id/type/title 三个并写着 additionalProperties:
+    // false。TypeScript 允许更宽的值赋给更窄的接口，于是两边编译期"一致"、运行期不一致：
+    // 宿主按 schema 校验返回值，不过就丢掉整次调用，报「value.memories[0].projectId 不是
+    // 已声明的属性」——连项目的字段一起看不到。空记忆库时 memories 是空数组，所以只有
+    // 真正记着事的项目会炸；这正是它躲过很久的原因。
+    const { tool } = await bench()
+
+    const value = await tool('project_read').execute({ project: '水投' }, execution('project_read', { project: '水投' }))
+
+    expect((value as { memories: readonly unknown[] }).memories).toHaveLength(1)
+    expect(schemaViolations(value, tool('project_read').output.schema)).toEqual([])
+  })
+
   it('brings this project\'s memories, as titles, into a call the model already makes', async () => {
     const { read } = await bench()
 
