@@ -23,7 +23,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import {
   MEMORY_TYPE_TEXT, MEMORY_TYPES,
-  type MemoryListRow, type MemoryType, type SaveMemoryInput, type UpdateMemoryInput,
+  type MemoryListPayload, type MemoryListRow, type MemoryType, type SaveMemoryInput, type UpdateMemoryInput,
 } from '../shared/types.ts'
 import type { YonMemoryService } from './memory-service.ts'
 import { BODY_SOFT_MAX } from './memory-service.ts'
@@ -66,6 +66,41 @@ function textOf(input: Record<string, unknown>, key: string): string {
 /** 类型的中文名，读不出来时退回原文。 */
 function typeLabel(type: MemoryType): string {
   return MEMORY_TYPE_TEXT[type] ?? type
+}
+
+/**
+ * 一条都没读到的时候，这一屏该怎么说话。
+ *
+ * 「查不到」和「库里没有」在读者眼里是同一句话，而这两件事该做的事完全不同：前者该换词，
+ * 后者该开始记。曾经一次带关键词的空结果被读成「记忆库是空的」，于是有人重问了一件早就
+ * 答过的事——所以空的三种情形在这里分开说：读不出来（另有原因行）、库里确实还没记过、
+ * 库里有 N 条但没有一条满足条件（并把是哪几个条件写出来）。
+ * @param payload - the listing; its `total` is the bank's size regardless of the query.
+ * @param asked - 这一次真正传下来的条件，都已去空白。
+ * @returns 那一句话，可能不止一行。
+ */
+function emptyRecallText(
+  payload: MemoryListPayload,
+  asked: { readonly query: string; readonly project: string; readonly type: string; readonly tag: string },
+): string {
+  if (payload.error !== undefined) return '（读不出来，所以这一屏看不到任何记忆。）'
+  if (payload.total === 0) return '记忆库里还没有任何记忆。'
+
+  const filters: string[] = []
+  if (asked.query !== '') filters.push(`关键词「${asked.query}」`)
+  if (asked.project !== '') filters.push(`项目「${asked.project}」`)
+  if (asked.type !== '') filters.push(`类型「${asked.type}」`)
+  if (asked.tag !== '') filters.push(`标签「${asked.tag}」`)
+
+  // 一个条件都没有却一条也给不出：索引里记着，但它们的文件都读不出来。这和「没有匹配」是
+  // 两回事——文件没了不该被说成「没记过」。
+  if (filters.length === 0) {
+    return `索引里记着 ${payload.total} 条，但它们的文件一条也读不出来——用 memory_sweep 看看。`
+  }
+  return [
+    `记忆库里一共 ${payload.total} 条，没有一条同时满足 ${filters.join('、')}。`,
+    '（去掉条件再查一次，可以看到全部。）',
+  ].join('\n')
 }
 
 /** 一条记忆在 recall 里怎么念：够模型决定要不要读全文，不多不少。 */
@@ -355,9 +390,7 @@ export function registerYonMemoryTools(ctx: Context, memory: YonMemoryService): 
       const lines: string[] = []
       if (payload.error !== undefined) lines.push(`记忆库读取失败：${payload.error}`, '')
       if (payload.rows.length === 0) {
-        lines.push(payload.error === undefined
-          ? '这个条件下没有任何记忆。'
-          : '（读不出来，所以这一屏看不到任何记忆。）')
+        lines.push(emptyRecallText(payload, { query, project, type, tag }))
       } else {
         for (const row of payload.rows) lines.push(recallLine(row))
       }

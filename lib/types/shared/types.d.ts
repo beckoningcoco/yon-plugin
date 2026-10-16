@@ -1365,6 +1365,14 @@ export interface MemoryListPayload {
     readonly rows: readonly MemoryListRow[];
     /** 记忆库的位置，方便直接打开看。 */
     readonly path: string;
+    /**
+     * 库里一共多少条——索引里的记录数，不看这次带了什么条件。
+     *
+     * `rows` 为空时，它是唯一能分清「库里没有」与「一条都没匹配上」的东西。这两件事在读者
+     * 眼里是同一句话，而 `memory_recall` 曾经真的被读成「记忆库是空的」，于是有人重问了一件
+     * 早就答过的事。读取失败时它是 0，那种情况看 `error`。
+     */
+    readonly total: number;
     /** 索引在、但读不出来时才有：空列表和「还没记过」长得一样，所以要分开。 */
     readonly error?: string;
 }

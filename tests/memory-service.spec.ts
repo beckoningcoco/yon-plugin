@@ -216,6 +216,35 @@ describe('the memory service', () => {
     expect(found.rows[0]?.snippet).toContain('40 秒')
   })
 
+  it('wants every word of a query, wherever it sits, not the words in a row', async () => {
+    // 使用者给的是词，不是一句原文。这里曾经把整个 query 当一条子串，于是「首创 数据库」
+    // 要求这七个字符连续出现——两个词各自都在库里，一条也搜不到，而空结果看起来就是
+    // 「库里没有」。
+    const { service } = await bench()
+    await service.create({ ...filing, title: '首创测试库可以直连', body: 'Oracle 上的数据库实测通。' })
+    await service.create({ ...filing, title: '只讲首创的一条', body: '与库无关的别的事。' })
+
+    const found = await service.list({ query: '首创 数据库' })
+
+    expect(found.rows.map(row => row.title)).toEqual(['首创测试库可以直连'])
+    // 词的顺序不该有影响：这是「都要有」，不是「按这个顺序连着」。
+    expect((await service.list({ query: '数据库  首创' })).rows).toHaveLength(1)
+    // 库里一共几条只有不带条件时才知道——空行列表自己不会说这句话。
+    expect(found.total).toBe(2)
+  })
+
+  it('reports the bank size even when nothing matched', async () => {
+    // 「查不到」与「库是空的」在读者眼里是同一句话。`rows` 为空时 `total` 是唯一的分界，
+    // 而这两个字决定了下一步是换关键词还是开始记录。
+    const { service } = await bench()
+    await service.create(filing)
+
+    const found = await service.list({ query: '库里根本没有这个词' })
+
+    expect(found.rows).toHaveLength(0)
+    expect(found.total).toBe(1)
+  })
+
   it('corrects a memory instead of filing a second one', async () => {
     const { service, readIndexText } = await bench()
     const { memory: saved } = await service.create(filing)

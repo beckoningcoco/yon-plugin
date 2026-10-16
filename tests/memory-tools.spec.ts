@@ -203,6 +203,28 @@ describe('memory tools', () => {
     expect(text).toContain('水投(NCC2207)')
   })
 
+  it('takes several words as several words, in whatever order', async () => {
+    // 工具层同样按词办事：`达梦` 在标题、`全表扫` 在正文，原来连起来写在同一屏里搜不到。
+    const { render } = await bench()
+    await render('memory_write', filing)
+
+    expect(await render('memory_recall', { query: '达梦 全表扫' })).toContain(filing.title)
+    expect(await render('memory_recall', { query: '全表扫 达梦' })).toContain(filing.title)
+  })
+
+  it('says how big the bank is when a query matches nothing', async () => {
+    // 「查不到」被读成「库里没有」是这套工具最容易误导人的一次，所以空回答必须自己带出
+    // 库里有几条，而不是只说一句「没有任何记忆」。
+    const { render } = await bench()
+    await render('memory_write', filing)
+
+    const text = await render('memory_recall', { query: '库里根本没有这个词' })
+
+    expect(text).toContain('一共 1 条')
+    expect(text).toContain('库里根本没有这个词')
+    expect(text).not.toContain('还没有任何记忆')
+  })
+
   it('answers an empty recall honestly, and a broken bank with the reason', async () => {
     const { render } = await bench()
 

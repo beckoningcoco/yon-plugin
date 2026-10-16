@@ -332,11 +332,19 @@ export function createYonMemoryService(
     async list(query: MemoryQuery = {}): Promise<MemoryListPayload> {
       const read = await store.readIndex()
       if (read.error !== undefined) {
-        return { rows: [], path: store.indexPath, error: read.error }
+        return { rows: [], path: store.indexPath, total: 0, error: read.error }
       }
       const nameOf = nameLookup()
       const projectId = query.project === undefined ? undefined : projectOf(query.project).projectId
-      const needle = query.query?.trim().toLowerCase() ?? ''
+      // 关键词按空白切开，**每一段都要出现**才算命中。
+      //
+      // 原先是把整个 query 当一条子串（`haystack.includes(needle)`），于是「首创 数据库」要求
+      // 这七个字符连续出现——可使用者给的是词，不是一句原文，两个词各自都在库里也一条都搜不到。
+      // 那次空结果还被读成「记忆库是空的」（文案见 `memory-tools.ts` 的 `emptyRecallText`），
+      // 所以这里按用词的直觉来：多个词是「都要有」，不是「连在一起」。
+      const needles = (query.query ?? '').trim().toLowerCase()
+        .split(/\s+/)
+        .filter(word => word !== '')
 
       const candidates = newestFirst(read.records)
         .filter(record =>
@@ -359,16 +367,16 @@ export function createYonMemoryService(
         // from the index alone: the index is a cache, and answering from a stale one
         // would offer a memory whose text no longer exists. `memory_sweep` reports them.
         if (doc === undefined) continue
-        if (needle !== '') {
+        if (needles.length > 0) {
           const haystack = [doc.title, doc.tags.join(' '), doc.source, doc.body]
             .join('\n').toLowerCase()
-          if (!haystack.includes(needle)) continue
+          if (!needles.every(word => haystack.includes(word))) continue
         }
         rows.push({ ...summaryOf(record, nameOf(record.projectId)), snippet: snippetOf(doc.body) })
       }
 
       const limit = query.limit === undefined ? rows.length : Math.max(1, Math.floor(query.limit))
-      return { rows: rows.slice(0, limit), path: store.indexPath }
+      return { rows: rows.slice(0, limit), path: store.indexPath, total: read.records.length }
     },
 
     async recent(projectId: string, limit: number): Promise<readonly MemorySummary[]> {
