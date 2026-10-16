@@ -1835,8 +1835,10 @@ export function registerYonBrowserTools(ctx: Context, cdp: YonBrowserCdpService)
       properties: {
         page: { type: 'object' },
         rows: { type: 'array', items: { type: 'object' } },
-        count: { type: 'number' },
+        count: { type: 'number', description: '匹配到的行数——DOM 里的行数，虚拟化表格下会小于真实行数。' },
         truncated: { type: 'boolean' },
+        truncation: { type: 'object', description: '有证据说明只渲染了可视区时才有。' },
+        frames: { type: 'array', items: { type: 'object' }, description: '顶层没匹配到、而同源 iframe 里有的时候才有。' },
       },
     },
     async execute(args, signal) {
@@ -1868,12 +1870,39 @@ export function registerYonBrowserTools(ctx: Context, cdp: YonBrowserCdpService)
     },
     render(value) {
       const head = `页面 ${nameOfPage(value.page)}：抓到 ${String(value.rows.length)} 行`
-        + `${value.truncated ? `（页面共 ${String(value.count)} 行，只返回了前 ${String(value.rows.length)} 行，要更多就调大 limit）` : ''}。`
+        + `${value.truncated ? `（匹配到 ${String(value.count)} 行，只返回了前 ${String(value.rows.length)} 行，要更多就调大 limit）` : ''}。`
+      const lines = [head]
+      // 这个工具最危险的地方不是抓错，而是**看上去抓全了**：虚拟化的报表网格只渲染可视区，
+      // 而"只渲染了 18 行"与"这张表就 18 行"在返回值里长得一模一样（实测一张报表：DOM 68 行、
+      // 真实 114 行）。抓到的数据一个字不改，但这件事必须说出来。
+      const truncation = value.truncation
+      if (truncation !== undefined) {
+        lines.push(truncation.source === 'hot'
+          ? `⚠ 这只是**可视区域**的 ${String(truncation.shown)} 行；这张网格实际有 ${String(truncation.total ?? '?')} 行`
+            + '（从组件实例的 getData() 读到的真值）。要全量：读页面自己的取数接口，别抠 DOM；'
+            + '或在 browser_eval 里取 fiber.stateNode.hotInstance 再调 getData()。'
+          : `⚠ 这只是**可视区域**的 ${String(truncation.shown)} 行：装它的容器内容高 ${String(truncation.contentHeight ?? '?')}px、`
+            + `可视 ${String(truncation.visibleHeight ?? '?')}px，所以还有没渲染的行。DOM 抓不到它们，`
+            + '行数也算不出来（这套表格的量出来的行高是 0，按高度折算只会编一个数字）。要全量：读接口。')
+      }
+      const frames = value.frames
+      if (frames !== undefined) {
+        const where = frames
+          .map(frame => `iframe「${frame.url}」（${String(frame.rows)} 行）`)
+          .join('、')
+        lines.push(`⚠ 顶层文档里一行都没匹配到，但同源 ${where} 里有。`
+          + 'browser_scrape 只在顶层文档里查——业务页常常整个装在 iframe 里。'
+          + '要那一屏：在 browser_eval 里遍历 iframe 取它的 contentDocument。')
+      }
       if (value.rows.length === 0) {
-        return [head, '一行都没抓到——先确认 rows 选择器真的匹配每一行（browser_eval 里数一下 document.querySelectorAll(rows).length 最快）。'].join('\n')
+        if (frames === undefined) {
+          lines.push('一行都没抓到——先确认 rows 选择器真的匹配每一行（browser_eval 里数一下 document.querySelectorAll(rows).length 最快）。')
+        }
+        return lines.join('\n')
       }
       const body = JSON.stringify(value.rows, null, 1)
-      return [head, body.length > 8000 ? `${body.slice(0, 8000)}\n…（JSON 太长，已截断；调小 limit 或去掉不用的字段）` : body].join('\n')
+      lines.push(body.length > 8000 ? `${body.slice(0, 8000)}\n…（JSON 太长，已截断；调小 limit 或去掉不用的字段）` : body)
+      return lines.join('\n')
     },
     presentCall(args) {
       return {

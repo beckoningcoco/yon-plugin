@@ -37,7 +37,7 @@
  */
 import type { BrowserRunView } from '../shared/types.ts';
 import type { YonBrowsersService } from './browser-service.ts';
-import { type CaptureOptions, type ClickMode, type ClickOptions, type DragDelivery, type DragEndReport, type DragMode, type DragOptions, type DragVerification, type ElementTarget, type FillOutcome, type HitReport, type HitRelation, type MouseButton, type PageElement, type ScrapeField, type SelectMatch } from './browser-interact.ts';
+import { type ScrapeFrameMatch, type ScrapeTruncation, type CaptureOptions, type ClickMode, type ClickOptions, type DragDelivery, type DragEndReport, type DragMode, type DragOptions, type DragVerification, type ElementTarget, type FillOutcome, type HitReport, type HitRelation, type MouseButton, type PageElement, type ScrapeField, type SelectMatch } from './browser-interact.ts';
 import { type PageTip } from './browser-tips.ts';
 /** Why a browser operation could not be carried out. */
 export type BrowserCdpErrorCode = 
@@ -180,6 +180,10 @@ export interface CdpScrapeResult {
     readonly rows: readonly Record<string, string | null>[];
     readonly count: number;
     readonly truncated: boolean;
+    /** 有证据说明只渲染了可视区时才有（虚拟化表格）。 */
+    readonly truncation?: ScrapeTruncation;
+    /** 顶层没匹配到、而某个同源 iframe 里有的时候才有。 */
+    readonly frames?: readonly ScrapeFrameMatch[];
 }
 /**
  * A drain with no operation attached: what the page has said since the previous one.

@@ -445,6 +445,85 @@ export const PAGE_HELPERS = `
     return info
   }
   const waitFor = async (spec, timeoutMs) => (await waitForMatchInfo(spec, timeoutMs)).element
+  // 抓到的那几行是「全部」还是「只是这一屏」？
+  //
+  // 虚拟化的表格（NCC/旗舰版的报表网格是 Handsontable）把没进视口的行**整个不渲染**，
+  // 于是 DOM 里的行数不是数据行数，而这件事在结果里完全看不出来——实测一张报表：DOM
+  // 68 行、组件实例里 114 行。调用者据此下的结论（"这就 18 行"）看上去是页面说的，
+  // 其实是渲染层说的。
+  //
+  // 返回 null 表示「没有证据说明它只是一部分」，调用方按完整处理。
+  const rowsTruncation = (firstRow, domRows) => {
+    // 1) React fiber 上的 Handsontable 实例：最准的一路，能直接给出真实行数。
+    //    实例**不在** window.hot、也不在元素自身的属性上，只在 fiber 的 stateNode 里。
+    let container = firstRow
+    while (container && !(container.classList && container.classList.contains('handsontable'))) {
+      container = container.parentElement
+    }
+    const probe = container || firstRow
+    const candidates = [probe]
+    if (probe.querySelectorAll) {
+      const kids = probe.querySelectorAll('*')
+      for (let i = 0; i < kids.length && i < 30; i++) candidates.push(kids[i])
+    }
+    for (const el of candidates) {
+      if (!el) continue
+      for (const key of Object.keys(el)) {
+        if (key.indexOf('__react') !== 0) continue
+        let fiber = el[key]
+        let depth = 0
+        while (fiber && depth++ < 80) {
+          const node = fiber.stateNode
+          if (node && node.hotInstance && typeof node.hotInstance.getData === 'function') {
+            let total = null
+            try { total = node.hotInstance.getData().length } catch (error) { total = null }
+            return total !== null && total > domRows
+              ? { source: 'hot', shown: domRows, total: total }
+              : null
+          }
+          fiber = fiber.return
+        }
+      }
+    }
+    // 2) 兜底：最近的可滚动祖先。内容明显比可视区高，就说明还有没渲染的行。
+    //    这里**不报行数**：这套表格的行高量出来是 0（实测 rowHeight=0），按高度折算
+    //    会给出一个编出来的数字——那正是这个工具最不该做的事。
+    let scroller = firstRow.parentElement
+    while (scroller && scroller !== scroller.ownerDocument.body) {
+      let style = null
+      try { style = scroller.ownerDocument.defaultView.getComputedStyle(scroller) } catch (error) { style = null }
+      if (style && (style.overflowY === 'auto' || style.overflowY === 'scroll')
+          && scroller.scrollHeight > scroller.clientHeight + 8) {
+        return {
+          source: 'scroll',
+          shown: domRows,
+          contentHeight: scroller.scrollHeight,
+          visibleHeight: scroller.clientHeight,
+        }
+      }
+      scroller = scroller.parentElement
+    }
+    return null
+  }
+  // 顶层一行都没匹配到的时候：同源 iframe 里有没有？
+  //
+  // NCC 工作台把业务页整个装在一个 iframe 里，而抓取脚本跑在主文档里——顶层
+  // querySelectorAll 看不见 iframe 内部，于是"一行都没抓到"这一步会静默地少掉整张表。
+  // 这里只负责**说清楚**它在哪儿，不替调用者跨 frame 抓：多个 frame 都有匹配时，行该
+  // 算谁的没有答案。
+  const rowsInFrames = (rowSelector) => {
+    const found = []
+    const frames = document.querySelectorAll('iframe')
+    for (const frame of frames) {
+      let inner = null
+      try { inner = frame.contentDocument } catch (error) { inner = null }
+      if (!inner) continue
+      let n = 0
+      try { n = inner.querySelectorAll(rowSelector).length } catch (error) { n = 0 }
+      if (n > 0) found.push({ url: String(frame.getAttribute('src') || '').slice(0, 120), rows: n })
+    }
+    return found
+  }
 `
 
 /** A JSON value the page produced, or a refusal. */
@@ -2331,12 +2410,43 @@ export interface ScrapeField {
   readonly attribute?: string
 }
 
+/**
+ * 那一屏之外还有多少——虚拟化表格的判据。
+ *
+ * 有它才谈得上"这份结果是不是全部"：没有它的时候，一张只渲染了可视区的报表和一张完整
+ * 的表在返回值里长得一模一样，调用者只能拿 DOM 行数当数据行数。
+ */
+export interface ScrapeTruncation {
+  /** `hot` = 从 Handsontable 实例读到了真实行数；`scroll` = 只知道内容比可视区高。 */
+  readonly source: 'hot' | 'scroll'
+  /** DOM 里实际渲染了几行。 */
+  readonly shown: number
+  /** 真实数据行数；只有 `hot` 给得出（`scroll` 时不报，见 `rowsTruncation`）。 */
+  readonly total?: number
+  /** `scroll` 时的容器几何：内容高度与可视高度。 */
+  readonly contentHeight?: number
+  readonly visibleHeight?: number
+}
+
+/** 顶层没匹配到、但某个同源 iframe 里有的时候，那一处在哪、有几行。 */
+export interface ScrapeFrameMatch {
+  readonly url: string
+  readonly rows: number
+}
+
 /** What a scrape produced. */
 export interface ScrapeResult {
   readonly rows: readonly Record<string, string | null>[]
-  /** How many rows the page had, whether or not all were returned. */
+  /**
+   * 匹配到的行数——**这是 DOM 里的行数**，不是数据行数。虚拟化表格（报表网格就是）只会
+   * 渲染可视区，所以它可能远小于真实行数；`truncation` 说的就是这件事。
+   */
   readonly count: number
   readonly truncated: boolean
+  /** 有证据说明只渲染了一部分时才有。 */
+  readonly truncation?: ScrapeTruncation
+  /** 顶层一行没抓到、而同源 iframe 里有的时候才有。 */
+  readonly frames?: readonly ScrapeFrameMatch[]
 }
 
 /**
@@ -2360,6 +2470,7 @@ export async function scrapeRows(
   limit: number,
 ): Promise<ScrapeResult> {
   const script = `(() => {
+    ${PAGE_HELPERS}
     const rowSelector = ${JSON.stringify(rowSelector)}
     const fields = ${JSON.stringify(fields.map(field => ({
       name: field.name,
@@ -2372,6 +2483,10 @@ export async function scrapeRows(
       return { ok: false, reason: 'CSS 选择器写错了：' + String((error && error.message) || error) }
     }
     const count = rows.length
+    // 这一屏是全部，还是只有可视区？以及顶层一行都没有时，同源 iframe 里有没有。
+    // 两件事都只在**说清楚**：抓什么、抓多少不变（见 PAGE_HELPERS 里的两个函数）。
+    const truncation = count > 0 ? rowsTruncation(rows[0], count) : null
+    const frames = count === 0 ? rowsInFrames(rowSelector) : []
     const out = []
     for (const row of rows) {
       if (out.length >= limit) break
@@ -2386,15 +2501,26 @@ export async function scrapeRows(
       }
       out.push(record)
     }
-    return { ok: true, rows: out, count }
+    return { ok: true, rows: out, count, truncation, frames }
   })()`
   const result = await evaluateJson<{
     ok: boolean
     reason?: string
     rows?: readonly Record<string, string | null>[]
     count?: number
+    truncation?: ScrapeTruncation | null
+    frames?: readonly ScrapeFrameMatch[]
   }>(context, script)
   if (!result.ok) throw new InteractError('invalid-target', result.reason ?? '抓取失败')
   const rows = result.rows ?? []
-  return { rows, count: result.count ?? rows.length, truncated: (result.count ?? rows.length) > rows.length }
+  const count = result.count ?? rows.length
+  return {
+    rows,
+    count,
+    truncated: count > rows.length,
+    ...result.truncation === null || result.truncation === undefined
+      ? {}
+      : { truncation: result.truncation },
+    ...result.frames === undefined || result.frames.length === 0 ? {} : { frames: result.frames },
+  }
 }

@@ -43,6 +43,7 @@ import {
   InteractError,
   capturePage, clickAt, collectElements, dragBetween, fillFields, goBack, goForward, hoverAt, pressKey,
   readValueOf, reloadPage, scrapeRows, scrollPage, selectOption, setValueOf, typeText, waitForPage,
+  type ScrapeFrameMatch, type ScrapeTruncation,
   type CaptureOptions, type ClickMode, type ClickOptions, type DragDelivery, type DragEndReport,
   type DragMode, type DragOptions, type DragVerification,
   type ElementTarget, type FillField,
@@ -216,6 +217,10 @@ export interface CdpScrapeResult {
   readonly rows: readonly Record<string, string | null>[]
   readonly count: number
   readonly truncated: boolean
+  /** 有证据说明只渲染了可视区时才有（虚拟化表格）。 */
+  readonly truncation?: ScrapeTruncation
+  /** 顶层没匹配到、而某个同源 iframe 里有的时候才有。 */
+  readonly frames?: readonly ScrapeFrameMatch[]
 }
 
 /**
@@ -929,7 +934,14 @@ export function createYonBrowserCdpService(browsers: YonBrowsersService): YonBro
     async scrape(input, signal) {
       return await withPage(input, signal, async (context, page) => {
         const outcome = await scrapeRows(context, input.rows, input.fields, input.limit ?? 100)
-        return { page, rows: outcome.rows, count: outcome.count, truncated: outcome.truncated }
+        return {
+          page,
+          rows: outcome.rows,
+          count: outcome.count,
+          truncated: outcome.truncated,
+          ...outcome.truncation === undefined ? {} : { truncation: outcome.truncation },
+          ...outcome.frames === undefined ? {} : { frames: outcome.frames },
+        }
       })
     },
   }
