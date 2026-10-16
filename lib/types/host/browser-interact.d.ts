@@ -457,6 +457,8 @@ export interface CaptureResult {
     readonly mime: 'image/png' | 'image/jpeg';
     readonly width?: number;
     readonly height?: number;
+    /** 原参数失败、这张是用最保守的参数重试拿到的。 */
+    readonly degraded?: boolean;
 }
 /**
  * Capture the page.
@@ -464,6 +466,9 @@ export interface CaptureResult {
  * Downscaling goes through `clip.scale`, which only applies to the region a clip names — so
  * the clip has to cover the whole document, and `captureBeyondViewport` must then be dropped
  * or the two describe different images.
+ *
+ * 失败时降级重试一次，并把页面是否还活着问出来再报错——这个工具最难受的地方不是截不到图，
+ * 而是截不到时给的是一句看不出该做什么的话（见 {@link screenshotFailure}）。
  */
 export declare function capturePage(context: InteractContext, options: CaptureOptions): Promise<CaptureResult>;
 /** One control a page exposes, as the collector reports it. */

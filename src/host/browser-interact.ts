@@ -922,17 +922,26 @@ async function clearDragStash(context: InteractContext): Promise<void> {
   ).catch(() => undefined)
 }
 
-/** One CDP dispatch, bounded so a wedged page cannot hold the call open. */
+/**
+ * One CDP dispatch, bounded so a wedged page cannot hold the call open.
+ *
+ * @param context - the attached session.
+ * @param method - the CDP method.
+ * @param params - its parameters.
+ * @param timeoutMs - 覆盖默认预算。截图之类的合成命令比 DOM 操作慢得多，给它同一个
+ *   20 秒是把"慢"当成"死"来报——见 `capturePage`。
+ */
 async function dispatch(
   context: InteractContext,
   method: string,
   params: Record<string, unknown>,
+  timeoutMs: number = DISPATCH_TIMEOUT_MS,
 ): Promise<CdpMessage> {
   let timer: ReturnType<typeof setTimeout> | undefined
   const budget = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => {
-      reject(new InteractError('failed', `${method} 超过 ${String(DISPATCH_TIMEOUT_MS)}ms 没有回应。`))
-    }, DISPATCH_TIMEOUT_MS)
+      reject(new InteractError('failed', `${method} 超过 ${String(timeoutMs)}ms 没有回应。`))
+    }, timeoutMs)
   })
   try {
     return await Promise.race([context.connection.send(method, params, context.sessionId), budget])
@@ -1815,6 +1824,8 @@ export interface CaptureResult {
   readonly mime: 'image/png' | 'image/jpeg'
   readonly width?: number
   readonly height?: number
+  /** 原参数失败、这张是用最保守的参数重试拿到的。 */
+  readonly degraded?: boolean
 }
 
 /** The document's own size, in CSS pixels, as `Page.getLayoutMetrics` reports it. */
@@ -1834,11 +1845,91 @@ function layoutSize(metrics: CdpMessage): { width: number; height: number; viewp
 }
 
 /**
+ * 截图自己的超时预算。
+ *
+ * 原来它与所有 CDP 命令共用 20 秒。DOM 操作 20 秒不回来确实说明不对劲，但截图要走合成与
+ * 编码，本来就慢得多——用同一个数字，等于把"慢"报成"死"。实测这台机器上视口截图与整页
+ * 截图都只花一秒上下，所以 30 秒不会拖慢正常路径，只会在真出问题时多给一点余地。
+ */
+const SCREENSHOT_TIMEOUT_MS = 30_000
+
+/** 降级重试的预算：它只负责"先拿到一张图"，不该再等一个完整周期。 */
+const SCREENSHOT_RETRY_TIMEOUT_MS = 15_000
+
+/** 降级时的 jpeg 质量。 */
+const SCREENSHOT_FALLBACK_QUALITY = 60
+
+/**
+ * 页面还活着吗？
+ *
+ * 截图失败的时候，这一问决定报什么：页面死了该去查页面，CDP 没回来该换手段。这两件事会
+ * 分开发生——记下这条迭代的人遇到的就是"同一页签的 browser_eval 秒回、而截图 20 秒不
+ * 返回"——所以报错不能把它们混成一句"截图失败"。
+ */
+async function pageResponds(context: InteractContext): Promise<boolean> {
+  try {
+    const answer = await dispatch(context, 'Runtime.evaluate', {
+      expression: '1 + 1',
+      returnByValue: true,
+    }, 3_000)
+    const result = answer['result']
+    return result !== null && typeof result === 'object'
+      && (result as Record<string, unknown>)['value'] === 2
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 截图失败时该说的话。
+ *
+ * 原来的报错只有一句「Page.captureScreenshot 超过 20000ms 没有回应」，看的人分不清该缩小
+ * 范围还是换手段——记下这条迭代的人就是这么卡住的，最后放弃了截图。所以这里把三件事都说
+ * 出来：原命令为什么失败、页面**是不是还在**（现场唯一能确定的事实）、以及下一步往哪走。
+ */
+function screenshotFailure(error: unknown, alive: boolean): string {
+  const reason = error instanceof Error ? error.message : String(error)
+  return [
+    `截图失败：${reason}`,
+    alive
+      ? '页面**仍在响应**（同一页签的 DOM 操作是通的），所以这不是页面卡死，是截图这条命令没有回来。'
+      : '而且页面此刻也不响应了——先确认它还在、没有被导航走或卡住。',
+    '已经用最保守的参数（jpeg、质量 60、只截可视区）自动重试过一次，也没成功。',
+    '下一步可以：① 不截图，用 browser_eval 把需要的内容抠出来；② 先滚动到目标区域再截，视口越小越快；',
+    '③ 换个更简单的页签试同一件事，用来判断是这个页面特殊，还是这台机器上的截图整体不通。',
+  ].join('\n')
+}
+
+/**
+ * 一次截图，拿到 base64；空图像同样算失败。
+ * @param context - the attached session.
+ * @param params - the CDP parameters.
+ * @param timeoutMs - this attempt's budget.
+ * @returns the base64 payload.
+ */
+async function shotData(
+  context: InteractContext,
+  params: Record<string, unknown>,
+  timeoutMs: number,
+): Promise<string> {
+  const shot = await dispatch(context, 'Page.captureScreenshot', params, timeoutMs)
+  const data = shot['data']
+  if (typeof data !== 'string' || data === '') {
+    throw new InteractError('failed',
+      '截图返回了空图像。页面可能还没画出来（刚导航完），等一下再截。')
+  }
+  return data
+}
+
+/**
  * Capture the page.
  *
  * Downscaling goes through `clip.scale`, which only applies to the region a clip names — so
  * the clip has to cover the whole document, and `captureBeyondViewport` must then be dropped
  * or the two describe different images.
+ *
+ * 失败时降级重试一次，并把页面是否还活着问出来再报错——这个工具最难受的地方不是截不到图，
+ * 而是截不到时给的是一句看不出该做什么的话（见 {@link screenshotFailure}）。
  */
 export async function capturePage(context: InteractContext, options: CaptureOptions): Promise<CaptureResult> {
   const format = options.format ?? 'png'
@@ -1869,17 +1960,35 @@ export async function capturePage(context: InteractContext, options: CaptureOpti
     }
   }
 
-  const shot = await dispatch(context, 'Page.captureScreenshot', params)
-  const data = shot['data']
-  if (typeof data !== 'string' || data === '') {
-    throw new InteractError('failed',
-      '截图返回了空图像。页面可能还没画出来（刚导航完），等一下再截。')
+  let data: string
+  let mime: 'image/png' | 'image/jpeg' = format === 'jpeg' ? 'image/jpeg' : 'image/png'
+  let degraded = false
+  try {
+    data = await shotData(context, params, SCREENSHOT_TIMEOUT_MS)
+  } catch (error) {
+    // 换一条**不同的路**：不带 clip（不依赖 layout metrics）、不做缩放、jpeg 编码更轻，
+    // 只求先把画面拿回来。
+    const alive = await pageResponds(context)
+    const fallback = await shotData(
+      context,
+      { format: 'jpeg', quality: SCREENSHOT_FALLBACK_QUALITY },
+      SCREENSHOT_RETRY_TIMEOUT_MS,
+    ).catch(() => undefined)
+    if (fallback === undefined) throw new InteractError('failed', screenshotFailure(error, alive))
+    data = fallback
+    mime = 'image/jpeg'
+    degraded = true
+    // 降级拿到的是**另一张图**（只截可视区、没有缩放），原来算出来的宽高不再成立。
+    width = undefined
+    height = undefined
   }
+
   return {
     base64: data,
-    mime: format === 'jpeg' ? 'image/jpeg' : 'image/png',
+    mime,
     ...(width === undefined ? {} : { width }),
     ...(height === undefined ? {} : { height }),
+    ...degraded ? { degraded: true } : {},
   }
 }
 

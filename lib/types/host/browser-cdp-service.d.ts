@@ -210,6 +210,8 @@ export interface CdpCaptureResult {
     readonly mime: 'image/png' | 'image/jpeg';
     readonly width?: number;
     readonly height?: number;
+    /** 原参数失败、这张是用最保守的参数重试拿到的。 */
+    readonly degraded?: boolean;
 }
 /** The interactive elements of one page. */
 export interface CdpElementListing {

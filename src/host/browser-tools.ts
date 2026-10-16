@@ -1328,6 +1328,7 @@ export function registerYonBrowserTools(ctx: Context, cdp: YonBrowserCdpService)
         bytes: { type: 'number' },
         width: { type: 'number' },
         height: { type: 'number' },
+        degraded: { type: 'boolean', description: '原参数失败、这张是用最保守的参数重试拿到的。' },
       },
     },
     async execute(args, signal) {
@@ -1353,16 +1354,23 @@ export function registerYonBrowserTools(ctx: Context, cdp: YonBrowserCdpService)
         bytes: Buffer.from(shot.base64, 'base64').length,
         ...(shot.width === undefined ? {} : { width: shot.width }),
         ...(shot.height === undefined ? {} : { height: shot.height }),
+        ...shot.degraded === true ? { degraded: true } : {},
       }
     },
     render(value) {
       const size = value.width === undefined || value.height === undefined
         ? ''
         : `，${String(value.width)}×${String(value.height)}`
-      return [
+      const lines = [
         `已截图：${value.path}`,
         `（${value.mime}，${String(Math.round(value.bytes / 1024))} KB${size}）`,
-      ].join('\n')
+      ]
+      // 静默降级会让人以为拿到的是他点名要的那张图：它是另一张（只截可视区、没有缩放）。
+      if (value.degraded === true) {
+        lines.push('⚠ 原参数没能截到图，这张是**降级重试**的结果：jpeg、质量 60、只截可视区'
+          + '（没有整页，也没有缩放）。要原来那种，先滚动到目标区域再截一次。')
+      }
+      return lines.join('\n')
     },
     presentCall() {
       return { card: 'generic', title: '页面截图', kind: 'read' }
