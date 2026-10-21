@@ -635,6 +635,12 @@ export function WikiManager({
       <p className={cn(base.note)}>{t('wiki.levelHint')}</p>
 
       <h4 className={cn(css.subTitle)}>{t('wiki.connectivity')}</h4>
+      {/* Same trap as the level bars, one block down: a vault of digested
+          documents has no entity edges at all, so every figure here is 0. Say
+          what is being counted before the zeros say "nothing is connected". */}
+      {report.pages === 0 && (
+        <p className={cn(base.note)}>{t('wiki.connectivityNoEntities')}</p>
+      )}
       <div className={cn(css.statBlock)}>
         <Stat label={t('wiki.withOutgoing')} value={`${report.graph.withOutgoing}`}
           note={`/ ${report.pages}`} />
@@ -876,11 +882,13 @@ export function WikiManager({
             <ul className={cn(css.resultList)}>
               {prose.hits.map(page => (
                 <li key={`${page.vault ?? ''}:${page.file}`} className={cn(css.topicRow)}>
-                  <span className={cn(css.resultName)}>{page.name}</span>
-                  <span className={cn(base.tag, base.tagMuted)}>
-                    {page.kind === 'topic' ? t('wiki.topicPagesUnit') : t('wiki.sourcePagesUnit')}
+                  <span className={cn(css.topicHead)}>
+                    <span className={cn(css.resultName)}>{page.name}</span>
+                    <span className={cn(base.tag, base.tagMuted)}>
+                      {page.kind === 'topic' ? t('wiki.topicPagesUnit') : t('wiki.sourcePagesUnit')}
+                    </span>
+                    {page.version !== undefined && <span className={cn(base.note)}>{page.version}</span>}
                   </span>
-                  {page.version !== undefined && <span className={cn(base.note)}>{page.version}</span>}
                   <span className={cn(css.mono)}>{page.file}</span>
                   {page.summary !== undefined && (
                     <span className={cn(base.note, css.topicSummary)}>{page.summary}</span>

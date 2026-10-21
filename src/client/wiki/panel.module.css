@@ -454,6 +454,15 @@
   border-radius: 8px;
 }
 
+/* Name, kind tag and version on one baseline: three stacked lines per row left
+   room for two rows in the list, which is not a list anyone scrolls. */
+.topicHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
 .topicRow:hover {
   background: var(--dsw-alias-interactive-bg-hover);
 }

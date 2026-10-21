@@ -169,6 +169,7 @@ export declare const zh: {
     'wiki.tab.topics': string;
     'wiki.topicsFilter': string;
     'wiki.topicsSummary': string;
+    'wiki.connectivityNoEntities': string;
     'wiki.topicsEmpty': string;
     'wiki.unindexedNote': string;
     'wiki.indexedAt': string;
@@ -971,6 +972,7 @@ export declare const en: {
     'wiki.tab.topics': string;
     'wiki.topicsFilter': string;
     'wiki.topicsSummary': string;
+    'wiki.connectivityNoEntities': string;
     'wiki.topicsEmpty': string;
     'wiki.unindexedNote': string;
     'wiki.indexedAt': string;

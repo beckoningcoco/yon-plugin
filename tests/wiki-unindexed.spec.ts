@@ -287,24 +287,29 @@ describe('the service reads the prose pages', () => {
     expect(failure?.message).toContain('没有这个文件')
   })
 
-  it('lists the prose pages newest first, filtered by a term', async () => {
+  it('lists topics before sources, then newest first, and filters by a term', async () => {
     const root = await scratch('yon-wiki-prose-')
     const vault = join(root, 'ncc')
     await mkdir(join(vault, 'wiki', 'entities'), { recursive: true })
     await writePage(join(vault, 'wiki', 'topics'), '总账（NCC 2312）', TOPIC_PAGE)
     await writePage(join(vault, 'wiki', 'topics'), '固定资产（NCC 2312）',
       '# 固定资产（NCC 2312）\n\n> 卡片与折旧。\n')
+    // A source page that is strictly newer: without the kind rule it would sort
+    // first, and the index page of a document would lead a list of subjects.
+    await writePage(join(vault, 'wiki', 'sources'), '[NCC 2312] 财务会计产品说明',
+      '---\nupdated: 2026-10-22\n---\n\n# [NCC 2312] 财务会计产品说明\n\n> 166 页产品说明的索引。\n')
     const service = await serviceOver(root, [{ id: 'ncc', label: 'NCC', path: vault }])
 
     const all = await service.proseList('', undefined, undefined, 10)
-    expect(all.count).toBe(2)
+    expect(all.count).toBe(3)
+    expect(all.hits.map(page => page.kind)).toEqual(['topic', 'topic', 'source'])
 
     const filtered = await service.proseList('总账', undefined, undefined, 10)
     expect(filtered.hits.map(page => page.page)).toEqual(['总账（NCC 2312）'])
     expect(filtered.hits[0]?.vault).toBe('ncc')
 
     const sourcesOnly = await service.proseList('', undefined, 'source', 10)
-    expect(sourcesOnly.count).toBe(0)
+    expect(sourcesOnly.count).toBe(1)
   })
 
   it('names the unread directories on a read that missed', async () => {
