@@ -180,6 +180,20 @@ NCC 不同端调用接口的方式**不同，不能混用**：
 | **public 端** | `NCLocator.getInstance().lookup()` | `nc.bs.framework.common.NCLocator` |
 | **private 端** | `NCLocator.getInstance().lookup()` | `nc.bs.framework.common.NCLocator` |
 
+**怎么判断自己写的类属于哪一端？** 看它的**编译产物落在哪**，这是唯一可靠的判据：
+
+- 类最终部署到 Home 的 `hotwebs/nccloud/...`（典型包名 `nccloud.web.<模块>.<xx>.action.*`）→ **client 端（相当于前端类）**，
+  必须用 `ServiceLocator.find()`。
+- 类最终部署到 `modules/<模块>/lib` 或 `modules/<模块>/META-INF/classes`
+  （典型包名 `nc.itf.*` / `nc.pubitf.*` / `nc.impl.*` / `nc.bs.*`）→ **public / private 端**，
+  必须用 `NCLocator.getInstance().lookup()`。
+
+拿不准时看包名前缀：`nccloud.web.` 开头用 `ServiceLocator`，`nc.` 开头的（`nccloud` 之外）一律用 `NCLocator`。
+
+> 这不是风格问题。两端跑在不同类加载器上，用错不是"能跑但别扭"，而是取不到实现（null）或直接抛异常。
+> 典型误用：在 `nc.impl.*` 的业务实现类里写了 `ServiceLocator.find(...)`——编译能过（jar 同一个 classpath 里有），
+> 运行时才炸，排查成本很高。
+
 ### 5.1 client 端（只能用 ServiceLocator）
 
 ```java
@@ -290,7 +304,8 @@ Logger.error("错误日志：" + message, exception);
 ### 8.2 方法签名
 
 ```java
-SysInitQuery.getParaString(String pkOrg, String paramCode)
+SysInitQuery.getParaString(String pkOrg, String paramCode)    // 返回 String
+SysInitQuery.getParaBoolean(String pkOrg, String paramCode)   // 返回 UFBoolean，来源 scenarios/部门保存调用链.md
 ```
 
 | 参数 | 说明 |
@@ -304,7 +319,7 @@ SysInitQuery.getParaString(String pkOrg, String paramCode)
 
 ```java
 import nc.bs.framework.common.InvocationInfoProxy;
-import nc.bs.pub.pf.SysInitQuery;
+import nc.pubitf.para.SysInitQuery;
 import nc.vo.org.IOrgConst;
 
 /**
@@ -328,8 +343,10 @@ if (!isParamEnabled("KYXMLB_SYNC", pkOrg)) {
 ### 8.4 相关 import
 
 ```java
-import nc.bs.pubitf.para.SysInitQuery;
+import nc.pubitf.para.SysInitQuery;   // 落在 modules/baseapp/lib/pubbaseapp_appparam_rtLevel-1.jar；没有 nc.bs.pubitf.para / nc.bs.pub.pf 这两个包
 ```
+
+> 同名类在各模块还有各自的一份 `SysInitGroupQuery`（如 `nc.vo.so.pub.util.SOSysInitGroupQuery`、`nc.bs.ic.pub.util.ICSysInitGroupQuery`），包名不同、不能互相替换。
 
 ---
 

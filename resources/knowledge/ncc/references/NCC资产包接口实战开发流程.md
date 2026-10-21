@@ -15,7 +15,7 @@
    ↓
 2. 准备资产包模块（如 erm2111）
    ↓
-3. 注册三方应用（pub_thirdsys）
+3. 注册三方应用（pub_thirdsys；先查 opm_thirdapp 里应用建了没）
    ↓
 4. 生成集成规则配置文件（JSON）        ← 🆕 先写配置，审核通过再出SQL
    ↓
@@ -66,6 +66,11 @@ erm2111/
 如果模块不存在，从已有的同级模块复制一份，修改 `module.xml` 中的模块名。
 
 ### 步骤3：注册三方应用（可选，非必须）
+
+> **⚠️ 先查应用建了没**：常见情况是 `pub_thirdsys` 里有三方应用记录、`opm_thirdapp` 里却没有对应应用——
+> 此时 `client_id` / `client_secret` / 公钥全为空，token 都取不到，联调必然卡住。
+> 判断 SQL、四种状态与给用户的提示话术见 [NCC-OpenAPI-调用参数速查 §4.1](./NCC-OpenAPI-调用参数速查.md)。
+> 结论：**应用没建就先请用户去后台建**（OPENAPI 管理 → 应用），不要用 SQL 手插 `opm_thirdapp`。
 
 - 向用户确认是否在 OPENAPI管理创建了外系统的 应用 （当NCC写接口给外系统调用时，为必要步骤。），建立完成后，根据 **SELECT** * **FROM** opm_thirdapp 从这个表中获取 OPENAPI 标准应用的相关信息。
 

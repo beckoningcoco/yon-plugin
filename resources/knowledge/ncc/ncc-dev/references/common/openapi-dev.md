@@ -211,6 +211,55 @@ Body: JSON 请求体
 ### was 环境访问 opm 报错 SRVE0260E
 - URL 需要加 `/index.html`：`http://ip:port/nccloud/resources/opm/index.html`
 
+### 调用接口返回 `{"success": false, "code": "", "message": "请求未授权"}`
+
+这是 NCC 开放平台（OPM）网关的鉴权失败统一响应，由 `ResultMessage.exceptionToJSON()` 生成，**不是业务报错**。
+
+排查时先看 OPM 日志里的 `##access_token::`，用它能一步分清问题在哪一层：
+
+| 日志里的 access_token | 含义 | 往哪里查 |
+|---|---|---|
+| `null` | 请求头根本没到 NCC | nginx / 网关 / 调用方 |
+| `-`、空串或无效值 | 收到了，但 token 没取到 / 已失效 | 取 token 的代码链路、数据库操作 |
+| 正常值但仍未授权 | 应用或接口层面的授权问题 | 应用是否启用、是否关联该 API、签名、IP 白名单 |
+
+> 判定口诀：**日志里是 `null`，问题在传输层；日志里是 `-` 或无效值，问题在 token 生成侧。**
+
+#### 案例一：token 根本没生成 —— SQL 方言导致异常被吞
+
+现象：日志中 `access_token` 为 `-`，调用接口报"请求未授权"。
+
+原因：资产包/客开代码在执行数据库 SQL 时用了 `NVL`（Oracle 函数），而目标库是 **SQL Server**，SQL 执行直接报错；这个异常又被吞掉、没有向上抛，导致取 token 的流程没走完，token 自然没生成，下游只看到"未授权"。
+
+> `NVL` 是 Oracle 专有函数，SQL Server 没有，会在编译期报 `'nvl' 不是可以识别的 内置函数名称`。跨库写法用 `ISNULL`（2 参数）或标准函数 `COALESCE`。
+
+排查要点：
+- 顺着"取 token"的整条链路看有没有数据库操作，别只盯着 HTTP 参数
+- 异常被静默吞掉是这类问题的放大器：日志只有"未授权"，真实错误在上游
+- 跨库 SQL 统一用 `COALESCE`，或按数据库类型分支
+
+#### 案例二：nginx 丢弃下划线 Header
+
+现象：日志中 `##access_token::null`，NCC 侧完全没收到 token，但调用方显示请求已发出。
+
+原因：nginx 默认 **`underscores_in_headers off`**，会把名字带下划线的请求头（`access_token`、`client_id`、`ucg_flag`）直接丢掉；长连接复用不当也会加剧参数丢失。
+
+解决：
+
+```nginx
+server {
+    # 1. 允许 Header 带下划线（关键）
+    underscores_in_headers on;
+
+    location / {
+        # 2. 保持长连接，避免连接中断导致参数丢失
+        proxy_set_header Connection keep-alive;
+    }
+}
+```
+
+改完 `nginx -s reload`，再看 OPM 日志里 `##access_token::` 是否已有值。
+
 ---
 
 ## 特殊情况：FIP 外部接口单（资产包模式）
