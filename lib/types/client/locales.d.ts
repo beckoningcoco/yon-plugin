@@ -219,6 +219,7 @@ export declare const zh: {
     'wiki.level.locatable': string;
     'wiki.level.concept': string;
     'wiki.levelHint': string;
+    'wiki.levelsNoEntities': string;
     'wiki.connectivity': string;
     'wiki.withOutgoing': string;
     'wiki.withIncoming': string;
@@ -1020,6 +1021,7 @@ export declare const en: {
     'wiki.level.locatable': string;
     'wiki.level.concept': string;
     'wiki.levelHint': string;
+    'wiki.levelsNoEntities': string;
     'wiki.connectivity': string;
     'wiki.withOutgoing': string;
     'wiki.withIncoming': string;

@@ -581,6 +581,16 @@ export function WikiManager({
         <dt className={cn(base.propLabel)}>{t('wiki.pages')}</dt>
         <dd className={cn(base.propValue)}>{current?.ready === true ? current.pages : '—'}</dd>
 
+        {/* The two counts beside the entity pages. Without them a vault holding
+            nothing but digested documents shows one zero here and, three lines
+            down, three more zeros in the level breakdown — which reads as empty
+            even though the 主题页 tab says otherwise. */}
+        <dt className={cn(base.propLabel)}>{t('wiki.topicPagesUnit')}</dt>
+        <dd className={cn(base.propValue)}>{report.topicPages ?? 0}</dd>
+
+        <dt className={cn(base.propLabel)}>{t('wiki.sourcePagesUnit')}</dt>
+        <dd className={cn(base.propValue)}>{report.sourcePages ?? 0}</dd>
+
         <dt className={cn(base.propLabel)}>{t('wiki.indexedAt')}</dt>
         <dd className={cn(base.propValue)}>{current?.ready === true ? when(current) : '—'}</dd>
 
@@ -610,6 +620,12 @@ export function WikiManager({
       )}
 
       <h4 className={cn(css.subTitle)}>{t('wiki.levels')}</h4>
+      {/* Said before the three zero bars, not after: a vault of digested
+          documents has no entity page to grade, and three zeros under "可写查询 /
+          可定位 / 仅概念" is exactly the shape that reads as an empty base. */}
+      {report.pages === 0 && (
+        <p className={cn(base.note)}>{t('wiki.levelsNoEntities')}</p>
+      )}
       <div className={cn(css.levelList)}>
         {report.levels.map(entry => (
           <LevelBar key={entry.level} level={entry.level} pages={entry.pages}
@@ -953,7 +969,17 @@ export function WikiManager({
                       >
                         <span className={cn(base.projectMark)} aria-hidden="true"><BookMark /></span>
                         <span className={cn(base.projectName)} title={vault.path}>{vault.label}</span>
-                        <span className={cn(base.projectMeta)}>
+                        <span
+                          className={cn(base.projectMeta)}
+                          // The row is narrow and the three counts do not fit: the
+                          // last unit gets clipped, which is how `7636 来源页`
+                          // became `7636`. The full line is one hover away.
+                          title={vault.ready
+                            ? `${vault.pages} ${t('wiki.pagesUnit')} · `
+                              + `${vault.topicPages ?? 0} ${t('wiki.topicPagesUnit')} · `
+                              + `${vault.sourcePages ?? 0} ${t('wiki.sourcePagesUnit')}`
+                            : t('wiki.notReady')}
+                        >
                           {vault.ready
                             ? [
                                 `${vault.pages} ${t('wiki.pagesUnit')}`,
