@@ -1069,6 +1069,10 @@ export function registerYonWikiWriteTools(
         content,
       )
       await writeAtomic(target, text)
+      // The page exists, but the index does not know it yet. Dropping the cached
+      // index is what makes the next lookup see this page — without it a digestion
+      // reports success and then cannot be found until somebody rebuilds by hand.
+      await wiki.invalidate(vault.id)
       const touched = await recordWrite(vault, page, `新建 ${dir} 页 [[${page}]]（${sourceType}）`)
 
       return {
@@ -1091,7 +1095,7 @@ export function registerYonWikiWriteTools(
         '',
         `验收这一页时把 ${result.file} 交给 digest_audit 的 product（同一份素材的多页传数组）。`,
         `它是库内相对路径，按 vault ${result.vault} 的根解析——带上 vault 就不会被当成工作目录下的文件。`,
-        '它不在 wiki_lookup 的索引里 —— 那是实体页的索引 —— 要读请按路径读。',
+        '这一页已经进知识库索引（主题页 / 来源页）：wiki_lookup 能搜到，wiki_read 可以传页名或库内路径读。',
       ].join('\n')
     },
     presentCall(args) {

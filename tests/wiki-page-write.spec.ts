@@ -44,6 +44,8 @@ const liveSignal = new AbortController().signal
 interface Bench {
   readonly registered: YonToolDefinition[]
   readonly vault: string
+  /** The service the tools write through, for asserting what a later lookup sees. */
+  readonly wiki: YonWikiService
   readonly call: (name: string, args: unknown) => Promise<Record<string, unknown>>
   readonly gate: (name: string, args: unknown) => Promise<{ kind: string; reason?: string }>
 }
@@ -93,6 +95,7 @@ async function bench(): Promise<Bench> {
   return {
     registered,
     vault,
+    wiki,
     call: async (name, args) => await tool(name).execute(args, execution(name, args)) as Record<string, unknown>,
     gate: async (name, args) => await ctx.waterfall(
       'tools/pre-execute',
@@ -154,6 +157,24 @@ describe('wiki_page_write', () => {
     // blind spot that left every hand-written page out of this vault's log.
     expect(await readFile(join(vault, 'log.md'), 'utf8'))
       .toMatch(/## \d{4}-\d{2}-\d{2} 新建 topics 页 \[\[线程池实践\]\]（doc）/)
+  })
+
+  it('makes the page findable right after writing, without a manual rebuild', async () => {
+    const { call, wiki } = await bench()
+    // Prime the index first. The failure this guards is a *cached* index that keeps
+    // answering "nothing here" after the page has been written — a digestion that
+    // reports success and then cannot be found.
+    await wiki.lookup('线程池')
+    await call('wiki_page_write', GOOD)
+
+    const found = await wiki.lookup('线程池实践')
+    expect(found.hits.map(hit => hit.page)).toContain('线程池实践')
+    expect(found.hits[0]?.kind).toBe('topic')
+
+    // And by page name, not only by path: that is what the tool now promises.
+    const page = await wiki.read('线程池实践')
+    expect(page.kind).toBe('topic')
+    expect(page.text).toContain('获取线程池')
   })
 
   it('refuses a name already taken, rather than replacing the page', async () => {
