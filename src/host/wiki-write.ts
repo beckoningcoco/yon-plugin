@@ -33,7 +33,7 @@
  * just teaches the model to try something else.
  */
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { entityDirOf, wikiIndexPath, type WikiPage, type WikiVault } from './wiki-index.ts'
@@ -222,12 +222,21 @@ async function writeAtomic(target: string, content: string): Promise<void> {
   await rename(temporary, target)
 }
 
-/** Append one line to a file, creating it when absent. */
+/**
+ * Append one line to a file, creating it when absent.
+ *
+ * The read is only used to decide the line ending and whether a separator is
+ * needed — it is never written back. Appending with `appendFile` is the point:
+ * a batch of pages is written concurrently, and a read-modify-write of a
+ * hand-maintained file loses every line another writer added between the read
+ * and the write (measured: an 11-page batch left `index.md` holding 5 lines).
+ */
 async function appendLine(target: string, line: string): Promise<void> {
   const existing = await readFile(target, 'utf8').catch(() => '')
   const eol = existing.includes('\r\n') ? '\r\n' : '\n'
   const separator = existing === '' || existing.endsWith('\n') ? '' : eol
-  await writeFile(target, `${existing}${separator}${line}${eol}`, 'utf8')
+  await mkdir(path.dirname(target), { recursive: true }).catch(() => undefined)
+  await appendFile(target, `${separator}${line}${eol}`, 'utf8')
 }
 
 /**
@@ -260,10 +269,15 @@ async function recordWrite(vault: WikiVault, page: string, line: string): Promis
     const existing = await readFile(index, 'utf8')
     const entry = `- [[${page}]] — ${line}`
     if (!existing.includes(entry)) {
-      const withSection = existing.includes(INDEX_SECTION)
-        ? `${existing.replace(/\s*$/, '')}\n${entry}\n`
-        : `${existing.replace(/\s*$/, '')}\n\n${INDEX_SECTION}\n\n${entry}\n`
-      await writeFile(index, withSection, 'utf8')
+      const eol = existing.includes('\r\n') ? '\r\n' : '\n'
+      const separator = existing === '' || existing.endsWith('\n') ? '' : eol
+      const heading = existing.includes(INDEX_SECTION)
+        ? ''
+        : `${eol}${INDEX_SECTION}${eol}${eol}`
+      // Append, never rewrite: `index.md` is hand-maintained and this runs once
+      // per page, so a concurrent batch would otherwise overwrite each other's
+      // additions with whatever snapshot they read first.
+      await appendFile(index, `${separator}${heading}${entry}${eol}`, 'utf8')
       touched.push('index.md')
     }
   } catch {

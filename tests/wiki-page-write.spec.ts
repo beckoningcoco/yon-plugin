@@ -159,6 +159,38 @@ describe('wiki_page_write', () => {
       .toMatch(/## \d{4}-\d{2}-\d{2} 新建 topics 页 \[\[线程池实践\]\]（doc）/)
   })
 
+  it('appends to index.md without touching what is already there', async () => {
+    const { vault, call } = await bench()
+    const index = join(vault, 'index.md')
+    // `index.md` is hand-maintained: headings and entries the tool never wrote.
+    await writeFile(index, '# 索引\n\n## 财务会计\n\n- [[总账]] — 手写条目\n', 'utf8')
+
+    await call('wiki_page_write', GOOD)
+
+    const text = await readFile(index, 'utf8')
+    expect(text).toContain('# 索引')
+    expect(text).toContain('## 财务会计')
+    expect(text).toContain('- [[总账]] — 手写条目')
+    expect(text).toContain('## 自动消化')
+    expect(text).toContain('- [[线程池实践]] —')
+  })
+
+  it('keeps every entry when a batch of pages is written at once', async () => {
+    const { vault, call } = await bench()
+    const index = join(vault, 'index.md')
+    await writeFile(index, '# 索引\n\n## 手工维护\n\n- [[旧页]] — 手写\n', 'utf8')
+
+    // A digestion writes its pages concurrently. Each used to read the whole file and
+    // write it back, so the last writer replaced the others' additions — measured on a
+    // real vault: an 11-page batch left index.md holding 5 lines.
+    const pages = ['甲页', '乙页', '丙页', '丁页', '戊页']
+    await Promise.all(pages.map(page => call('wiki_page_write', { ...GOOD, page })))
+
+    const text = await readFile(index, 'utf8')
+    expect(text).toContain('- [[旧页]] — 手写')
+    for (const page of pages) expect(text).toContain(`- [[${page}]] —`)
+  })
+
   it('makes the page findable right after writing, without a manual rebuild', async () => {
     const { call, wiki } = await bench()
     // Prime the index first. The failure this guards is a *cached* index that keeps
