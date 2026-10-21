@@ -116,9 +116,10 @@ describe('dsh-plugin-yon-panel browser plugin', () => {
     const action = registrations.find(entry => entry.name === 'sidebar.footer.action')
 
     // The footer action plus one entry per built-in surface: project, skills,
-    // datasources, knowledge base, digestion ledger, installations, iteration ledger,
-    // debug browser, requirement ledger, project memory, runtime debug.
-    expect(registrations).toHaveLength(12)
+    // datasources, knowledge base, digestion ledger, installations, front-end
+    // source, iteration ledger, debug browser, requirement ledger, project memory,
+    // runtime debug.
+    expect(registrations).toHaveLength(13)
     expect(action?.options.id).toBe('yon-btn')
     expect(action?.options.order).toBe(10)
     expect(action?.options.children).toEqual({
@@ -162,14 +163,14 @@ describe('dsh-plugin-yon-panel browser plugin', () => {
     expect(panelFace.hooks.panel.getSnapshot().overlayDepth).toBe(0)
   })
 
-  it('registers the eleven built-in entries in order: project, skills, datasources, wiki, digest, home, iteration, browser, requirement, memory, arthas', async () => {
+  it('registers the twelve built-in entries in order: project, skills, datasources, wiki, digest, home, frontend, iteration, browser, requirement, memory, arthas', async () => {
     const { registrations } = await bench()
 
     const entries = registrations.filter(item => item.name === 'yon.panel.item')
 
     expect(entries.map(entry => entry.options.id))
-      .toEqual(['project', 'skills', 'datasources', 'wiki', 'digest', 'home', 'iteration', 'browser', 'requirement', 'memory', 'arthas'])
-    expect(entries.map(entry => entry.options.order)).toEqual([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110])
+      .toEqual(['project', 'skills', 'datasources', 'wiki', 'digest', 'home', 'frontend', 'iteration', 'browser', 'requirement', 'memory', 'arthas'])
+    expect(entries.map(entry => entry.options.order)).toEqual([10, 20, 30, 40, 50, 60, 65, 70, 80, 90, 100, 110])
   })
 
   it('names every built-in entry on its own registration, in the panel dictionary', async () => {
@@ -181,7 +182,7 @@ describe('dsh-plugin-yon-panel browser plugin', () => {
     // renders, so a button that shows no name is a missing label here — this is
     // the assertion that would catch one.
     expect(entries.map(entry => readLabel(entry.options.label)))
-      .toEqual(['项目管理', '技能', '数据源', '知识库', '消化检查', 'Home 管理', '迭代', '浏览器', '需求', '记忆', '运行时调试'])
+      .toEqual(['项目管理', '技能', '数据源', '知识库', '消化检查', 'Home 管理', '前端源码', '迭代', '浏览器', '需求', '记忆', '运行时调试'])
   })
 
   it('projects the seat rows into the panel, so it can name the rows it hosts', async () => {
@@ -201,6 +202,7 @@ describe('dsh-plugin-yon-panel browser plugin', () => {
       { id: 'wiki', label: '知识库' },
       { id: 'digest', label: '消化检查' },
       { id: 'home', label: 'Home 管理' },
+      { id: 'frontend', label: '前端源码' },
       { id: 'iteration', label: '迭代' },
       { id: 'browser', label: '浏览器' },
       { id: 'requirement', label: '需求' },

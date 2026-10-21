@@ -70,6 +70,9 @@ import { REQUIREMENT_TOOL_NAMES, registerYonRequirementTools } from './host/requ
 import { createHomeStore } from './host/home-store.ts'
 import { createYonHomesService, HomeError as HomesError, type YonHomesService } from './host/home-service.ts'
 import { registerYonHomeTools } from './host/home-tools.ts'
+import { createFrontendStore } from './host/frontend-store.ts'
+import { createYonFrontendsService, type YonFrontendsService } from './host/frontend-service.ts'
+import { registerYonFrontendTools } from './host/frontend-tools.ts'
 import { buildMetaIndex, writeMetaIndex } from './host/meta-index.ts'
 import { createYonMetaService, type YonMetaService } from './host/meta-service.ts'
 import { registerYonMetaTools } from './host/meta-tools.ts'
@@ -131,6 +134,12 @@ export type { WikiIndex, WikiPage, WikiVault } from './host/wiki-index.ts'
 export { defaultStorePath } from './host/datasource-store.ts'
 export { createHomeStore, defaultHomeStorePath } from './host/home-store.ts'
 export type { HomeStore, StoredHome } from './host/home-store.ts'
+export { createFrontendStore, defaultFrontendStorePath } from './host/frontend-store.ts'
+export type { FrontendStore, StoredFrontend } from './host/frontend-store.ts'
+export { createYonFrontendsService, FrontendError, FRONTEND_SKIP_DIRS } from './host/frontend-service.ts'
+export type { YonFrontendsService, FrontendFindQuery, YonFrontendsHandle } from './host/frontend-service.ts'
+export { probeFrontend } from './host/frontend-probe.ts'
+export { FRONTEND_TOOL_NAMES } from './host/frontend-tools.ts'
 export { createArthasStore, defaultArthasStorePath, defaultArthasDistDir, defaultArthasWorkDir } from './host/arthas-store.ts'
 export type { ArthasStore, ArthasConfig, ArthasStoreRead, StoredArthas } from './host/arthas-store.ts'
 export { ARTHAS_TOOL_NAMES } from './host/arthas-tools.ts'
@@ -208,6 +217,12 @@ export type {
   MetaFreshnessView, MetaIndexPayload, MetaIndexStatusView, SaveHomeInput,
 } from './shared/types.ts'
 export { HOME_PRODUCTS } from './shared/types.ts'
+export { FRONTEND_PRODUCTS, FRONTEND_VERSIONS, frontendLabelOf } from './shared/types.ts'
+export type {
+  FrontendDomainView, FrontendFileView, FrontendFindPayload, FrontendListPayload,
+  FrontendProduct, FrontendProfileView, FrontendReadPayload, FrontendShape, FrontendView,
+  SaveFrontendInput,
+} from './shared/types.ts'
 export {
   ITERATION_KINDS, ITERATION_SEVERITIES, ITERATION_STATUSES, MEMORY_TYPES, MEMORY_TYPE_TEXT,
 } from './shared/types.ts'
@@ -241,6 +256,8 @@ declare module '@deepseek-ai/cordis' {
     yonWiki: YonWikiService
     /** The NCC/BIP installation directories the operator registered. */
     yonHomes: YonHomesService
+    /** The NCC front-end source projects the operator registered. */
+    yonFrontends: YonFrontendsService
     /** The metadata index over those installations' `.bmf` files. */
     yonMeta: YonMetaService
     /** The class index over the same installations, built and reported on here. */
@@ -439,6 +456,19 @@ export async function apply(ctx: Context): Promise<void> {
   // out of it in the encoding it is actually stored in.
   ctx.effect(() => registerYonHomeTools(ctx, homes.service), 'yon-panel: home tools')
 
+  // The front-end source projects: the same three questions asked about a
+  // different directory — what is registered, what is in it, and how to read a
+  // file out of it. A separate store rather than a second row type in the Home
+  // one, because the two disagree about identity (a version names one source
+  // project, not one installation) and about what makes a directory real (src/
+  // and config.json, not modules/ and ierp/). The tools are shaped alike on
+  // purpose: the model should not have to learn a second vocabulary.
+  const frontendStore = createFrontendStore()
+  const frontends = createYonFrontendsService(frontendStore)
+  ctx.effect(() => frontends.dispose, 'yon-panel: frontend store')
+  ctx.provide('yonFrontends', frontends.service)
+  ctx.effect(() => registerYonFrontendTools(ctx, frontends.service), 'yon-panel: frontend tools')
+
   // The metadata index: what the installation's `.bmf` files say, flattened so that
   // "which table is 报销单据类型" and "which entities have a 员工 field" are questions
   // with answers. It resolves a Home through the same function the class index uses.
@@ -610,7 +640,8 @@ export async function apply(ctx: Context): Promise<void> {
   ctx.inject(['webServer'], (web) => {
     web.effect(
       () => registerYonApi(web, service, skills.service, dataSources.service, wiki, digestLog,
-        homes.service, meta, classes, iteration, browsers, requirements, memory, arthas.service, replay),
+        homes.service, meta, classes, iteration, browsers, requirements, memory, arthas.service, replay,
+        frontends.service),
       'yon-panel: project api',
     )
   })

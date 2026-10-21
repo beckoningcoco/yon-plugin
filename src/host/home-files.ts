@@ -329,6 +329,21 @@ export interface FindQuery {
   /** A directory inside the Home to start from; the root when omitted. */
   readonly under?: string
   readonly limit: number
+  /**
+   * Directory prefixes to leave out entirely, relative to the root.
+   *
+   * A Home has no such thing — every file under it is part of the installation —
+   * but a front-end project does: `src/platform/` is the runtime library (measured
+   * 64.9 MB of the reference project's 151 MB), and `node_modules/` is not source
+   * either. Skipped here rather than filtered afterwards, so the walk spends no
+   * time stat-ing files nobody will see.
+   */
+  readonly skip?: readonly string[]
+}
+
+/** One skip prefix, normalised the way relative paths are compared. */
+function skipPrefix(raw: string): string {
+  return raw.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
 }
 
 /** Clamp a caller's limit into the range one answer may carry. */
@@ -364,6 +379,7 @@ export async function findIn(root: string, query: FindQuery): Promise<HomeFindPa
   const matches: HomeFileView[] = []
   let scanned = 0
   let capped = false
+  const skips = (query.skip ?? []).map(skipPrefix).filter(prefix => prefix !== '')
 
   const walk = async (dir: string, depth: number): Promise<void> => {
     if (capped || depth > FIND_DEPTH || matches.length >= query.limit) return
@@ -378,6 +394,8 @@ export async function findIn(root: string, query: FindQuery): Promise<HomeFindPa
       const full = path.join(dir, entry.name)
       if (entry.isDirectory()) {
         if (isJdk(full)) continue
+        const rel = path.relative(realRoot, full).split(path.sep).join('/')
+        if (skips.some(prefix => rel === prefix || rel.startsWith(`${prefix}/`))) continue
         await walk(full, depth + 1)
         continue
       }

@@ -32,6 +32,7 @@ import { createBrowserApi } from './browser/api.ts'
 import { createDataSourceApi } from './datasource/api.ts'
 import { createDigestApi } from './digest/api.ts'
 import { createHomeApi } from './home/api.ts'
+import { createFrontendApi } from './frontend/api.ts'
 import { createIterationApi } from './iteration/api.ts'
 import { createArthasApi } from './arthas/api.ts'
 import { createMemoryApi } from './memory/api.ts'
@@ -43,6 +44,7 @@ import { BrowserItem } from './BrowserItem.tsx'
 import { DataSourceItem } from './DataSourceItem.tsx'
 import { DigestItem } from './DigestItem.tsx'
 import { HomeItem } from './HomeItem.tsx'
+import { FrontendItem } from './FrontendItem.tsx'
 import { IterationItem } from './IterationItem.tsx'
 import { ArthasItem } from './ArthasItem.tsx'
 import { MemoryItem } from './MemoryItem.tsx'
@@ -97,6 +99,7 @@ export function apply(ctx: ClientContext): void {
   const wikiApi = createWikiApi()
   const digestApi = createDigestApi()
   const homeApi = createHomeApi()
+  const frontendApi = createFrontendApi()
   const iterationApi = createIterationApi()
   const browserApi = createBrowserApi()
   const requirementApi = createRequirementApi()
@@ -210,6 +213,18 @@ export function apply(ctx: ClientContext): void {
     label: () => t('item.home'),
     inject: () => ({ ...homeApi, pushOverlay: () => panel.pushOverlay() }),
   }, HomeItem))
+
+  // The front-end source projects, right behind the installations: the same
+  // panel, a different directory — and the one the model reads when the question
+  // is a page rather than a jar.
+  ctx.slots.inject('yon.panel.item', () => ctx.slots.register({
+    name: 'yon.panel.item',
+    id: 'frontend',
+    order: 65,
+    locale: NS,
+    label: () => t('item.frontend'),
+    inject: () => ({ ...frontendApi, pushOverlay: () => panel.pushOverlay() }),
+  }, FrontendItem))
 
   // The iteration ledger, seventh — the second cell that reports on the model's own
   // work, and the only one the model writes to. It is here rather than in the

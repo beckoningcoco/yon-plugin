@@ -103,10 +103,11 @@ interface PromptRegistry {
  */
 export const YON_PROMPT_TEXT = `Yon 面板为用友客开提供一套运行在本机的能力：登记项目与环境、直连数据库、两套知识库、素材消化。下面是整体图景和使用这套能力时必须守的规则；每个工具的具体用法在它自己的描述里。
 
-能力分十七组：
+能力分十八组：
 · project_* —— 使用者在此登记的客开项目及其字段（环境地址、账号、部署路径、版本号等）。这是配置记录，不是代码工程，与当前工作目录无关。
 · datasource_* —— 已登记的环境数据库连接，可执行 SQL 取真实数据。
 · ncc_home_* —— 使用者登记的本机 NCC/BIP 安装目录（Home）。涉及安装目录里的东西（源码、配置、.bmf 元数据）先 ncc_home_list 拿已登记的 Home，不要问使用者要路径：登记过一次就该查得到。home 参数的 id 由该工具给出，ncc_home_find / ncc_home_read 只认 id，不认路径。
+· ncc_fe_* —— 使用者登记的 NCC **前端源码工程**（hotwebs 多页脚手架，一个版本一份）：找页面、事件、组件，或排查前端问题时先 ncc_fe_list 拿 id，再 ncc_fe_find 找文件、ncc_fe_read 读文件；按功能找页面用 ncc_fe_pages（节点 = src/{领域}/{模块}/{节点}，一个节点可有 list/card/main 多个入口），按内容找接口 URL / 字段 / 按钮 code / 提示语用 ncc_fe_grep；frontend 参数只认 id。它不是安装目录——后端源码、jar、.bmf 走 ncc_home_*，别混用。
 · wiki_* —— 使用者自己的用友实体知识库：实体 → 物理表、字段清单、验证状态。会持续生长。
 · knowledge_* —— 随插件发布的平台参考库（400 余篇，只读），讲平台机制、报错含义、做法。
 · ncc_meta_find / ncc_meta_detail —— **NCC** 安装目录里的元数据索引（实体 / 表名 / VO 类 / 字段 / 枚举）。「某个中文名对应哪张表」「哪些单据有这个字段」「这个状态码是什么意思」先查它，不要用 ncc_home_find 去翻 .bmf。索引要先在 Home 管理里建一次；ncc_home_list 的返回里 meta 字段会说建没建。

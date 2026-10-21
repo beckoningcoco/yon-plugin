@@ -22,11 +22,49 @@ import type { WikiApi } from '../../src/client/wiki/api.ts'
 import type {
   SaveVaultInput, WikiCardPayload, WikiCardView, WikiCitersPayload, WikiGapView,
   WikiHealthPayload, WikiHealthReport, WikiLevelStat, WikiListPayload, WikiLogEntry,
+  WikiProseListPayload, WikiProseView,
   WikiSearchHit, WikiSearchPayload, WikiUnindexedDir, WikiVaultView,
 } from '../../src/shared/types.ts'
 
 /** 就绪的那个 vault。面板一进场就落在它身上，所以它必须是列表的第一个。 */
 const READY_ID = 'bip'
+
+/** 主题页页签的样例：两页主题页 + 一页来源索引，取自这次 2312 消化。 */
+const WIKI_PROSE: readonly WikiProseView[] = [
+  {
+    kind: 'topic',
+    page: '总账-核算与凭证（NCC 2312）',
+    file: 'wiki/topics/总账-核算与凭证（NCC 2312）.md',
+    name: '总账-核算与凭证（NCC 2312）',
+    summary: '总账是财务会计的核心：从会计凭证编制到账簿查询的全部会计处理。',
+    version: 'NCC 2312',
+    status: 'unverified',
+    updated: '2026-10-21',
+    tags: ['NCC', '2312', '财务会计', '总账'],
+  },
+  {
+    kind: 'topic',
+    page: '固定资产（NCC 2312）',
+    file: 'wiki/topics/固定资产（NCC 2312）.md',
+    name: '固定资产（NCC 2312）',
+    summary: '卡片、采购/工程转固、折旧、减值、盘点、使用权资产与语义模型。',
+    version: 'NCC 2312',
+    status: 'unverified',
+    updated: '2026-10-21',
+    tags: ['NCC', '2312', '财务会计', '固定资产'],
+  },
+  {
+    kind: 'source',
+    page: '[NCC 2312] 财务会计产品说明',
+    file: 'wiki/sources/[NCC 2312] 财务会计产品说明.md',
+    name: '[NCC 2312] 财务会计产品说明',
+    summary: '166 页产品说明的文档级索引：六章结构与 11 个模块导航。',
+    version: 'NCC 2312',
+    status: 'unverified',
+    updated: '2026-10-21',
+    tags: ['NCC', '2312', '财务会计', '产品说明'],
+  },
+]
 
 /** 未就绪的那个。列表里要看得到 `.rowNotReady`，随便点它则什么都不该显示。 */
 const NOT_READY_ID = 'ncc'
@@ -1129,6 +1167,17 @@ export function wikiFixture(payload: WikiListPayload = WIKI_VAULTS): WikiApi {
     recentWrites(vault?: string, limit?: number): Promise<readonly WikiLogEntry[]> {
       if (vault === NOT_READY_ID) return Promise.resolve([])
       return Promise.resolve(limit === undefined ? WIKI_RECENT : WIKI_RECENT.slice(0, limit))
+    },
+
+    proseList(term?: string, vault?: string, kind?: 'topic' | 'source', limit?: number): Promise<WikiProseListPayload> {
+      const wanted = (term ?? '').trim().toLowerCase()
+      const rows = WIKI_PROSE.filter(page => kind === undefined || page.kind === kind)
+        .filter(page => wanted === '' || page.name.toLowerCase().includes(wanted))
+      return Promise.resolve({
+        term: term ?? '',
+        count: rows.length,
+        hits: limit === undefined ? rows : rows.slice(0, limit),
+      })
     },
 
     health(vault?: string): Promise<WikiHealthPayload> {

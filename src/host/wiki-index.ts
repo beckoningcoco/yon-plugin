@@ -24,7 +24,7 @@
 import { existsSync } from 'node:fs'
 import { readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { WIKI_ENTITY_DIRS, type WikiUnindexedDir } from '../shared/types.ts'
+import { WIKI_ENTITY_DIRS, WIKI_PROSE_DIRS, type WikiProseKind, type WikiProseView, type WikiUnindexedDir } from '../shared/types.ts'
 
 /**
  * How one page points at another entity.
@@ -97,12 +97,27 @@ export interface WikiPage {
   readonly fieldCount?: number
 }
 
+/** One non-entity page, reduced to the facts a search and a list need. */
+export interface WikiProsePage extends WikiProseView {
+  readonly kind: WikiProseKind
+}
+
 /** A built index: every entity page a vault holds, as of one moment. */
 export interface WikiIndex {
-  readonly version: 2
+  readonly version: 3
   readonly vault: string
   readonly builtAt: string
   readonly entities: readonly WikiPage[]
+  /**
+   * Topic and source pages, beside the entity pages.
+   *
+   * Kept in their own array rather than merged into `entities`: every reader
+   * built on entity pages — the reference graph, the capability levels, the gap
+   * report — assumes a URI and a physical table, and a chapter of a digested PDF
+   * has neither. Absent in a version 2 index, which is why that version is read
+   * as "no index" and rebuilt.
+   */
+  readonly prose: readonly WikiProsePage[]
 }
 
 /** A vault the operator has registered, or one this module guessed at. */
@@ -124,6 +139,16 @@ export interface WikiVault {
  * reader does not look for.
  */
 const ENTITY_DIRS = WIKI_ENTITY_DIRS
+
+/**
+ * The bare names of the prose directories.
+ *
+ * Used by {@link unindexedDirsOf} to skip them: since version 3 the index reads
+ * `wiki/topics` and `wiki/sources` itself, so reporting them as "outside the
+ * index" would be the same kind of quiet contradiction as calling an indexed page
+ * missing.
+ */
+const PROSE_DIR_NAMES = new Set(WIKI_PROSE_DIRS.map(rel => rel.split('/').pop() ?? rel))
 
 /** The file name the index is cached under, relative to the vault root. */
 const INDEX_FILE = 'wiki/.yon-index.json'
@@ -185,6 +210,9 @@ export async function unindexedDirsOf(vault: WikiVault): Promise<WikiUnindexedDi
   for (const entry of entries) {
     // Dot directories are the editor's, not the vault's.
     if (!entry.isDirectory() || entry.name.startsWith('.')) continue
+    // The prose directories are read by the index itself since version 3; naming
+    // them here would say a page is both counted and unreadable.
+    if (PROSE_DIR_NAMES.has(entry.name)) continue
     const full = path.join(parent, entry.name)
     if (full === entityDir) continue
     // A sibling that is itself a readable vault root — a knowledge base nested
@@ -214,6 +242,29 @@ export function entityDirOf(root: string): string | undefined {
     if (existsSync(full)) return full
   }
   return undefined
+}
+
+/**
+ * The directories holding a vault's non-entity pages.
+ *
+ * Searched beside the entity directory rather than from the vault root, because
+ * that is where the layout puts them — `wiki/topics` next to `wiki/entities`.
+ * Both spellings of each kind are tried and a missing directory is simply not
+ * returned: an empty corpus is not an error.
+ * @param root - absolute vault root.
+ * @returns the directories found, each with the kind its pages are.
+ */
+export function proseDirsOf(root: string): readonly { dir: string, kind: WikiProseKind }[] {
+  const entity = entityDirOf(root)
+  const base = entity === undefined ? root : path.dirname(entity)
+  const found: { dir: string, kind: WikiProseKind }[] = []
+  for (const rel of WIKI_PROSE_DIRS) {
+    const name = rel.split('/').pop() ?? rel
+    const full = path.join(base, name)
+    if (!existsSync(full)) continue
+    found.push({ dir: full, kind: name === 'sources' || name === '来源' ? 'source' : 'topic' })
+  }
+  return found
 }
 
 /**
@@ -471,6 +522,109 @@ export function parseEntityPage(text: string, file: string, page: string): WikiP
   }
 }
 
+/** The frontmatter block of a page, without its fences. */
+function frontmatterOf(text: string): string | undefined {
+  return /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1]
+}
+
+/** One frontmatter scalar, undecorated; undefined when the key is absent. */
+function frontmatterScalar(text: string, key: string): string | undefined {
+  const block = frontmatterOf(text)
+  if (block === undefined) return undefined
+  const value = new RegExp(`^\\s*${key}\\s*:\\s*(.*)$`, 'm').exec(block)?.[1]
+  return bare(value)
+}
+
+/** A frontmatter list, written inline (`tags: [a, b]`) or as a dash list. */
+function frontmatterList(text: string, key: string): string[] | undefined {
+  const block = frontmatterOf(text)
+  if (block === undefined) return undefined
+  const inline = new RegExp(`^\\s*${key}\\s*:\\s*\\[(.*)\\]\\s*$`, 'm').exec(block)?.[1]
+  if (inline !== undefined) {
+    const items = inline.split(',').map(item => bare(item))
+      .filter((item): item is string => item !== undefined)
+    return items.length === 0 ? undefined : items
+  }
+  const lines = block.split(/\r?\n/)
+  const start = lines.findIndex(line => new RegExp(`^\\s*${key}\\s*:\\s*$`).test(line))
+  if (start < 0) return undefined
+  const items: string[] = []
+  for (const line of lines.slice(start + 1)) {
+    const item = /^\s*-\s+(.*)$/.exec(line)?.[1]
+    if (item === undefined) break
+    const value = bare(item)
+    if (value !== undefined) items.push(value)
+  }
+  return items.length === 0 ? undefined : items
+}
+
+/** The first line of prose, skipping frontmatter, headings, tables and blank lines. */
+function leadOf(text: string): string | undefined {
+  const body = text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '')
+  for (const raw of body.split(/\r?\n/)) {
+    const line = raw.trim()
+    // A table row is not a summary: a page whose first block is a property grid
+    // would otherwise lead with `| 属性 | 值 |`, which tells a reader nothing.
+    if (line === '' || line.startsWith('#') || line.startsWith('|') || line.startsWith('---')) continue
+    const value = line.startsWith('>') ? line.replace(/^>\s*/, '') : line
+    if (value === '') continue
+    return value.length > 160 ? `${value.slice(0, 160)}…` : value
+  }
+  return undefined
+}
+
+/** The page's `##` headings, capped: twelve is enough to find a chapter by. */
+function headingsOf(text: string): string[] | undefined {
+  const out: string[] = []
+  for (const match of text.matchAll(/^##\s+(.+?)\s*$/gm)) {
+    const value = match[1]?.trim()
+    if (value !== undefined && value !== '') out.push(value)
+    if (out.length >= 12) break
+  }
+  return out.length === 0 ? undefined : out
+}
+
+/**
+ * Read the facts one topic or source page carries.
+ *
+ * The body is deliberately not kept: a digested page runs 30–60 KB, and a vault
+ * with 7775 of them would turn a 5 MB index into a hundred-megabyte one. What is
+ * kept is what a search needs to name the page and a list needs to describe it.
+ * @param text - the page's full markdown.
+ * @param file - vault-relative path, forward-slashed.
+ * @param page - name without the `.md` suffix.
+ * @param kind - topic or source.
+ * @returns the page, with absent facts simply absent.
+ */
+export function parseProsePage(
+  text: string,
+  file: string,
+  page: string,
+  kind: WikiProseKind,
+): WikiProsePage {
+  const name = capture(text, /^#\s+(.+?)\s*$/m) ?? page
+  const version = frontmatterScalar(text, 'platform_version')
+  const status = frontmatterScalar(text, 'status')
+  const updated = frontmatterScalar(text, 'updated')
+  const tags = frontmatterList(text, 'tags')
+  const sources = frontmatterList(text, 'sources')
+  const summary = leadOf(text)
+  const headings = headingsOf(text)
+  return {
+    kind,
+    page,
+    file,
+    name,
+    ...(summary === undefined ? {} : { summary }),
+    ...(tags === undefined ? {} : { tags }),
+    ...(version === undefined ? {} : { version }),
+    ...(status === undefined ? {} : { status }),
+    ...(updated === undefined ? {} : { updated }),
+    ...(sources === undefined ? {} : { sources }),
+    ...(headings === undefined ? {} : { headings }),
+  }
+}
+
 /**
  * Read every entity page in a vault and build a fresh index.
  *
@@ -503,11 +657,33 @@ export async function buildWikiIndex(root: string): Promise<WikiIndex> {
   }
 
   entities.sort((a, b) => a.page.localeCompare(b.page, 'zh'))
+
+  // The prose directories are read in the same pass, so one rebuild keeps both
+  // halves of the index in step and the panel's three counts come from one
+  // snapshot rather than from two walks taken minutes apart.
+  const prose: WikiProsePage[] = []
+  for (const target of proseDirsOf(root)) {
+    const listed = await readdir(target.dir, { withFileTypes: true }).catch(() => [])
+    for (const entry of listed) {
+      if (!entry.isFile() || !entry.name.endsWith('.md')) continue
+      const full = path.join(target.dir, entry.name)
+      try {
+        const text = await readFile(full, 'utf8')
+        const rel = path.relative(root, full).split(path.sep).join('/')
+        prose.push(parseProsePage(text, rel, entry.name.replace(/\.md$/, ''), target.kind))
+      } catch {
+        // Same rule as the entity pages: an unreadable file is skipped, not fatal.
+      }
+    }
+  }
+  prose.sort((a, b) => a.page.localeCompare(b.page, 'zh'))
+
   return {
-    version: 2,
+    version: 3,
     vault: root,
     builtAt: new Date().toISOString(),
     entities,
+    prose,
   }
 }
 
@@ -522,7 +698,12 @@ export async function readWikiIndex(root: string): Promise<WikiIndex | undefined
     const parsed: unknown = JSON.parse(raw)
     if (parsed === null || typeof parsed !== 'object') return undefined
     const candidate = parsed as Partial<WikiIndex>
-    if (candidate.version !== 2 || !Array.isArray(candidate.entities)) return undefined
+    // Version 2 knows only entity pages, and an index that cannot answer for the
+    // prose directories would make the panel report a digested corpus as zero
+    // pages again. Treated as "no index", which rebuilds once.
+    if (candidate.version !== 3 || !Array.isArray(candidate.entities) || !Array.isArray(candidate.prose)) {
+      return undefined
+    }
     return candidate as WikiIndex
   } catch {
     return undefined

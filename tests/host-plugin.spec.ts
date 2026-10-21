@@ -15,6 +15,7 @@ import {
   BIP_API_TOOL_NAMES, BIP_META_TOOL_NAMES, CLASS_TOOL_NAMES, DATASOURCE_TOOL_NAMES, DIGEST_TOOL_NAMES, DOC_PARSE_TOOL_NAMES,
   DOMAIN_NAME,
   GBK_TOOL_NAMES, HOME_TOOL_NAMES, ITERATION_TOOL_NAMES, KNOWLEDGE_TOOL_NAMES,
+  FRONTEND_TOOL_NAMES,
   MEMORY_TOOL_NAMES, META_TOOL_NAMES,
   REQUIREMENT_TOOL_NAMES,
   SKILL_DOMAIN_NAME, WIKI_TOOL_NAMES, WIKI_WRITE_TOOL_NAMES,
@@ -29,6 +30,9 @@ const ALL_TOOL_NAMES = [
   ...WIKI_WRITE_TOOL_NAMES,
   ...GBK_TOOL_NAMES, ...DOC_PARSE_TOOL_NAMES,
   ...KNOWLEDGE_TOOL_NAMES, ...CLASS_TOOL_NAMES, ...HOME_TOOL_NAMES,
+  // The front-end source family registers right behind the Home tools (`index.ts`):
+  // the same three questions about a different directory.
+  ...FRONTEND_TOOL_NAMES,
   ...META_TOOL_NAMES, ...BIP_META_TOOL_NAMES, ...DIGEST_TOOL_NAMES, ...ITERATION_TOOL_NAMES,
   // The runtime debugger registers immediately after the iteration ledger
   // (`index.ts`), before the browser family.

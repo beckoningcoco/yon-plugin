@@ -112,7 +112,7 @@ import {
   API_PREFIX, ITERATION_KINDS, ITERATION_SEVERITIES, ITERATION_STATUSES, MEMORY_TYPES, PROJECT_STATUSES,
   REQUIREMENT_STATUSES,
   type ApiError, type DirectoryPickResult, type JsonValue, type LaunchBrowserInput,
-  type SaveBrowserInput, type SaveHomeInput, type SaveVaultInput, type SetFieldInput,
+  type SaveBrowserInput, type SaveFrontendInput, type SaveHomeInput, type SaveVaultInput, type SetFieldInput,
   type UpdateProjectInput,
 } from '../shared/types.ts'
 import { ProjectError, type YonProjectsService } from './service.ts'
@@ -122,6 +122,7 @@ import { DataSourceError, type YonDataSourcesService } from './datasource-servic
 import { WikiError, type YonWikiService } from './wiki-service.ts'
 import { digestLogPath, type DigestLog } from './digest-log.ts'
 import { HomeError, type YonHomesService } from './home-service.ts'
+import { FrontendError, type YonFrontendsService } from './frontend-service.ts'
 import type { YonArthasService } from './arthas-service.ts'
 import { IterationError, type YonIterationService } from './iteration-service.ts'
 import { MemoryError, type YonMemoryService } from './memory-service.ts'
@@ -520,6 +521,154 @@ async function handleHomes(
 }
 
 /**
+ * One front-end registration's body, read the way the service reads it.
+ * @param body - the parsed request body.
+ * @returns the input, with absent fields as the empty string.
+ */
+function frontendInputOf(body: Record<string, unknown>): SaveFrontendInput {
+  return {
+    path: typeof body.path === 'string' ? body.path : '',
+    // Passed through as typed rather than defaulted: the service refuses anything
+    // but NCC, and a normalising cast here would make that refusal unreachable.
+    product: (typeof body.product === 'string' ? body.product : 'ncc') as SaveFrontendInput['product'],
+    version: typeof body.version === 'string' ? body.version : '',
+    ...body.isDefault === undefined ? {} : { isDefault: Boolean(body.isDefault) },
+  }
+}
+
+/**
+ * Serve the `/yon/api/frontends` branch.
+ *
+ * Deliberately the same verb set as `/homes`: a registration is identified by its
+ * generated id, the id is not editable, and the two routes that rewrite something
+ * derived (`probe`, `default`) take a POST/PUT on a sub-path. The difference is
+ * the noun — a front-end project is a directory, not an installation — and that
+ * is what the panel's two surfaces are named after.
+ *
+ * @param req - the request; read for the body on writes.
+ * @param res - the response.
+ * @param method - HTTP method.
+ * @param segments - the decoded path segments after the API prefix.
+ * @param frontends - the front-end source service.
+ */
+async function handleFrontends(
+  req: IncomingMessage,
+  res: ServerResponse,
+  method: string,
+  segments: readonly string[],
+  frontends: YonFrontendsService,
+  search: URLSearchParams,
+): Promise<void> {
+  const id = segments[1]
+  const tail = segments[2]
+  const sub = segments[3]
+
+  // /yon/api/frontends
+  if (id === undefined) {
+    if (method === 'GET') {
+      sendJson(res, 200, await frontends.list())
+      return
+    }
+    if (method === 'POST') {
+      const frontend = await frontends.save(frontendInputOf(await objectBody(req)))
+      sendJson(res, 201, { frontend })
+      return
+    }
+    sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+    return
+  }
+
+  // /yon/api/frontends/<id>
+  if (tail === undefined) {
+    if (method === 'PUT') {
+      const frontend = await frontends.save(frontendInputOf(await objectBody(req)), id)
+      sendJson(res, 200, { frontend })
+      return
+    }
+    if (method === 'DELETE') {
+      await frontends.remove(id)
+      sendJson(res, 200, { removed: id })
+      return
+    }
+    sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+    return
+  }
+
+  // /yon/api/frontends/<id>/probe
+  if (tail === 'probe' && method === 'POST') {
+    sendJson(res, 200, { frontend: await frontends.probe(id) })
+    return
+  }
+
+  // /yon/api/frontends/<id>/default
+  if (tail === 'default' && method === 'PUT') {
+    sendJson(res, 200, { frontend: await frontends.setDefault(id) })
+    return
+  }
+
+  // /yon/api/frontends/<id>/pages
+  //
+  // GET is the page tree; POST walks the project again and replaces the index.
+  // The GET builds the index on first ask (about two seconds on the reference
+  // project), which is why the answer carries `builtAt`.
+  if (tail === 'pages') {
+    if (sub === 'status' && method === 'GET') {
+      sendJson(res, 200, { frontend: id, status: await frontends.pageStatus(id) ?? null })
+      return
+    }
+    if (sub === undefined && method === 'GET') {
+      const term = search.get('term')
+      const domain = search.get('domain')
+      const module = search.get('module')
+      const node = search.get('node')
+      const limit = search.get('limit')
+      sendJson(res, 200, await frontends.pages(id, {
+        ...term === null ? {} : { term },
+        ...domain === null ? {} : { domain },
+        ...module === null ? {} : { module },
+        ...node === null ? {} : { node },
+        ...limit === null ? {} : { limit: Number(limit) },
+      }))
+      return
+    }
+    if (sub === undefined && method === 'POST') {
+      sendJson(res, 200, { frontend: id, status: await frontends.rebuildPages(id) })
+      return
+    }
+    sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+    return
+  }
+
+  // /yon/api/frontends/<id>/dir?path=…
+  if (tail === 'dir' && method === 'GET') {
+    sendJson(res, 200, await frontends.dir(id, search.get('path') ?? ''))
+    return
+  }
+
+  // /yon/api/frontends/<id>/file?path=…&from=…&to=…
+  //
+  // The panel's preview reads through the same service the model's tool uses, so
+  // an escape attempt is refused in one place and the panel cannot be a second,
+  // looser reader of the same project.
+  if (tail === 'file' && method === 'GET') {
+    const requested = search.get('path') ?? ''
+    if (requested.trim() === '') {
+      sendFailure(res, 400, 'invalid-input', 'path 不能为空')
+      return
+    }
+    const from = Number(search.get('from') ?? '')
+    const to = Number(search.get('to') ?? '')
+    sendJson(res, 200, await frontends.read(id, requested, {
+      ...Number.isFinite(from) && from > 0 ? { from } : {},
+      ...Number.isFinite(to) && to > 0 ? { to } : {},
+    }))
+    return
+  }
+
+  sendFailure(res, 404, 'not-found', `no route for ${method} /yon/api/frontends/...`)
+}
+
+/**
  * The slice of the harness's directory-picker service this module drives.
  *
  * Declared structurally instead of imported: this plugin is installed as a
@@ -754,8 +903,31 @@ async function handleWiki(
         level: hit.level,
         ...(hit.fieldCount === undefined ? {} : { fieldCount: hit.fieldCount }),
         matchedBy: hit.matchedBy,
+        ...(hit.kind === undefined ? {} : { kind: hit.kind }),
+        ...(hit.path === undefined ? {} : { path: hit.path }),
       })),
     })
+    return
+  }
+
+  // /yon/api/wiki/prose
+  //
+  // The list behind the panel's 「主题页」 tab: topic and source pages, newest
+  // first, filtered by a term. Separate from /search because the panel is
+  // browsing, not ranking — it wants what is in there, not what matched best.
+  if (tail === 'prose') {
+    if (method !== 'GET') {
+      sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+      return
+    }
+    const kindRaw = url.searchParams.get('kind')
+    const kind = kindRaw === 'topic' || kindRaw === 'source' ? kindRaw : undefined
+    sendJson(res, 200, await wiki.proseList(
+      url.searchParams.get('term') ?? '',
+      vaultParam(),
+      kind,
+      numberParam('limit', 2000) ?? 200,
+    ))
     return
   }
 
@@ -1660,6 +1832,7 @@ export function registerYonApi(
   memory: YonMemoryService,
   arthas: YonArthasService,
   replay: YonReplayService,
+  frontends: YonFrontendsService,
 ): () => void {
   const carrier = ctx.get('webServer') as RouteRegistrar | undefined
   if (carrier === undefined) {
@@ -1700,6 +1873,10 @@ export function registerYonApi(
         }
         if (segments[0] === 'homes') {
           await handleHomes(req, res, method, segments, homes, meta, classes, url.searchParams)
+          return
+        }
+        if (segments[0] === 'frontends') {
+          await handleFrontends(req, res, method, segments, frontends, url.searchParams)
           return
         }
         if (segments[0] === 'arthas') {
@@ -1836,6 +2013,7 @@ export function registerYonApi(
             || error instanceof DataSourceError
             || error instanceof WikiError
             || error instanceof HomeError
+            || error instanceof FrontendError
             || error instanceof IterationError
             || error instanceof BrowserError
             || error instanceof RequirementError

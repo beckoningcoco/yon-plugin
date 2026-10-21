@@ -80,7 +80,7 @@ function mount(wiki: unknown): { readonly handler: (req: IncomingMessage, res: S
   const register = vi.fn((_route: unknown) => vi.fn())
   ctx.provide('webServer', { register } as never)
   registerYonApi(ctx, {} as never, {} as never, {} as never, wiki as never, {} as never,
-    {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never)
+    {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never)
   const route = register.mock.calls[0]?.[0] as
     { handler: (req: IncomingMessage, res: ServerResponse) => Promise<void> }
   return { handler: route.handler }
@@ -231,5 +231,41 @@ describe('DELETE /yon/api/wiki/vaults/<id>', () => {
 
     expect(written.status).toBe(405)
     expect(removeVault).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET /yon/api/wiki/prose', () => {
+  it('passes the filter, the vault and the kind through to the service', async () => {
+    const proseList = vi.fn(async () => ({
+      term: '总账',
+      count: 1,
+      hits: [{
+        kind: 'topic',
+        page: '总账（NCC 2312）',
+        file: 'wiki/topics/总账（NCC 2312）.md',
+        name: '总账（NCC 2312）',
+      }],
+    }))
+    const { handler } = mount({ proseList })
+    const { res, written } = fakeRes()
+
+    await handler(fakeReq('/yon/api/wiki/prose?term=%E6%80%BB%E8%B4%A6&vault=ncc&kind=topic&limit=5', 'GET'), res)
+
+    expect(written.status).toBe(200)
+    // The kind is a union, and an unrecognised value is dropped rather than
+    // forwarded — `undefined` is how the service spells "both kinds".
+    expect(proseList.mock.calls[0]).toEqual(['总账', 'ncc', 'topic', 5])
+    expect(JSON.parse(written.body).hits[0].file).toBe('wiki/topics/总账（NCC 2312）.md')
+  })
+
+  it('refuses a verb other than GET', async () => {
+    const proseList = vi.fn(async () => ({ term: '', count: 0, hits: [] }))
+    const { handler } = mount({ proseList })
+    const { res, written } = fakeRes()
+
+    await handler(fakeReq('/yon/api/wiki/prose', 'POST'), res)
+
+    expect(written.status).toBe(405)
+    expect(proseList).not.toHaveBeenCalled()
   })
 })

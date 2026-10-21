@@ -348,6 +348,10 @@ const {
   HOME_FIXTURE, HOME_EMPTY, HOME_PICKED_PATH, homesFixture, homesWithoutPicker,
   homesWithClassFailure, homesWithVanishedIndex,
 } = await import('./fixtures/homes.ts')
+const { FrontendManager } = await import('../src/client/frontend/FrontendManager.tsx')
+const {
+  FRONTEND_FIXTURE, FRONTEND_EMPTY, FRONTEND_NO_INDEX,
+} = await import('./fixtures/frontend.ts')
 const { IterationManager } = await import('../src/client/iteration/IterationManager.tsx')
 const { ITERATION_FIXTURE, ITERATION_EMPTY, ITERATION_UNREADABLE } = await import('./fixtures/iteration.ts')
 const { BrowserManager } = await import('../src/client/browser/BrowserManager.tsx')
@@ -601,17 +605,20 @@ function Popover({ rows }: { readonly rows: readonly YonPanelItemRow[] }): React
   return <Shell {...props} />
 }
 
-/** 面板给八个内置条目的名字，顺序即注册顺序（`src/client/index.ts` 的 order 10…80）。 */
-const NINE_ROWS: readonly YonPanelItemRow[] = [
+/** 面板给十二个内置条目的名字，顺序即注册顺序（`src/client/index.ts` 的 order 10…110）。 */
+const ITEM_ROWS: readonly YonPanelItemRow[] = [
   { id: 'project', label: name('item.project') },
   { id: 'skills', label: name('item.skills') },
   { id: 'datasources', label: name('item.datasource') },
   { id: 'wiki', label: name('item.wiki') },
   { id: 'digest', label: name('item.digest') },
   { id: 'home', label: name('item.home') },
+  { id: 'frontend', label: name('item.frontend') },
   { id: 'iteration', label: name('item.iteration') },
   { id: 'browser', label: name('item.browser') },
   { id: 'requirement', label: name('item.requirement') },
+  { id: 'memory', label: name('item.memory') },
+  { id: 'arthas', label: name('item.arthas') },
 ]
 
 /**
@@ -622,7 +629,7 @@ const NINE_ROWS: readonly YonPanelItemRow[] = [
  * 而面板的行宽是固定的 280。
  */
 const MANY_ROWS: readonly YonPanelItemRow[] = [
-  ...NINE_ROWS,
+  ...ITEM_ROWS,
   // 名字要长到**无论字体怎么回退都放不下**：第一版 20 个字，280 宽的面板里刚好
   // 卡在边界上，探针数出来的截断行数是 0——看着像"省略号没生效"，其实是名字还不够长。
   { id: 'third-party-connector', label: '第三方连接器：一个长到无论怎么排都放不下、必须走省略号的条目名称' },
@@ -969,6 +976,11 @@ const PANELS: readonly Panel[] = [
     node: () => <HomeManager t={t} onClose={noop} {...HOME_FIXTURE} />,
   },
   {
+    id: 'frontend',
+    sheets: [SHARED, 'src/client/frontend/panel.module.css'],
+    node: () => <FrontendManager t={t} onClose={noop} {...FRONTEND_FIXTURE} />,
+  },
+  {
     id: 'iteration',
     // 这一份**不**改写共享表里的任何类：外壳容器另起了 `.scrollBody` 这个名字，正是
     // 为了不挤进 {@link SAME_ELEMENT} 的豁免名单（那份名单只放"同一个元素挂两个类名"
@@ -1005,7 +1017,7 @@ const PANELS: readonly Panel[] = [
     id: 'items',
     // 外壳与行，两份都是它自己的：**不挂共享表**，理由见上面 {@link Panel.sheets}。
     sheets: ['src/client/YonPanelRoot.module.css', 'src/client/panel-item.module.css'],
-    node: () => <Popover rows={NINE_ROWS} />,
+    node: () => <Popover rows={ITEM_ROWS} />,
   },
 ]
 
@@ -2396,6 +2408,57 @@ describe('预览导出', () => {
     const inner = view.container.ownerDocument.body.innerHTML
     expect(inner).toContain(`${name('home.atLeast')}237`)
     expect(inner).toContain(`${name('home.atLeast')}681`)
+  })
+
+  // 前端源码面板的三屏：空账本、索引未建、页面树展开并预览。
+  // 第一屏说"还没有登记"——这一屏决定新使用者知不知道路径该指哪；第二屏是第一次
+  // 打开一个刚登记的工程时看到的东西（索引还没建，只有一颗按钮）；第三屏是这一批
+  // 真正的新东西：节点树按需展开、文件在下方预览。
+  it('渲染 frontend 空账本（亮色）', async () => {
+    const panel = PANELS.find(candidate => candidate.id === 'frontend') as Panel
+    const file = await renderPanel(panel, false,
+      <FrontendManager t={t} onClose={noop} {...FRONTEND_EMPTY} />, 'frontend-empty')
+    expect(readFileSync(file, 'utf8')).toContain(name('frontend.empty'))
+  })
+
+  it('渲染 frontend 索引未建（亮色）', async () => {
+    const panel = PANELS.find(candidate => candidate.id === 'frontend') as Panel
+    const file = await renderPanel(panel, false,
+      <FrontendManager t={t} onClose={noop} {...FRONTEND_NO_INDEX} />, 'frontend-noindex', SCROLL_TO_BOTTOM)
+    const inner = readFileSync(file, 'utf8')
+    // 没有索引时画的是「还没有页面索引」和建立按钮，不是 0 个节点——后者会被读成
+    // "这个工程没有页面"。
+    expect(inner).toContain(name('frontend.pagesNone'))
+    expect(inner).toContain(name('frontend.pagesBuild'))
+  })
+
+  it('渲染 frontend 页面树展开与文件预览（亮色）', async () => {
+    const panel = PANELS.find(candidate => candidate.id === 'frontend') as Panel
+    const view = render(<FrontendManager t={t} onClose={noop} {...FRONTEND_FIXTURE} />)
+    const doc = view.container.ownerDocument
+    await settle(doc.body)
+
+    const node = [...doc.querySelectorAll('button')]
+      .find(candidate => candidate.textContent?.includes('stockinvestrela')) as HTMLButtonElement | undefined
+    if (node === undefined) throw new Error('no page node row')
+    fireEvent.click(node)
+    await settle(doc.body)
+
+    const entry = [...doc.querySelectorAll('button')]
+      .find(candidate => candidate.textContent?.includes('index.js')) as HTMLButtonElement | undefined
+    if (entry === undefined) throw new Error('no file row')
+    fireEvent.click(entry)
+    await settle(doc.body)
+
+    const inner = doc.body.innerHTML
+    // 预览的内容、编码标注、关闭按钮——三样都在，才算这一屏真的画成了。
+    expect(inner).toContain('股权投资数据维护')
+    expect(inner).toContain(name('frontend.previewClose'))
+    expect(inner).toContain('utf-8')
+    // 树与预览在详情列的下半屏，静态页不滚就拍不到。这一页存在的理由就是那半屏，
+    // 所以截图时把详情列滚到底（`SCROLL_TO_BOTTOM` 会顺手把滚动位置打进探针）。
+    writeFileSync('preview/panel-frontend-tree.html',
+      page(inner, 'frontend-tree', panel.sheets, false, SCROLL_TO_BOTTOM), 'utf8')
   })
 
   // 预览页不给类名加哈希，所以**同一页上两份样式表里同名的类就是同一个类**。

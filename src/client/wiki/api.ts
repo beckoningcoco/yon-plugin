@@ -17,7 +17,8 @@
 import { request } from '../request.ts'
 import type {
   DirectoryPickResult, SaveVaultInput, WikiCardPayload, WikiCitersPayload, WikiHealthPayload,
-  WikiListPayload, WikiLogEntry, WikiLogPayload, WikiSearchPayload, WikiVaultView,
+  WikiListPayload, WikiLogEntry, WikiLogPayload, WikiProseListPayload,
+  WikiSearchPayload, WikiVaultView,
 } from '../../shared/types.ts'
 
 /** One id as a URL segment, the way the Home client spells it. */
@@ -69,6 +70,20 @@ export interface WikiApi {
    * @returns the hits, strongest match first.
    */
   search(term: string, vault?: string, limit?: number): Promise<WikiSearchPayload>
+
+  /**
+   * The topic and source pages, newest first, filtered by a term.
+   *
+   * Separate from {@link search} because this list browses rather than ranks: it
+   * answers "what has been digested into this vault", and it is what the
+   * 「主题页」 tab draws.
+   * @param term - a filter on name, tags and headings; empty lists everything.
+   * @param vault - a vault id; all of them when omitted.
+   * @param kind - topics, sources, or both when omitted.
+   * @param limit - how many pages; the host defaults to 200.
+   * @returns the pages, with their summaries.
+   */
+  proseList(term: string, vault?: string, kind?: 'topic' | 'source', limit?: number): Promise<WikiProseListPayload>
 
   /**
    * One page as a card, answered without reading the page body.
@@ -155,6 +170,10 @@ export function createWikiApi(): WikiApi {
 
     search(term, vault, limit) {
       return request<WikiSearchPayload>(`/wiki/search${query({ term, vault, limit })}`)
+    },
+
+    proseList(term, vault, kind, limit) {
+      return request<WikiProseListPayload>(`/wiki/prose${query({ term, vault, kind, limit })}`)
     },
 
     pageCard(page, vault) {

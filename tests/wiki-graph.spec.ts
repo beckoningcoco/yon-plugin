@@ -100,9 +100,10 @@ const english = parseEntityPage(ENGLISH_PAGE, 'wiki/entities/hred_hrcandidate_Hr
 
 /** The index the graph cases run against, built without touching a disk. */
 const index: WikiIndex = {
-  version: 2,
+  version: 3,
   vault: '/vault',
   builtAt: '2026-09-29T00:00:00.000Z',
+  prose: [],
   entities: [
     { ...chinese, uri: 'voucher.order.OrderDetail' },
     { ...english, uri: 'hred.hrcandidate.HrCandidate' },

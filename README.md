@@ -4,7 +4,7 @@ DSH（DeepSeek Harness）Web GUI 的 **Yon 按钮面板** 插件，带一个**�
 
 | 半边 | 做什么 |
 |---|---|
-| 浏览器半 | 侧栏底部、设置按钮**上方**一个 `Y` 图标 → 点开是按钮面板，里面十个内建格子：**项目管理**、**技能**、**数据源**、**知识库**、**消化检查**、**Home 管理**、**迭代**、**浏览器**、**需求**、**记忆**；面板里的按钮由任意插件通过 `yon.panel.item` 席位贡献 |
+| 浏览器半 | 侧栏底部、设置按钮**上方**一个 `Y` 图标 → 点开是按钮面板，里面十二个内建格子：**项目管理**、**技能**、**数据源**、**知识库**、**消化检查**、**Home 管理**、**前端源码**、**迭代**、**浏览器**、**需求**、**记忆**、**运行时调试**；面板里的按钮由任意插件通过 `yon.panel.item` 席位贡献 |
 | Host 半 | 「项目」存储（主表 + 动态字段子表），以三种方式对外开放：`ctx.yonProjects` 服务（同进程插件）、`project_*` agent 工具（在对话里说人话改配置）、`/yon/api` HTTP 路由（任何前端） |
 | Host 半 | 插件**自带技能**：`skills/*/SKILL.md` 在构建时内联，插件挂载时注册进 DSH 的技能目录，**卸载时自动消失**；开关存在 `yon_skills` 领域里 |
 | Host 半 | **需求条目库**：某个项目下「要做的事」一条条记下来，连同使用者给的资料、模型生成的方案与补丁。以 `ctx.yonRequirements` + 9 个 `requirement_*` 工具 + `/yon/api` 三种方式对外开放；每条是 `~/.dsh/yon-panel/requirements/` 下的一个目录 |
@@ -185,6 +185,7 @@ Host 半把这份存储同时注册成 **agent 工具**，所以你可以直接�
 | `memory_*`（5 个） | 项目记忆：`memory_write` 新建、`memory_update` 改写、`memory_recall` 检索、`memory_read` 读全文、`memory_sweep` 体检（六项检查，另可 `repair` 从文件重建索引）。新建与体检不打断，**改写会拦**（它盖掉原来那段话），没有删除工具 | `~/.dsh/yon-panel/memory/` |
 | `datasource_*` | 登记的环境数据库连接，以及执行 SQL 取真实数据 | `db_config.json` |
 | `ncc_home_*` | 登记本机 NCC/BIP 安装目录（Home），按 id 列文件、按原编码读文件 | `home_config.json` |
+| `ncc_fe_*` | 登记本机 NCC **前端源码工程**（hotwebs 多页脚手架，一个版本一份），列页面节点 / 按文件名找 / 按内容搜 / 按原编码读文件 | `frontend_config.json` + `frontend_index/` |
 | `ncc_meta_*` / `bip_meta_*` | 两条产品线的元数据：实体 / 表名 / 字段 / 枚举。**两条产品线互不相通**，问错一条只会答"没有" | 只读（索引是缓存） |
 | `wiki_*` / `wiki_write` | 读实体知识库；写入分三种模式，**不能覆盖已有页** | Obsidian vault 目录 |
 | `knowledge_*` / `ncc_class_search` / `doc_parse` / `ncc_gbk_edit` | 随包参考库、类名→jar 索引、Excel/PDF/Word 读取、GBK 源码读写 | 只有 `ncc_gbk_edit` 写，改的是 NCC 源码树 |
@@ -237,13 +238,13 @@ lib/host/skill-catalog.generated.js   ← 随包发布
 
 ## 按钮面板（浏览器半）
 
-侧栏底部的 `Y` 图标点开是 280px 的小面板。面板内有十个内建格子（悬停显示名字）：
+侧栏底部的 `Y` 图标点开是 280px 的小面板。面板内有十二个内建格子（悬停显示名字）：
 
 | 格子 | 名字 | 打开什么 |
 |---|---|---|
 | 文件夹图标 | 项目管理 | 项目列表 + 字段编辑 |
 | 文档图标 | **YONSKILL** | 技能面板 |
-| 其余八个 | 数据源 / 知识库 / 消化检查 / Home 管理 / 迭代 / 浏览器 / 需求 / 记忆 | 各自的面板 |
+| 其余十个 | 数据源 / 知识库 / 消化检查 / Home 管理 / 前端源码 / 迭代 / 浏览器 / 需求 / 记忆 / 运行时调试 | 各自的面板 |
 
 > 「浏览器」是**调试浏览器**（起一个带 `--remote-debugging-port` 的 Chrome/Edge/Firefox，交给 Playwright 之类的工具接管），
 > 与上文「浏览器半」（插件跑在客户端的那半边）不是一回事。设计说明见 [`docs/yon-browser-design.md`](docs/yon-browser-design.md)。

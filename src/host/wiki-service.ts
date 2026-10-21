@@ -39,7 +39,7 @@ import { readFile, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   buildWikiIndex, ensureWikiIndex, entityDirOf, isVault, unindexedDirsOf, wikiIndexPath, writeWikiIndex,
-  type WikiIndex, type WikiPage, type WikiRefKind, type WikiVault,
+  type WikiIndex, type WikiPage, type WikiProsePage, type WikiRefKind, type WikiVault,
 } from './wiki-index.ts'
 import {
   assessPage, buildGraph, gapsOf, relationsOf, summaryOf,
@@ -51,7 +51,7 @@ import {
   createWikiUsageLog,
   type WikiUsageLog, type WikiUsageMiss, type WikiUsageSummary,
 } from './wiki-usage.ts'
-import type { SaveVaultInput, WikiLogEntry, WikiVaultView } from '../shared/types.ts'
+import type { SaveVaultInput, WikiLogEntry, WikiProseKind, WikiProseView, WikiVaultView } from '../shared/types.ts'
 import type {
   WikiCardView, WikiGraphView, WikiHealthReport, WikiLevelStat,
   WikiRelationGroupView, WikiUnindexedDir, WikiUsageView,
@@ -69,7 +69,9 @@ export class WikiError extends Error {
 }
 
 /** How a term matched a page, strongest first. */
-export type WikiMatch = 'uri' | 'table' | 'page' | 'name' | 'contains'
+export type WikiMatch =
+  | 'uri' | 'table' | 'page' | 'name'
+  | 'tag' | 'heading' | 'summary' | 'contains'
 
 /** One page a lookup matched. */
 export interface WikiHit {
@@ -96,6 +98,16 @@ export interface WikiHit {
   /** Fields the page claims to list, when it claims a number. */
   readonly fieldCount?: number
   readonly matchedBy: WikiMatch
+  /**
+   * Which kind of page this hit is.
+   *
+   * `topic` / `source` pages carry no table and no fields: they answer "what does
+   * the product do", never "which column". The field exists so a caller reading a
+   * hit list cannot mistake one for the other.
+   */
+  readonly kind?: 'entity' | 'topic' | 'source'
+  /** Vault-relative path, present for prose pages (which are read by path). */
+  readonly path?: string
 }
 
 /** One kind of relation, with a sample of its targets and how many there are. */
@@ -138,6 +150,8 @@ export interface WikiLookupResult {
   readonly indexAge: string
   /** How many pages were searched — entity pages, which is all a search can read. */
   readonly scanned: number
+  /** How many topic and source pages were searched beside them. */
+  readonly scannedProse: number
   /**
    * Pages in the searched vaults that no search can reach.
    *
@@ -154,20 +168,57 @@ export interface WikiPageContent {
   readonly vaultLabel: string
   readonly page: string
   readonly uri: string | null
+  /**
+   * Which kind of page was read.
+   *
+   * `topic` / `source` pages are read by vault-relative path; they carry no
+   * entity URI, no physical table and no field list, so a caller must not write
+   * SQL from one. Saying so here is what keeps that distinction visible after
+   * the page body has been printed.
+   */
+  readonly kind?: 'entity' | 'topic' | 'source'
+  /** Vault-relative path, present for pages read outside the entity index. */
+  readonly path?: string
   readonly version?: string
   readonly status?: string
   readonly verified?: string
-  /** What this page can answer, and what it lacks to answer more. */
-  readonly assessment: WikiAssessment
+  /** What this page can answer, and what it lacks to answer more. Entity pages only. */
+  readonly assessment?: WikiAssessment
   /**
-   * Where this page leads, and what leads here.
+   * Where this page leads, and what leads here. Entity pages only — a topic page
+   * has no entity edges to walk.
    *
    * Returned with the page rather than behind a separate tool because the moment
    * a caller wants it is the moment it has finished reading: the next question is
    * almost always "what else is built on this".
    */
-  readonly relations: WikiRelationView
+  readonly relations?: WikiRelationView
   readonly text: string
+}
+
+/** One frontmatter value, undecorated; undefined when the key is absent. */
+function frontmatterValue(text: string, key: string): string | undefined {
+  const head = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)
+  if (head === null) return undefined
+  const line = new RegExp(`^\\s*${key}\\s*:\\s*(.*)$`, 'm').exec(head[1] ?? '')
+  const value = line?.[1]?.trim().replace(/^["']|["']$/g, '')
+  return value === undefined || value === '' ? undefined : value
+}
+
+/**
+ * Which kind of page a vault-relative path holds, judged by its directory.
+ *
+ * Both spellings are live: the NCC vault was initialised with `wiki/实体` and
+ * friends, while later pages follow the English `wiki/topics` / `wiki/sources`.
+ * A path outside those four is read as a plain page with no kind rather than
+ * refused — reading a file the operator pointed at is not a claim about what it is.
+ */
+function proseKindOf(rel: string): 'topic' | 'source' | undefined {
+  const parts = rel.split('/')
+  const dir = parts[0] === 'wiki' ? parts[1] : parts[0]
+  if (dir === 'topics' || dir === '模块') return 'topic'
+  if (dir === 'sources' || dir === '来源') return 'source'
+  return undefined
 }
 
 /** One hole in the vault: an entity its pages cite and none of them covers. */
@@ -212,14 +263,35 @@ export interface YonWikiService {
    * Find the pages answering one term.
    * @param term - URI, table name, page name, display name, or a fragment of any.
    * @param vaultId - restrict to one vault; all of them when omitted.
+   * @param kind - which pages to search: entities only, topics only, sources only,
+   *   or both halves (`all`, the default).
    */
-  lookup(term: string, vaultId?: string): Promise<WikiLookupResult>
+  lookup(
+    term: string,
+    vaultId?: string,
+    kind?: 'all' | 'entity' | 'topic' | 'source',
+  ): Promise<WikiLookupResult>
   /**
    * Read one page in full.
    * @param page - page name, with or without the `.md` suffix.
    * @param vaultId - which vault to read from; required when several could match.
    */
   read(page: string, vaultId?: string): Promise<WikiPageContent>
+  /**
+   * The topic and source pages, for the panel's list and its search box.
+   *
+   * Separate from {@link lookup} because the panel lists rather than ranks: it
+   * wants the newest pages and a filter, not a hit list sorted by match strength.
+   * @param term - a filter on name, tags and headings; empty lists everything.
+   * @param vaultId - which vault; all of them when omitted.
+   * @param kind - topics, sources, or both when omitted.
+   * @param limit - how many to return; 200 when omitted, capped at 2000.
+   */
+  proseList(term: string, vaultId?: string, kind?: WikiProseKind, limit?: number): Promise<{
+    readonly term: string
+    readonly count: number
+    readonly hits: readonly WikiProseView[]
+  }>
   /**
    * The vault's own history: the tail of its `log.md`.
    *
@@ -387,7 +459,31 @@ function matchOf(page: WikiPage, needle: string): WikiMatch | undefined {
 
 /** How strongly a match ranks; lower sorts first. */
 const MATCH_RANK: Record<WikiMatch, number> = {
-  uri: 0, table: 1, page: 2, name: 3, contains: 4,
+  uri: 0, table: 1, page: 2, name: 3, tag: 4, heading: 5, contains: 6, summary: 7,
+}
+
+/**
+ * The strongest way a term names a topic or source page.
+ *
+ * A prose page has no URI and no table, so the two exact-match ranks above have no
+ * counterpart here. What it does have is a name, its tags, its `##` headings (which
+ * are the chapters a digested document was cut into), and its lead paragraph —
+ * checked in that order, because a hit on a heading is a hit on the subject and a
+ * hit on the summary can be a passing mention.
+ * @param page - the prose page to test.
+ * @param needle - the term, lower-cased and trimmed.
+ * @returns the strongest match, or undefined.
+ */
+function proseMatchOf(page: WikiProsePage, needle: string): WikiMatch | undefined {
+  const id = page.page.toLowerCase()
+  const name = page.name.toLowerCase()
+  if (id === needle) return 'page'
+  if (name === needle) return 'name'
+  if (page.tags?.some(tag => tag.toLowerCase() === needle) === true) return 'tag'
+  if (page.headings?.some(heading => heading.toLowerCase().includes(needle)) === true) return 'heading'
+  if (name.includes(needle) || id.includes(needle)) return 'contains'
+  if (page.summary?.toLowerCase().includes(needle) === true) return 'summary'
+  return undefined
 }
 
 /**
@@ -420,6 +516,26 @@ function toHit(vault: WikiVault, page: WikiPage, matchedBy: WikiMatch, graph: Wi
     level: verdict.level,
     ...(verdict.fieldCount === undefined ? {} : { fieldCount: verdict.fieldCount }),
     matchedBy,
+    kind: 'entity',
+  }
+}
+
+/** Turn a topic or source page and a match into a hit. */
+function toProseHit(vault: WikiVault, page: WikiProsePage, matchedBy: WikiMatch): WikiHit {
+  return {
+    vault: vault.id,
+    vaultLabel: vault.label,
+    page: page.page,
+    uri: null,
+    name: page.name,
+    ...(page.version === undefined ? {} : { version: page.version }),
+    ...(page.status === undefined ? {} : { status: page.status }),
+    // A prose page has no table, so it can never be query-ready or locatable:
+    // `concept` is the level that says "read it for what it explains".
+    level: 'concept',
+    matchedBy,
+    kind: page.kind,
+    path: page.file,
   }
 }
 
@@ -575,7 +691,69 @@ export function createYonWikiService(
     const ready = entityDirOf(vault.path) !== undefined
     if (!ready) return { ...vault, pages: 0, ready: false }
     const index = await indexFor(vault)
-    return { ...vault, pages: index.entities.length, indexedAt: index.builtAt, ready: true }
+    // Read from the index, not by re-walking the directories: one rebuild now
+    // covers all three kinds, so the three numbers on the card describe the same
+    // snapshot. (Before version 3 the prose directories were counted separately,
+    // which is why a stale index could show a count the search could not reach.)
+    let topicPages = 0
+    let sourcePages = 0
+    for (const page of index.prose) {
+      if (page.kind === 'topic') topicPages += 1
+      else sourcePages += 1
+    }
+    return {
+      ...vault,
+      pages: index.entities.length,
+      topicPages,
+      sourcePages,
+      indexedAt: index.builtAt,
+      ready: true,
+    }
+  }
+
+  /**
+   * Read one markdown file by its path relative to the vault root.
+   *
+   * The entity index cannot name a topic or source page, so a path is the only
+   * handle a caller has on one. Three guards keep that from becoming arbitrary
+   * disk access: the resolved path must stay inside the vault, must be a regular
+   * `.md` file, and must be under the size a page body can reasonably reach.
+   * @param vault - the vault to resolve against.
+   * @param asked - vault-relative path, either separator.
+   * @returns the page, or undefined when nothing is there.
+   */
+  const readPageByPath = async (vault: WikiVault, asked: string): Promise<WikiPageContent | undefined> => {
+    const root = path.resolve(vault.path)
+    const full = path.resolve(root, asked)
+    const rel = path.relative(root, full).split(path.sep).join('/')
+    if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return undefined
+    if (!rel.toLowerCase().endsWith('.md')) {
+      throw new WikiError('invalid-input', `只能按路径读 .md 页面，收到「${asked}」。`)
+    }
+    const info = await stat(full).catch(() => undefined)
+    if (info === undefined || !info.isFile()) return undefined
+    if (info.size > 4 * 1024 * 1024) {
+      throw new WikiError(
+        'invalid-input',
+        `这一页有 ${Math.round(info.size / 1024)} KB，超过 4 MB 上限，请先用编辑器打开。`,
+      )
+    }
+    const text = await readFile(full, 'utf8').catch(() => undefined)
+    if (text === undefined) throw new WikiError('not-found', `页面文件读不到：${full}`)
+    const kind = proseKindOf(rel)
+    const version = frontmatterValue(text, 'platform_version')
+    const status = frontmatterValue(text, 'status')
+    return {
+      vault: vault.id,
+      vaultLabel: vault.label,
+      page: path.basename(rel, '.md'),
+      uri: null,
+      ...(kind === undefined ? {} : { kind }),
+      path: rel,
+      ...(version === undefined ? {} : { version }),
+      ...(status === undefined ? {} : { status }),
+      text,
+    }
   }
 
   return {
@@ -645,28 +823,53 @@ export function createYonWikiService(
       })
     },
 
-    async lookup(term, vaultId) {
+    async lookup(term, vaultId, kind = 'all') {
       const asked = asTerm(term, 'term')
       const needle = asked.toLowerCase()
       const selected = await select(vaultId)
       const hits: WikiHit[] = []
       const unindexed: WikiUnindexedDir[] = []
       let scanned = 0
+      let scannedProse = 0
       let age = ''
 
       for (const vault of selected) {
         const index = await indexFor(vault)
         const graph = await graphFor(vault)
         scanned += index.entities.length
+        scannedProse += index.prose.length
         unindexed.push(...await unindexedDirsOf(vault))
         if (age === '' || index.builtAt > age) age = index.builtAt
-        for (const page of index.entities) {
-          const matched = matchOf(page, needle)
-          if (matched !== undefined) hits.push(toHit(vault, page, matched, graph))
+
+        if (kind === 'all' || kind === 'entity') {
+          for (const page of index.entities) {
+            const matched = matchOf(page, needle)
+            if (matched !== undefined) hits.push(toHit(vault, page, matched, graph))
+          }
+        }
+        if (kind === 'entity') continue
+        for (const page of index.prose) {
+          if (kind === 'topic' && page.kind !== 'topic') continue
+          if (kind === 'source' && page.kind !== 'source') continue
+          const matched = proseMatchOf(page, needle)
+          if (matched === undefined) continue
+          // In the mixed mode a source page competes with thousands of other source
+          // pages (the BIP vault holds 7637, mostly API snapshots). Only a hit on
+          // the page itself earns a line there; the heading and summary ranks are
+          // kept for an explicit `kind=source`, where the caller asked for breadth.
+          // Topic pages are not damped: a hit on a chapter's name is a hit on the
+          // subject, which is what someone searching a digested manual wants.
+          if (kind === 'all' && page.kind === 'source'
+            && matched !== 'page' && matched !== 'name' && matched !== 'tag') continue
+          hits.push(toProseHit(vault, page, matched))
         }
       }
 
       hits.sort((a, b) => {
+        // Entity pages first: a caller that asked by a name expects the page that
+        // can answer with a table to be the one on top.
+        const byKind = (a.kind === 'entity' ? 0 : 1) - (b.kind === 'entity' ? 0 : 1)
+        if (byKind !== 0) return byKind
         const byMatch = MATCH_RANK[a.matchedBy] - MATCH_RANK[b.matchedBy]
         return byMatch !== 0 ? byMatch : a.page.localeCompare(b.page, 'zh')
       })
@@ -678,12 +881,38 @@ export function createYonWikiService(
         ...(vaultId === undefined ? {} : { vault: vaultId }),
         ...(hits[0] === undefined ? {} : { top: hits[0].page }),
       })
-      return { term: asked, hits, indexAge: age, scanned, unindexed }
+      return { term: asked, hits, indexAge: age, scanned, scannedProse, unindexed }
     },
 
     async read(page, vaultId) {
-      const wanted = asTerm(page, 'page').replace(/\.md$/, '')
+      const asked = asTerm(page, 'page')
+      const wanted = asked.replace(/\.md$/, '')
+      // A path is how a topic or source page is reached: those live outside the
+      // entity index, and asking for one by bare name would answer "no such page"
+      // while the file sits right there. Decided from the input rather than by a
+      // failed lookup, so a page that happens to be in both places still reads
+      // the entity one when asked by name.
+      const byPath = /[\\/]/.test(asked)
       const selected = await select(vaultId)
+
+      if (byPath) {
+        for (const vault of selected) {
+          const content = await readPageByPath(vault, asked)
+          if (content === undefined) continue
+          await usage.record({
+            tool: 'wiki_read',
+            term: asked,
+            hits: 1,
+            ...(vaultId === undefined ? {} : { vault: vaultId }),
+            top: content.page,
+          })
+          return content
+        }
+        throw new WikiError(
+          'not-found',
+          `知识库里没有这个文件：「${asked}」。路径要相对知识库根目录，并带 .md，例如 wiki/topics/页名.md。`,
+        )
+      }
 
       for (const vault of selected) {
         const index = await indexFor(vault)
@@ -707,11 +936,44 @@ export function createYonWikiService(
           vaultLabel: vault.label,
           page: found.page,
           uri: found.uri,
+          kind: 'entity' as const,
           ...(found.version === undefined ? {} : { version: found.version }),
           ...(found.status === undefined ? {} : { status: found.status }),
           ...(found.verified === undefined ? {} : { verified: found.verified }),
           assessment: assessPage(found, graph),
           relations: toRelationView(relationsOf(found.page, graph), RELATION_SAMPLE),
+          text,
+        }
+      }
+
+      // A prose page by its bare name, now that the index holds them. Checked
+      // after the entity pages so a name that exists in both places still reads
+      // the one that can answer with a table.
+      for (const vault of selected) {
+        const index = await indexFor(vault)
+        const found = index.prose.find(entry => entry.page === wanted)
+        if (found === undefined) continue
+        const full = path.join(vault.path, found.file)
+        const text = await readFile(full, 'utf8').catch(() => undefined)
+        if (text === undefined) {
+          throw new WikiError('not-found', `页面文件读不到：${full}`)
+        }
+        await usage.record({
+          tool: 'wiki_read',
+          term: wanted,
+          hits: 1,
+          ...(vaultId === undefined ? {} : { vault: vaultId }),
+          top: found.page,
+        })
+        return {
+          vault: vault.id,
+          vaultLabel: vault.label,
+          page: found.page,
+          uri: null,
+          kind: found.kind,
+          path: found.file,
+          ...(found.version === undefined ? {} : { version: found.version }),
+          ...(found.status === undefined ? {} : { status: found.status }),
           text,
         }
       }
@@ -726,17 +988,43 @@ export function createYonWikiService(
         ...(vaultId === undefined ? {} : { vault: vaultId }),
       })
       // 「没有名为 X 的页面」 is the same confident wrong conclusion `lookup` guards
-      // against, one step later: a page that lives under `wiki/topics` is not
-      // *missing*, it is outside what this index can open. Say so, and give the
-      // directory, so the reader goes and looks instead of reporting it absent.
+      // against, one step later. Both halves have been searched by now, so this is
+      // a real absence — but the path still goes in the answer, because a page
+      // filed under a name slightly different from the one asked for is common
+      // enough that the way in is worth repeating.
       const outside = (await Promise.all(selected.map(vault => unindexedDirsOf(vault)))).flat()
       throw new WikiError('not-found', [
-        `没有名为「${wanted}」的页面。先用 wiki_lookup 按表名或中文名找到确切的页面名。`,
+        `没有名为「${wanted}」的实体页或主题页。实体页按表名或中文名用 wiki_lookup 找；`
+          + `主题页也可以按库内路径读，例如 wiki/topics/${wanted}.md。`,
         ...(outside.length === 0 ? [] : [
-          '注意：索引只读实体页目录。这几处还有页面不在索引里，你要找的可能是其中之一：'
-            + outside.map(entry => `${entry.dir} —— ${entry.pages} 页，${entry.path}`).join('；'),
+          '索引之外还有这些目录：'
+            + outside.map(entry => `${entry.dir} —— ${entry.pages} 页`).join('；'),
         ]),
       ].join('\n'))
+    },
+
+    async proseList(term, vaultId, kind, limit) {
+      const asked = (term ?? '').trim()
+      const needle = asked.toLowerCase()
+      const wanted = limit === undefined ? 200 : Math.min(Math.max(Math.floor(limit), 1), 2000)
+      const selected = await select(vaultId)
+      const hits: WikiProseView[] = []
+      for (const vault of selected) {
+        const index = await indexFor(vault)
+        for (const page of index.prose) {
+          if (kind !== undefined && page.kind !== kind) continue
+          if (needle !== '' && proseMatchOf(page, needle) === undefined) continue
+          hits.push({ ...page, vault: vault.id })
+        }
+      }
+      // Newest first, by the `updated` the page states; pages without one keep the
+      // index's name order. The panel is a browsing list, not a ranking.
+      hits.sort((a, b) => {
+        const left = a.updated ?? ''
+        const right = b.updated ?? ''
+        return left === right ? a.page.localeCompare(b.page, 'zh') : left < right ? 1 : -1
+      })
+      return { term: asked, count: hits.length, hits: hits.slice(0, wanted) }
     },
 
     async rebuild(vaultId) {
@@ -830,6 +1118,8 @@ export function createYonWikiService(
           vault: vault.id,
           vaultLabel: vault.label,
           pages: index.entities.length,
+          topicPages: index.prose.filter(page => page.kind === 'topic').length,
+          sourcePages: index.prose.filter(page => page.kind === 'source').length,
           unindexed: await unindexedDirsOf(vault),
           indexedAt: index.builtAt,
           ...(bytes === undefined ? {} : { indexBytes: bytes }),

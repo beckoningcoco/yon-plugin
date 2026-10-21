@@ -1,0 +1,362 @@
+/* Front-end-source pieces the shared dialog chrome does not cover: the detail
+   title, the verb row's rule, a section heading, the version picker, the path
+   pair, the dimming of a registration whose directory has moved, and the domain
+   breakdown. Everything structural — the pane split, the list, the property grid,
+   the form rows, the action row, the empty state, the error strip — comes from
+   the shared stylesheet, so this surface and its siblings stay one family.
+
+   The rules that a sibling already declares (`.title`, `.verbRow`, `.subTitle`,
+   `.card`, `.select`, `.pathRow`, `.pathField`, `.rowNotReady`, `.rowOn`) are
+   restated rather than promoted: promoting a rule five surfaces already read is a
+   change to all five, and CSS modules scope per sheet. The derivations live in
+   `home/panel.module.css`, which is where these values were settled. */
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* The row of verbs under the title, ruled off from what they act on. */
+.verbRow {
+  padding-bottom: 8px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+/* A section heading inside the detail column: 12px semibold secondary, with the
+   gap the pane already provides doing the spacing. */
+.subTitle {
+  margin: 8px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* The probe's fact grid, lifted off the dialog background by a hairline and a
+   shadow rather than by a fill — in the light theme the dialog and the card fill
+   resolve to the same value. */
+.card {
+  margin: 0;
+  padding: 10px 12px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: var(--dsw-shadow-lv1);
+}
+
+/* The native version picker, meant to pass as one of the host's controls. */
+.select {
+  width: 100%;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 6px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* A path is read character by character, so it gets the monospaced face and wraps
+   rather than pushing the row out of shape. */
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  word-break: break-all;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.pathRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+/* A control keeps its size; the text beside it takes what is left. */
+.pathRow > button {
+  flex: none;
+  white-space: nowrap;
+}
+
+.pathField {
+  flex: 1;
+}
+
+/* A registration whose directory no longer reads as a source project. Dimmed
+   rather than hidden: the row is still a registration the operator may be about
+   to fix. */
+.rowNotReady {
+  opacity: 0.55;
+}
+
+/* The selected row, marked on the left edge; the shared row fill is a 6% tint and
+   would not survive a colour-blind reading. */
+.rowOn {
+  box-shadow: inset 2px 0 0 var(--dsw-alias-state-business-primary);
+}
+
+/* The domain breakdown: what this project actually covers, one row per domain. */
+.domainList {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 8px 12px;
+  list-style: none;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.domainRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.domainName {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--dsw-alias-label-primary);
+}
+
+.domainCount {
+  white-space: nowrap;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* What the probe wants the operator to know before trusting the figures above:
+   the build switch that silences the rest of the pages, the runtime library that
+   is not source, a walk that hit its cap. A list rather than a paragraph because
+   each line is a separate thing to check. */
+.warnList {
+  margin: 0;
+  padding: 8px 12px 8px 26px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.warnList > li + li {
+  margin-top: 4px;
+}
+
+/* ---- the page tree ---- */
+
+/* A section heading that carries its own control on the right (建立/重建索引),
+   the same shape the Home pane uses for its two index blocks. */
+.blockHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 18px 0 6px;
+}
+
+.blockHead > h4 {
+  margin: 0;
+}
+
+.blockVerbs {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+}
+
+.blockVerbs > button {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* The tree: one row per page node, indented files under an open one.
+ *
+ * `flex: none` is load-bearing, not tidiness. `.detailPane` is a fixed-height
+ * flex column, and a flex item that sets `overflow` gets its automatic minimum
+ * height resolved to 0 — so this list was compressed to an 8px empty bar at the
+ * bottom of the pane, with every row still in the DOM. Measured on
+ * `panel-frontend-tree.png` before the fix: scrollHeight 889 for a pane whose
+ * content needed 1200+. The preview block below has the same shape and the same
+ * fix. */
+.tree {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 6px 8px;
+  list-style: none;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  max-height: 320px;
+  overflow: auto;
+}
+
+.treeItem {
+  list-style: none;
+}
+
+.treeRow {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 4px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.treeRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.treeToggle {
+  flex: none;
+  width: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.treeLabel {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.treeMeta {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.fileList {
+  margin: 0;
+  padding: 0 0 4px 18px;
+  list-style: none;
+}
+
+.fileRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 2px 4px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fileRow:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.fileRow:disabled {
+  cursor: default;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.fileName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileMeta {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+}
+
+/* ---- the preview ---- */
+
+.preview {
+  display: flex;
+  /* Same reason as `.tree` above: a scrollable flex item in a fixed-height
+     column collapses to its border without this. */
+  flex: none;
+  flex-direction: column;
+  gap: 6px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  overflow: hidden;
+}
+
+.previewHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  font-size: 12px;
+}
+
+/* The file's path, allowed to wrap.
+ *
+ * It used to be one ellipsised line (`nowrap` + `text-overflow`), and measured on
+ * `panel-frontend-tree.png` every path came out as `src/epmp/bc…` — the one thing
+ * this header exists to say was the part that got cut. The path is a token to be
+ * read, so it wraps instead of truncating. */
+.previewPath {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--dsw-alias-label-primary);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.previewMeta {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.previewBody {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 300px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 17px;
+  white-space: pre;
+  color: var(--dsw-alias-label-primary);
+}

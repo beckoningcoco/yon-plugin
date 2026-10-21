@@ -124,6 +124,7 @@ function stubApi(
       ? unused<(vault?: string, gaps?: number) => Promise<WikiHealthPayload>>()
       : vi.fn(async (): Promise<WikiHealthPayload> => ({ reports: [healthReport] })),
     search: unused(),
+    proseList: unused(),
     pageCard: unused(),
     citers: unused(),
     saveVault: vi.fn(async (_id, input) => vault({ id: 'saved', label: input.label, path: input.path, ready: true })),

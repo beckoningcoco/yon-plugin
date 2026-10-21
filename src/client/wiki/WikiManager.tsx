@@ -29,6 +29,7 @@ import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   WIKI_ENTITY_DIRS, type SaveVaultInput, type WikiCardView, type WikiGapView,
   type WikiHealthReport, type WikiLevel, type WikiLogEntry,
+  type WikiProseListPayload, type WikiProseView,
   type WikiRelationGroupView, type WikiSearchPayload, type WikiVaultView,
 } from '../../shared/types.ts'
 import { cn } from '../cn.ts'
@@ -43,14 +44,17 @@ const HISTORY_LIMIT = 8
 /** How many hits a search lists before it stops drawing them. */
 const HIT_LIMIT = 40
 
+/** How many topic/source pages the 「主题页」 tab draws. */
+const TOPIC_LIMIT = 200
+
 /** How long typing settles before a search is sent. */
 const SEARCH_DEBOUNCE_MS = 300
 
 /** How long a copy confirmation stays on screen. */
 const COPY_LINGER_MS = 1600
 
-/** The three tabs, and which question each answers. */
-type Tab = 'overview' | 'gaps' | 'activity'
+/** The four tabs, and which question each answers. */
+type Tab = 'overview' | 'topics' | 'gaps' | 'activity'
 
 /** Which translation key names each level. Spelled out because `t` takes literals. */
 const LEVEL_KEY: Record<WikiLevel, YonPanelKey> = {
@@ -221,7 +225,7 @@ function RelationRow({ group, t }: {
  * @returns the dialog.
  */
 export function WikiManager({
-  listVaults, rebuildVault, recentWrites, health, search, pageCard, citers,
+  listVaults, rebuildVault, recentWrites, health, search, proseList, pageCard, citers,
   saveVault, removeVault, pickPath, onClose, t,
 }: WikiManagerProps) {
   const [vaults, setVaults] = useState<readonly WikiVaultView[]>([])
@@ -262,6 +266,10 @@ export function WikiManager({
   const [term, setTerm] = useState('')
   const [found, setFound] = useState<WikiSearchPayload | undefined>(undefined)
   const [searching, setSearching] = useState(false)
+  /** The topics tab: what has been digested, filtered by its own box. */
+  const [proseTerm, setProseTerm] = useState('')
+  const [prose, setProse] = useState<WikiProseListPayload | undefined>(undefined)
+  const [proseLoading, setProseLoading] = useState(false)
   /** The page card opened from a hit, and the card being loaded. */
   const [card, setCard] = useState<WikiCardView | undefined>(undefined)
   const [cardBusy, setCardBusy] = useState<string | undefined>(undefined)
@@ -329,6 +337,26 @@ export function WikiManager({
       .catch(() => { if (live) setRecent([]) })
     return () => { live = false }
   }, [health, recentWrites, currentId, ready, busy])
+
+  // The topics tab loads when it is opened and when its filter changes. Kept out
+  // of the health effect because it is a list of pages rather than a fact about
+  // the index, and loading a thousand of them for a tab nobody opened is work
+  // for nothing.
+  useEffect(() => {
+    if (tab !== 'topics' || currentId === undefined || !ready) {
+      setProse(undefined)
+      return
+    }
+    let live = true
+    setProseLoading(true)
+    const timer = setTimeout(() => {
+      void proseList(proseTerm.trim(), currentId, undefined, TOPIC_LIMIT)
+        .then(answer => { if (live) setProse(answer) })
+        .catch(() => { if (live) setProse(undefined) })
+        .finally(() => { if (live) setProseLoading(false) })
+    }, SEARCH_DEBOUNCE_MS)
+    return () => { live = false; clearTimeout(timer) }
+  }, [proseList, proseTerm, currentId, ready, tab])
 
   // Typing settles before the search is sent, so a six-character term is one call
   // rather than six. A cleared box clears the answer with it.
@@ -505,9 +533,14 @@ export function WikiManager({
 
   const tabs = useMemo(() => ([
     { id: 'overview' as const, label: t('wiki.tab.overview'), count: undefined },
+    {
+      id: 'topics' as const,
+      label: t('wiki.tab.topics'),
+      count: (current?.topicPages ?? 0) + (current?.sourcePages ?? 0),
+    },
     { id: 'gaps' as const, label: t('wiki.tab.gaps'), count: report?.graph.missingEntities },
     { id: 'activity' as const, label: t('wiki.tab.activity'), count: report?.usage.total },
-  ]), [t, report])
+  ]), [t, report, current])
 
   /**
    * The directory this registration points at.
@@ -796,6 +829,53 @@ export function WikiManager({
     </div>
   )
 
+  /**
+   * The topics tab: what has been digested into this vault, newest first.
+   *
+   * A list rather than a hit ranking — the panel is browsing here, and the page's
+   * own summary says more about what it covers than any match score would. The
+   * path is printed on every row because that is how the page is read.
+   */
+  const topics = (
+    <div className={cn(css.results)}>
+      <div className={cn(css.searchRow)}>
+        <input
+          className={cn(base.inputFill, css.searchInput)}
+          type="search"
+          value={proseTerm}
+          placeholder={t('wiki.topicsFilter')}
+          aria-label={t('wiki.topicsFilter')}
+          onChange={event => { setProseTerm(event.target.value) }}
+        />
+        {proseLoading && <span className={cn(base.note)}>{t('wiki.searching')}</span>}
+      </div>
+      <p className={cn(css.resultHead)}>
+        {prose === undefined ? t('wiki.loading') : t('wiki.topicsSummary', { count: prose.count })}
+      </p>
+      {prose === undefined
+        ? null
+        : prose.hits.length === 0
+          ? <p className={cn(base.note)}>{t('wiki.topicsEmpty')}</p>
+          : (
+            <ul className={cn(css.resultList)}>
+              {prose.hits.map(page => (
+                <li key={`${page.vault ?? ''}:${page.file}`} className={cn(css.topicRow)}>
+                  <span className={cn(css.resultName)}>{page.name}</span>
+                  <span className={cn(base.tag, base.tagMuted)}>
+                    {page.kind === 'topic' ? t('wiki.topicPagesUnit') : t('wiki.sourcePagesUnit')}
+                  </span>
+                  {page.version !== undefined && <span className={cn(base.note)}>{page.version}</span>}
+                  <span className={cn(css.mono)}>{page.file}</span>
+                  {page.summary !== undefined && (
+                    <span className={cn(base.note, css.topicSummary)}>{page.summary}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+    </div>
+  )
+
   return (
     <Modal
       open
@@ -874,7 +954,13 @@ export function WikiManager({
                         <span className={cn(base.projectMark)} aria-hidden="true"><BookMark /></span>
                         <span className={cn(base.projectName)} title={vault.path}>{vault.label}</span>
                         <span className={cn(base.projectMeta)}>
-                          {vault.ready ? `${vault.pages} ${t('wiki.pagesUnit')}` : t('wiki.notReady')}
+                          {vault.ready
+                            ? [
+                                `${vault.pages} ${t('wiki.pagesUnit')}`,
+                                `${vault.topicPages ?? 0} ${t('wiki.topicPagesUnit')}`,
+                                `${vault.sourcePages ?? 0} ${t('wiki.sourcePagesUnit')}`,
+                              ].join(' · ')
+                            : t('wiki.notReady')}
                         </span>
                       </button>
                     </li>
@@ -1013,6 +1099,7 @@ export function WikiManager({
                   </div>
 
                   {tab === 'overview' && overview}
+                  {tab === 'topics' && topics}
                   {tab === 'gaps' && gaps}
                   {tab === 'activity' && activity}
                 </>

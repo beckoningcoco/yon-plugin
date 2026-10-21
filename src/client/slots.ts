@@ -9,6 +9,7 @@ import type { RequirementApi } from './requirement/api.ts'
 import type { DataSourceApi } from './datasource/api.ts'
 import type { DigestApi } from './digest/api.ts'
 import type { HomeApi } from './home/api.ts'
+import type { FrontendApi } from './frontend/api.ts'
 import type { IterationApi } from './iteration/api.ts'
 import type { MemoryApi } from './memory/api.ts'
 import type { ProjectApi } from './project/api.ts'
@@ -107,6 +108,23 @@ export type DigestItemFace = DigestApi & {
 export type HomeItemFace = HomeApi & {
   /**
    * Announce a layer standing above the panel (the Home surface).
+   * @returns the release for that layer.
+   */
+  pushOverlay(): () => void
+}
+
+/**
+ * Data face the panel's front-end-source entry receives: the source API plus the
+ * same panel-level gesture.
+ *
+ * A separate face rather than a field on {@link HomeItemFace}, because the two
+ * surfaces answer different questions about different directories — a Home is an
+ * installation, a front-end project is the source pages are built from — and
+ * merging them would hand every surface verbs it does not use.
+ */
+export type FrontendItemFace = FrontendApi & {
+  /**
+   * Announce a layer standing above the panel (the source surface).
    * @returns the release for that layer.
    */
   pushOverlay(): () => void

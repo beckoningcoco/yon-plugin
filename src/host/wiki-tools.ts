@@ -175,17 +175,11 @@ const LOOKUP_VALUE = {
 /**
  * The block naming pages a lookup could not have matched, and how to reach them.
  *
- * Carried on every answer rather than only the empty ones, because the shape of
- * the failure it prevents is a *confident* one: a vault whose prose lives under
- * `wiki/topics` answers `已扫描 0 个实体页`, and a reader with no other number in
- * front of it concludes the knowledge base is empty. Stating the scope is what
- * makes `0` mean "none of the pages I can read" instead of "none".
- *
- * The absolute directory is part of that: the index is not going to grow to cover
- * these pages, so the useful answer is not only "they exist" but "here is where,
- * go read them yourself". They carry no field list and no table name, so the line
- * says what they are *not* good for as well — the whole point of this tool is to
- * stop a table or column being invented, and a page of prose is no substitute.
+ * Since index version 3 the reader covers entity, topic and source pages, so this
+ * block is about the *other* directories a vault may hold — notes, attachments,
+ * a community dump — rather than about digested documents, which are searchable
+ * now. It stays because an unseen directory is still the shape of failure it
+ * prevents: a page exists and the answer never mentions it.
  *
  * @param dirs - what the service counted.
  * @returns the block, or nothing when the vaults hold nothing outside the index.
@@ -195,10 +189,10 @@ function describeUnindexed(dirs: readonly WikiUnindexedDir[]): string[] {
   const total = dirs.reduce((sum, entry) => sum + entry.pages, 0)
   return [
     `另有 ${total} 个页面在所查的知识库里、但不在索引范围内`
-      + '（索引只读实体页目录，所以上面的数字说的是「实体页」，不是这个知识库的规模；'
-      + '0 表示我能读的页面里没有，不等于这个库是空的）：',
+      + '（索引读实体页、主题页与来源页；下面这些目录没有收录，所以上面的数字不含它们）：',
     ...dirs.map(entry => `  · ${entry.dir} —— ${entry.pages} 页，${entry.path}`),
-    '这几种页面没有字段清单和表名，不能用它们写 SQL；要看正文，就用你手上能读文件的工具按上面的路径打开。',
+    '这些页面没有进入索引，正文可以用你手上的读文件工具按上面的路径打开；'
+      + '它们也不带字段清单，不要拿它们拼表名或列名。',
   ]
 }
 
@@ -219,7 +213,8 @@ function summarizeUnindexed(dirs: readonly WikiUnindexedDir[]): string[] {
   if (dirs.length === 0) return []
   const total = dirs.reduce((sum, entry) => sum + entry.pages, 0)
   const names = dirs.map(entry => entry.dir).join('、')
-  return [`（索引只读实体页目录：另有 ${total} 页散在 ${names}，没参与这次检索，也不算进上面的页数。）`]
+  return [`（索引只读实体页目录：另有 ${total} 页散在 ${names}，没参与这次检索，也不算进上面的页数；`
+    + '要读它们，把库内路径传给 wiki_read，例如 wiki/topics/页名.md。）']
 }
 
 /** What `wiki_read` returns, whichever of its three modes answered. */
@@ -227,6 +222,10 @@ interface ReadValue {
   readonly vaultLabel: string
   readonly page: string
   readonly uri: string | null
+  /** `topic` / `source` when the page was read by path; `entity` otherwise. */
+  readonly kind?: 'entity' | 'topic' | 'source'
+  /** Vault-relative path, present when the page was read outside the entity index. */
+  readonly path?: string
   readonly version?: string
   readonly status?: string
   readonly verified?: string
@@ -246,6 +245,8 @@ const READ_VALUE = {
     vaultLabel: { type: 'string' },
     page: { type: 'string' },
     uri: { oneOf: [{ type: 'string' }, { type: 'null' }] },
+    kind: { type: 'string' },
+    path: { type: 'string' },
     version: { type: 'string' },
     status: { type: 'string' },
     verified: { type: 'string' },
@@ -280,6 +281,9 @@ const MATCH_TEXT: Record<WikiHit['matchedBy'], string> = {
   table: '物理表精确',
   page: '页面名精确',
   name: '显示名精确',
+  tag: '标签',
+  heading: '章节标题',
+  summary: '摘要包含',
   contains: '包含',
 }
 
@@ -350,14 +354,21 @@ function describeHit(hit: WikiHit, index: number): string[] {
   const lines = [`  ${index}. ${hit.name}${hit.uri === null ? '' : `  ${hit.uri}`}`]
   lines.push(`     页面：${hit.page}`)
 
-  const capability = hit.fieldCount === undefined
-    ? LEVEL_TEXT[hit.level]
-    : `${LEVEL_TEXT[hit.level]}（${hit.fieldCount} 字段）`
-  const facts: string[] = [capability]
-  if (hit.table !== undefined) facts.push(`物理表 \`${hit.table}\``)
-  if (hit.domain !== undefined) facts.push(`domain \`${hit.domain}\``)
-  if (hit.app !== undefined) facts.push(`应用 \`${hit.app}\``)
-  lines.push(`     ${facts.join('   ·   ')}`)
+  if (hit.kind === 'topic' || hit.kind === 'source') {
+    // Not a capability grade but a boundary: a topic page has no table to grade,
+    // and "仅概念" would read as a weak entity rather than as a different kind.
+    lines.push(`     ${hit.kind === 'topic' ? '主题页' : '来源页'}（无表名与字段，按路径读）`
+      + `${hit.path === undefined ? '' : `：${hit.path}`}`)
+  } else {
+    const capability = hit.fieldCount === undefined
+      ? LEVEL_TEXT[hit.level]
+      : `${LEVEL_TEXT[hit.level]}（${hit.fieldCount} 字段）`
+    const facts: string[] = [capability]
+    if (hit.table !== undefined) facts.push(`物理表 \`${hit.table}\``)
+    if (hit.domain !== undefined) facts.push(`domain \`${hit.domain}\``)
+    if (hit.app !== undefined) facts.push(`应用 \`${hit.app}\``)
+    lines.push(`     ${facts.join('   ·   ')}`)
+  }
 
   const state: string[] = [hit.vaultLabel]
   if (hit.version !== undefined) state.push(hit.version)
@@ -387,23 +398,22 @@ export function registerYonWikiTools(
 
   disposers.push(ctx.tools.register(defineTool({
     name: 'wiki_lookup',
-    description: 'Find entity pages in the operator\'s Yon knowledge base, which maps YonBIP and NCC '
-      + 'entities to their physical tables, domains and field lists. Pass whatever name you already '
-      + 'have: an entity URI such as voucher.order.Order, a physical table name such as '
-      + 'ucg_baseapi_api_info, a display name such as 销售订单, or a fragment of any of them. Use this '
-      + 'BEFORE writing SQL or code that names a table or column — never invent either from memory. '
-      + 'Each hit reports how it matched (exact URI, exact table, exact name, or merely containing), '
-      + 'plus the page\'s platform version and verification status, so you can tell a verified answer '
-      + 'from an unverified one. It also grades what the page can actually answer — 可写查询 when it '
-      + 'carries both a table and its field list, 可定位 when it names the table but no columns, 仅概念 '
-      + 'when it names no table at all — which is how you pick between 49 hits without opening them. '
-      + 'Only entity pages are indexed: a vault\'s topic and source pages are out of reach here, and '
-      + 'every answer lists those directories, their page counts and their absolute paths, so you can '
-      + 'go read one directly rather than report the knowledge base as empty. '
-      + 'This vault holds entities — tables and fields — not mechanics: for how the platform '
-      + 'behaves, what an error means, or how something is done, use knowledge_search on the '
-      + 'reference library that ships with the plugin. '
-      + 'Follow up with wiki_read to read the full page, including its field list.',
+    description: 'Find pages in the operator\'s Yon knowledge base. Two kinds live there and both are '
+      + 'searched. Entity pages map YonBIP and NCC entities to their physical tables, domains and field '
+      + 'lists; pass whatever name you already have: an entity URI such as voucher.order.Order, a '
+      + 'physical table name such as ucg_baseapi_api_info, a display name such as 销售订单, or a fragment '
+      + 'of any of them. Use this BEFORE writing SQL or code that names a table or column — never invent '
+      + 'either from memory. Each hit reports how it matched (exact URI, exact table, exact name, tag, '
+      + 'heading, or merely containing), the page\'s platform version and verification status, and — for '
+      + 'entity pages — what the page can actually answer: 可写查询 when it carries both a table and its '
+      + 'field list, 可定位 when it names the table but no columns, 仅概念 when it names no table, which '
+      + 'is how you pick between 49 hits without opening them. Topic and source pages are the other kind: '
+      + 'a digested document\'s chapters (topics) and its source index (sources). They carry no table and '
+      + 'no fields — never write SQL from one — but they answer "what does this product do", "which '
+      + 'module handles this", "what does this version say", and each such hit carries the vault path to '
+      + 'read it with. This vault holds entities and digested documents, not platform mechanics: for how '
+      + 'the platform behaves, what an error means, or how something is done, use knowledge_search on the '
+      + 'reference library that ships with the plugin. Follow up with wiki_read to read the full page.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -417,19 +427,28 @@ export function registerYonWikiTools(
           type: 'string',
           description: 'Optional vault id to search (for example "bip" or "ncc"). All registered vaults are searched when omitted.',
         },
+        kind: {
+          type: 'string',
+          enum: ['all', 'entity', 'topic', 'source'],
+          description: 'Which pages to search: all (default), entity pages only, topic pages only, or source pages only.',
+        },
       },
     },
     outputSchema: LOOKUP_VALUE,
     async execute(args) {
+      const asked = String(args.kind ?? 'all')
+      const kind = asked === 'entity' || asked === 'topic' || asked === 'source' ? asked : 'all'
       const result = await wiki.lookup(
         String(args.term ?? ''),
         typeof args.vault === 'string' && args.vault !== '' ? args.vault : undefined,
+        kind,
       )
       return result as unknown as {
         term: string
         hits: readonly WikiHit[]
         indexAge: string
         scanned: number
+        scannedProse: number
         unindexed: readonly WikiUnindexedDir[]
       }
     },
@@ -439,32 +458,49 @@ export function registerYonWikiTools(
         hits: readonly WikiHit[]
         indexAge: string
         scanned: number
+        scannedProse?: number
         unindexed: readonly WikiUnindexedDir[]
       }
       const unindexed = describeUnindexed(result.unindexed)
       if (result.hits.length === 0) {
         return [
-          `没有找到与「${result.term}」匹配的页面（已扫描 ${result.scanned} 个实体页）。`,
+          `没有找到与「${result.term}」匹配的页面`
+            + `（已扫描 ${result.scanned} 个实体页 + ${result.scannedProse ?? 0} 个主题/来源页）。`,
           ...unindexed,
           '',
           '可以试试：换用实体 URI、物理表名、或中文显示名；确认该知识库是否登记在 Yon 面板的「知识库」里。',
+          // 主题页按页名可读、按路径可读，零命中时把这两条都交出去——一个读者
+          // 搜不到时最需要的不是「没有」，而是「还能怎么拿」。
+          `主题页 / 来源页也可以按库内路径读，例如 wiki/topics/${result.term}.md，`
+            + '或先用面板的「主题页」页签看看库里有什么。',
           // 这一句是 knowledge_search 那句「而不是使用者自己的知识库（后者用 wiki_lookup 查）」
           // 的镜像。少了它，一个「问的是平台机制、却先查了实体页」的问题会停在这里：
           // 两本库各管一半，查错库不是查不到，而是没人告诉它去查另一本。
-          '（如果问的不是某张表和它的字段，而是平台怎么运作、某个报错什么意思、某件事怎么做 —— '
-            + '那不在实体页的范围里，去 knowledge_search 查随包参考库。）',
+          '（如果问的不是某张表和它的字段，也不是某份文档写了什么，而是平台怎么运作、某个报错什么意思、'
+            + '某件事怎么做 —— 去 knowledge_search 查随包参考库。）',
           '如果确实没有，说明这个实体还没被消化进知识库 —— 不要凭记忆编造表名或列名。',
         ].join('\n')
       }
 
       const lines = [
         `「${result.term}」匹配到 ${result.hits.length} 个页面`
-          + `（扫描 ${result.scanned} 页，索引构建于 ${result.indexAge.slice(0, 19).replace('T', ' ')}）：`,
+          + `（扫描 ${result.scanned} 个实体页 + ${result.scannedProse ?? 0} 个主题/来源页，`
+          + `索引构建于 ${result.indexAge.slice(0, 19).replace('T', ' ')}）：`,
         ...summarizeUnindexed(result.unindexed),
         '',
       ]
-      result.hits.forEach((hit, i) => { lines.push(...describeHit(hit, i + 1)) })
-      lines.push('', '用 wiki_read 传「页面」名读取该页全文（含字段清单）。')
+      const entities = result.hits.filter(hit => hit.kind !== 'topic' && hit.kind !== 'source')
+      const prose = result.hits.filter(hit => hit.kind === 'topic' || hit.kind === 'source')
+      if (entities.length > 0) {
+        lines.push('实体页（可据此写 SQL）：', '')
+        entities.forEach((hit, i) => lines.push(...describeHit(hit, i + 1)))
+      }
+      if (prose.length > 0) {
+        if (entities.length > 0) lines.push('')
+        lines.push('主题页 / 来源页（功能与流程参考，无表名，按路径读）：', '')
+        prose.forEach((hit, i) => lines.push(...describeHit(hit, i + 1)))
+      }
+      lines.push('', '用 wiki_read 传「页面」名读取该页全文（实体页含字段清单）。')
       return lines.join('\n')
     },
     presentCall(args) {
@@ -479,14 +515,17 @@ export function registerYonWikiTools(
       + 'list mapping field codes to database columns — the facts needed to write correct SQL. The '
       + 'answer also states the page\'s verification status: treat an unverified or outdated page as a '
       + 'lead to confirm against the database (datasource_query), not as fact.\n'
+      + 'It also reads a page by its path inside the vault (`wiki/topics/总账-核算与凭证（NCC 2312）.md`), '
+      + 'which is how a topic or source page is opened: those carry no table and no fields, and the answer '
+      + 'says so (`kind: topic` / `source`) — never write SQL from one.\n'
       + 'A page can run to 70 KB, so two arguments narrow the read instead of dumping it: '
       + 'outline: true returns just the heading list with a line count per section, and '
       + 'section: "章节名" returns that one section. On a large page, read the outline first and then '
       + 'ask for the sections you need — the whole page would crowd out everything that follows.\n'
-      + 'The answer opens with what the page is good for and closes with the entities it relates to, '
-      + 'in both directions: what this page points at (child tables, foreign keys, interfaces) and '
-      + 'what points at it. Follow those instead of searching again — the pages are densely connected, '
-      + 'and the connections are the part a name search cannot show you.',
+      + 'For an entity page the answer opens with what the page is good for and closes with the entities '
+      + 'it relates to, in both directions: what this page points at (child tables, foreign keys, '
+      + 'interfaces) and what points at it. Follow those instead of searching again — the pages are '
+      + 'densely connected, and the connections are the part a name search cannot show you.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -494,7 +533,8 @@ export function registerYonWikiTools(
       properties: {
         page: {
           type: 'string',
-          description: 'Page name as wiki_lookup returned it, with or without the .md suffix.',
+          description: 'Page name as wiki_lookup returned it, with or without the .md suffix; '
+            + 'or a vault-relative path such as wiki/topics/页名.md to read a topic or source page.',
         },
         vault: {
           type: 'string',
@@ -559,6 +599,16 @@ export function registerYonWikiTools(
       state.push(page.status === undefined ? '未标注验证状态' : page.status)
       if (page.verified !== undefined) state.push(`最后验证 ${page.verified}`)
       lines.push(state.join('   ·   '))
+
+      // Said before the body, for the same reason the assessment badge is: a
+      // caller who came for a column name must learn here, not after 30 KB, that
+      // this page has none.
+      if (page.kind === 'topic' || page.kind === 'source') {
+        lines.push(
+          `（${page.kind === 'topic' ? '主题页' : '来源页'}：没有物理表与字段，不能据此写 SQL`
+            + `${page.path === undefined ? '' : `；库内路径 ${page.path}`}）`,
+        )
+      }
 
       // The badge and the relation count come before the body on purpose: they are
       // what tells a caller whether this page is the one it needs, and they cost
