@@ -47,14 +47,56 @@ CONFIG_PATH = default_config_path()
 
 
 # ============ 危险操作检测 ============
-DANGEROUS_KEYWORDS = [
-    r"\bINSERT\b", r"\bUPDATE\b", r"\bDELETE\b",
-    r"\bDROP\b", r"\bTRUNCATE\b", r"\bALTER\b", r"\bCREATE\b",
+# 与 src/host/datasource-tools.ts 的判定逐条对齐：两边对同一条语句必须给出同一个
+# 答案，否则「插件放行、脚本再拦一道」就成了一句空话。
+#
+# 这里曾经是一张写关键词黑名单（INSERT/UPDATE/DELETE/DROP/TRUNCATE/ALTER/CREATE）。
+# 黑名单要成立，就得把「所有能改数据的写法」都列全，而它列不全：`CALL 存储过程`、
+# Oracle 的 `BEGIN ... END` 匿名块、`EXEC`、`RENAME`、`REPLACE` 都不含上面任何一个词，
+# 于是都被判成读，畅通无阻。
+#
+# 倒过来才对：认不出是读的，一律按写处理，由人来决定。
+READ_ONLY_LEAD = {
+    "SELECT", "WITH", "SHOW", "DESC", "DESCRIBE", "EXPLAIN", "PRAGMA", "VALUES",
+}
+
+WRITE_PATTERNS = [
+    r"\b(?:INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE|MERGE|GRANT|REVOKE)\b",
+    r"\b(?:CALL|EXEC|EXECUTE|DECLARE|BEGIN|RENAME|REPLACE|UPSERT|IMPORT|COPY"
+    r"|ANALYZE|VACUUM|COMMENT|LOCK)\b",
+    r"\bFOR\s+UPDATE\b",
 ]
 
 
+def leading_word(sql: str) -> str:
+    """语句的头一个词，跳过前面的空白与注释（注释里的 INSERT 只是注释）。"""
+    body = sql
+    while True:
+        body = body.lstrip()
+        if body.startswith("--"):
+            end = body.find("\n")
+            if end < 0:
+                return ""
+            body = body[end + 1:]
+            continue
+        if body.startswith("/*"):
+            end = body.find("*/")
+            if end < 0:
+                return ""
+            body = body[end + 2:]
+            continue
+        break
+    match = re.match(r"[A-Za-z_][A-Za-z0-9_$#]*", body)
+    return match.group(0).upper() if match else ""
+
+
 def is_dangerous(sql: str) -> bool:
-    return any(re.search(kw, sql, re.IGNORECASE) for kw in DANGEROUS_KEYWORDS)
+    """能不能证明它只是一条读语句——证不出来就算危险。"""
+    if not sql or not sql.strip():
+        return True
+    if leading_word(sql) not in READ_ONLY_LEAD:
+        return True
+    return any(re.search(kw, sql, re.IGNORECASE) for kw in WRITE_PATTERNS)
 
 
 # ============ 配置读取 ============
@@ -579,7 +621,12 @@ def main():
     parser.add_argument("--config", "-c", default=None,
                         help="配置文件路径（默认 ~/.dsh/yon-panel/db_config.json，可用 YON_DB_CONFIG 覆盖）")
     parser.add_argument("--json", "-j", action="store_true", help="JSON 格式输出")
-    parser.add_argument("--yes", "-y", action="store_true", help="跳过安全检查确认")
+    # `-y` 不是给人「免确认」用的开关，而是插件 spawn 本脚本时的一条必需通道：
+    # 子进程的 stdin 是 ignore（见 src/host/datasource-probe.ts），确认提示既问不到人，
+    # 还会让调用挂死。所以真正的门在插件那一层（src/host/datasource-tools.ts 的
+    # tools/pre-execute）；下面这段提示兜的是「人工在终端里直接跑本脚本」那条路。
+    parser.add_argument("--yes", "-y", action="store_true",
+                        help="跳过交互确认（插件调用本脚本时使用；人工执行请不加它）")
     parser.add_argument("--debug", action="store_true", help="打印连接过程诊断信息")
     args = parser.parse_args()
 

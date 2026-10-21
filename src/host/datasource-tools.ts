@@ -32,7 +32,7 @@ import {
 } from '../shared/types.ts'
 import { DataSourceError, type YonDataSourcesService } from './datasource-service.ts'
 import { ProjectError, type YonProjectsService } from './service.ts'
-import { dispositionOf, locate, permissionsOf } from './tools.ts'
+import { dispositionOf, locate, permissionsOf, sqlWriteDisposition } from './tools.ts'
 import { memoryHintLine, withMemoryHint, type MemoryHintLine } from './memory-session.ts'
 import type { YonTextBlock, YonToolCallView, YonToolDefinition, YonToolExecution } from './tools.ts'
 
@@ -40,22 +40,87 @@ import type { YonTextBlock, YonToolCallView, YonToolDefinition, YonToolExecution
 export const DATASOURCE_TOOL_NAMES = ['datasource_list', 'datasource_upsert', 'datasource_query'] as const
 
 /**
- * Statements that could change data.
+ * The statement heads a caller may run without asking anybody.
  *
- * Kept word-for-word in step with `resources/db-query/db_query.py`, so a
- * statement the script would stop for is one this gate stops for too. A
+ * A whitelist, because the blacklist it replaces was one it could not keep. A
+ * blacklist has to name every way a database can be changed, and the list it
+ * named missed the ways that never spell INSERT: `CALL some_proc()`, a PL/SQL
+ * `BEGIN ... END`, `EXEC`, `RENAME`, `REPLACE`. Every one of those was read as a
+ * read — and because the gate steps aside for a non-destructive statement
+ * *before* it consults the session, they reached the database with nobody asked,
+ * in a `read-only` session too.
+ *
+ * Inverted, the failure mode is the safe one: a statement nobody recognises is
+ * treated as a write and goes to the gate, where a person decides. The price is
+ * an occasional prompt for an exotic read; the alternative was a silent write.
+ */
+const READ_ONLY_LEAD = new Set([
+  'SELECT', 'WITH', 'SHOW', 'DESC', 'DESCRIBE', 'EXPLAIN', 'PRAGMA', 'VALUES',
+])
+
+/**
+ * Keywords that write, lock or reshape — wherever they appear.
+ *
+ * Searched across the whole statement rather than only its head, because a
+ * read-shaped statement can still carry one: PostgreSQL's data-modifying CTE
+ * (`WITH x AS (DELETE ... RETURNING ...) SELECT ...`), or two statements sent
+ * through a driver that runs both.
+ *
+ * Kept word-for-word in step with `resources/db-query/db_query.py`. A
  * divergence in either direction is a bug: too narrow lets a write through
  * unapproved, too wide asks about a read.
  */
-const DESTRUCTIVE_SQL = /\b(?:INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE|MERGE|GRANT|REVOKE)\b/i
+const WRITE_MARKERS: readonly RegExp[] = [
+  /\b(?:INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE|MERGE|GRANT|REVOKE)\b/i,
+  /\b(?:CALL|EXEC|EXECUTE|DECLARE|BEGIN|RENAME|REPLACE|UPSERT|IMPORT|COPY|ANALYZE|VACUUM|COMMENT|LOCK)\b/i,
+  /\bFOR\s+UPDATE\b/i,
+]
 
 /**
- * Whether one statement could change data.
+ * The head word of a statement, past any leading whitespace and comments.
+ *
+ * Comments are skipped rather than searched: `-- INSERT 前先备份` written above
+ * a plain SELECT is a note about a read, and a keyword test that scans the raw
+ * text reads it as the write itself.
+ * @param sql - the statement.
+ * @returns the upper-cased head word, or the empty string when there is none.
+ */
+function leadingWord(sql: string): string {
+  let body = sql
+  for (;;) {
+    body = body.replace(/^\s+/, '')
+    if (body.startsWith('--')) {
+      const end = body.indexOf('\n')
+      if (end < 0) return ''
+      body = body.slice(end + 1)
+      continue
+    }
+    if (body.startsWith('/*')) {
+      const end = body.indexOf('*/')
+      if (end < 0) return ''
+      body = body.slice(end + 2)
+      continue
+    }
+    break
+  }
+  const match = /^[A-Za-z_][A-Za-z0-9_$#]*/.exec(body)
+  return match?.[0]?.toUpperCase() ?? ''
+}
+
+/**
+ * Whether one statement is anything other than provably a read.
+ *
+ * "Provably" carries the meaning: true is the answer whenever this cannot show
+ * the statement is a read, so an unparseable or comment-only statement counts as
+ * a write and a person decides. The gate checks the arguments before calling
+ * this, so an empty string is refused for honesty rather than to raise a prompt.
  * @param sql - the statement a call wants to run.
- * @returns true when it carries a keyword that can write.
+ * @returns true when the statement must not run without an approval.
  */
 export function isDestructiveSql(sql: unknown): boolean {
-  return typeof sql === 'string' && DESTRUCTIVE_SQL.test(sql)
+  if (typeof sql !== 'string' || sql.trim() === '') return true
+  if (!READ_ONLY_LEAD.has(leadingWord(sql))) return true
+  return WRITE_MARKERS.some(marker => marker.test(sql))
 }
 
 /** One content block carrying text; the registry's only shape this package uses. */
@@ -610,10 +675,13 @@ export function registerYonDataSourceTools(
     },
   }, hint)))
 
-  // The gate. Two kinds of call reach it: a connection write, which always stops,
-  // and a statement that could change data, which inherits exactly the disposition
-  // the project tools use for their writes — so one session-wide permission preset
-  // governs all of them, and an unapproved write still cannot run.
+  // The gate. Two kinds of call reach it, and they are deliberately not judged
+  // the same way. A connection write follows the project tools' disposition, so a
+  // single session-wide preset governs every store this plugin owns. A statement
+  // aimed at a customer's database goes through `sqlWriteDisposition` instead,
+  // which has no `run` in it at all. The difference is ownership: the operator
+  // owns this plugin's stores and may reasonably say "do not ask me" about them,
+  // while the rows in that database are nobody's to change unreviewed.
   disposers.push(ctx.on('tools/pre-execute', (exec, next) => {
     if (exec.name === 'datasource_upsert') {
       // Deliberately always "destructive": whether this call replaces a stored branch
@@ -638,20 +706,30 @@ export function registerYonDataSourceTools(
     const sql = args !== null && typeof args === 'object' && !Array.isArray(args)
       ? (args as Record<string, unknown>).sql
       : undefined
+    // A call the tool itself will reject is not worth a prompt — the rule the
+    // connection write above already follows. The tool reports the bad argument.
+    if (typeof sql !== 'string' || sql.trim() === '') return next()
     if (!isDestructiveSql(sql)) return next()
 
-    const disposition = dispositionOf(true, permissionsOf(exec.agent?.session))
-    if (disposition === 'run') return next()
-    if (disposition === 'refuse') {
+    const permissions = permissionsOf(exec.agent?.session)
+    if (sqlWriteDisposition(permissions) === 'refuse') {
       return {
         kind: 'deny' as const,
-        reason: '当前会话是「仅可查看」权限，不能执行会改动数据的语句。'
-          + '要执行请把会话切到「工作区内修改」或「完全权限」（/permission workspace-write）。',
+        reason: permissions.sandbox === 'read-only'
+          ? '当前会话是「仅可查看」权限，不能执行会改动数据的语句。'
+            + '要执行请把会话切到「工作区内修改」或「完全权限」（/permission workspace-write）。'
+          // `never` says nobody can be asked, and this statement would otherwise
+          // run unread. Naming the policy is the whole remedy — nothing else in
+          // the session can grant it. "The sandbox is wide open" is not an answer
+          // either: a sandbox says what the plugin may touch, not what a person
+          // agreed to.
+          : '当前会话的审批策略是「从不询问」，没有人能为这条会改动数据的语句负责，'
+            + '所以它不会被执行。要执行请先把审批策略切回「询问」。',
       }
     }
     return {
       kind: 'ask' as const,
-      reason: `这条语句可能改动数据，执行前请确认：\n\n  ${String(sql).slice(0, 400)}\n\n`
+      reason: `这条语句可能改动数据，执行前请确认：\n\n  ${sql.slice(0, 400)}\n\n`
         + '生产库上的改动不可撤销。',
     }
   }))

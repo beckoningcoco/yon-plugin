@@ -486,3 +486,139 @@ describe('门', () => {
       .toBe('ask')
   })
 })
+
+/**
+ * 写库的门。
+ *
+ * 这一组钉的是一件当时设计错了的事：原来会改数据的语句在 `approval=never` 下
+ * 直接放行，理由是「那是操作者自己选的」。对插件自己的库（项目、记忆、知识库）
+ * 这句话成立——东西是他的，他说别问就别问。**客户数据库不成立**：库里没有一行
+ * 属于他，一句 INSERT 也不像改字段那样事后改回来；最不能发生的就是没人看过它。
+ *
+ * 所以这一族的判定里根本没有「放行」这个结果，只剩「问人」和「拒绝」。顺带把
+ * 判定本身从关键词黑名单倒过来变成只读白名单：黑名单列不全能改数据的写法，
+ * `CALL` / `BEGIN` / `EXEC` / `RENAME` 都不含它列的那些词，于是被判成读语句——
+ * 而门对「非破坏性」是直接放过去的，连只读会话都不拦。
+ */
+describe('写库的门', () => {
+  const KEY = '首创(NCC1909)::test'
+
+  /** 一批语句逐条过门，返回「语句 → 判定」。 */
+  async function judge(sqls: readonly string[], permissions?: Partial<YonPermissions>) {
+    const { gate } = await bench()
+    const verdicts: Array<[string, string]> = []
+    for (const sql of sqls) {
+      const decision = await gate('datasource_query', { key: KEY, sql }, permissions)
+      verdicts.push([sql, decision.kind])
+    }
+    return verdicts
+  }
+
+  it('完全权限下写语句依然被拒，不静默执行', async () => {
+    // 使用者把权限开到最大，并且明确说了「不要问我」。文件、项目、记忆都可以照做，
+    // 客户库不行——「没人可问」不是「可以写」。
+    const fullAccess: Partial<YonPermissions> = { sandbox: 'danger-full-access', approval: 'never' }
+    const { gate } = await bench()
+
+    const decision = await gate('datasource_query', { key: KEY, sql: 'DELETE FROM x' }, fullAccess)
+    expect(decision.kind).toBe('deny')
+    expect(decision.reason).toContain('从不询问')
+    // 拒绝理由要说清怎么才能继续，否则模型只会反复重试同一条。
+    expect(decision.reason).toContain('询问')
+  })
+
+  it('工作区内修改 + never 同样被拒', async () => {
+    // 完全权限不是这道门的分界线：插件碰得到什么，和谁同意过这次写库，是两件事。
+    expect(await judge(['UPDATE x SET a = 1'], { sandbox: 'workspace-write', approval: 'never' }))
+      .toEqual([['UPDATE x SET a = 1', 'deny']])
+  })
+
+  it('只读会话拒绝，说的仍然是权限', async () => {
+    const { gate } = await bench()
+    const decision = await gate('datasource_query', { key: KEY, sql: 'DELETE FROM x' },
+      { sandbox: 'read-only', approval: 'ask' })
+    expect(decision.kind).toBe('deny')
+    expect(decision.reason).toContain('仅可查看')
+  })
+
+  it('会询问的会话里，写语句问人', async () => {
+    expect(await judge(['DELETE FROM x'])).toEqual([['DELETE FROM x', 'ask']])
+    expect(await judge(['DELETE FROM x'], { sandbox: 'danger-full-access', approval: 'ask' }))
+      .toEqual([['DELETE FROM x', 'ask']])
+  })
+
+  it('不拼 INSERT 的写法也要过门', async () => {
+    // 这几种都能改数据，却一个写关键词都不含。旧的黑名单把它们全当读语句放过去，
+    // 而且是直接 return next()，只读会话那层检查也没走到。
+    expect(await judge([
+      'CALL sp_close_month()',
+      'BEGIN sp_close_month(); END;',
+      'EXEC sp_close_month',
+      'RENAME TABLE a TO b',
+      'REPLACE INTO t VALUES (1)',
+      'GRANT SELECT ON t TO u',
+      'LOCK TABLES t WRITE',
+    ])).toEqual([
+      ['CALL sp_close_month()', 'ask'],
+      ['BEGIN sp_close_month(); END;', 'ask'],
+      ['EXEC sp_close_month', 'ask'],
+      ['RENAME TABLE a TO b', 'ask'],
+      ['REPLACE INTO t VALUES (1)', 'ask'],
+      ['GRANT SELECT ON t TO u', 'ask'],
+      ['LOCK TABLES t WRITE', 'ask'],
+    ])
+  })
+
+  it('读形态里藏着写也要过门', async () => {
+    // 首词是读，写关键词在后面：PostgreSQL 的数据修改 CTE，以及靠驱动执行的多语句。
+    expect(await judge([
+      'WITH x AS (DELETE FROM t RETURNING id) SELECT * FROM x',
+      'SELECT 1; DROP TABLE t',
+      'SELECT * FROM t FOR UPDATE',
+    ])).toEqual([
+      ['WITH x AS (DELETE FROM t RETURNING id) SELECT * FROM x', 'ask'],
+      ['SELECT 1; DROP TABLE t', 'ask'],
+      ['SELECT * FROM t FOR UPDATE', 'ask'],
+    ])
+  })
+
+  it('纯读语句不再被误拦', async () => {
+    // 白名单要够宽，否则每条 SELECT 都弹一次审批，人很快就开始闭眼点同意。
+    expect(await judge([
+      'SELECT 1 FROM DUAL',
+      'select * from t where a = 1',
+      '  -- 先看一眼行数\nSELECT count(*) FROM t',
+      '/* 核对字段 */ DESCRIBE t',
+      'WITH x AS (SELECT 1 FROM DUAL) SELECT * FROM x',
+      'SHOW TABLES',
+    ])).toEqual([
+      ['SELECT 1 FROM DUAL', 'allow'],
+      ['select * from t where a = 1', 'allow'],
+      ['  -- 先看一眼行数\nSELECT count(*) FROM t', 'allow'],
+      ['/* 核对字段 */ DESCRIBE t', 'allow'],
+      ['WITH x AS (SELECT 1 FROM DUAL) SELECT * FROM x', 'allow'],
+      ['SHOW TABLES', 'allow'],
+    ])
+  })
+
+  it('认不出是读的，一律按写处理', async () => {
+    // 判不出来的东西归类到哪边，就是这个门的安全边界：归到「读」等于放行。
+    expect(await judge([
+      '-- 只有注释',
+      '/* 没闭合',
+      'SOMETHING NEW FROM ORACLE',
+    ])).toEqual([
+      ['-- 只有注释', 'ask'],
+      ['/* 没闭合', 'ask'],
+      ['SOMETHING NEW FROM ORACLE', 'ask'],
+    ])
+  })
+
+  it('参数不可用时不去问人', async () => {
+    // 问一个跑不起来的调用是噪音，而且那一下审批会让人以为自己批准了什么。
+    const { gate } = await bench()
+    expect((await gate('datasource_query', { key: KEY })).kind).toBe('allow')
+    expect((await gate('datasource_query', { key: KEY, sql: '' })).kind).toBe('allow')
+    expect((await gate('datasource_query', { key: KEY, sql: '   ' })).kind).toBe('allow')
+  })
+})
