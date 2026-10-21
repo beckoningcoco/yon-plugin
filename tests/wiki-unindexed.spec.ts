@@ -193,6 +193,60 @@ describe('unindexedDirsOf', () => {
 })
 
 describe('the service reads the prose pages', () => {
+  it('finds a term that appears only in a topic page body', async () => {
+    const root = await scratch('yon-wiki-prose-')
+    const vault = join(root, 'ncc')
+    await mkdir(join(vault, 'wiki', 'entities'), { recursive: true })
+    await writePage(join(vault, 'wiki', 'topics'), '总账（NCC 2312）',
+      '# 总账（NCC 2312）\n\n> 核心核算。\n\n## 概述\n\n支持多主币核算。\n')
+    const service = await serviceOver(root, [{ id: 'ncc', label: 'NCC', path: vault }])
+
+    // The term is in the body only — not the name, tags, headings or lead.
+    const answer = await service.lookup('多主币')
+    expect(answer.hits.map(hit => hit.page)).toEqual(['总账（NCC 2312）'])
+    expect(answer.hits[0]?.matchedBy).toBe('body')
+
+    // A source page does not get a body: those are indexes of documents, and the
+    // BIP vault holds 7636 of them.
+    const sources = await service.lookup('多主币', undefined, 'source')
+    expect(sources.hits).toEqual([])
+  })
+
+  it('keeps at most three lead/body hits in the mixed mode', async () => {
+    const root = await scratch('yon-wiki-prose-')
+    const vault = join(root, 'ncc')
+    await mkdir(join(vault, 'wiki', 'entities'), { recursive: true })
+    for (let i = 0; i < 5; i += 1) {
+      await writePage(join(vault, 'wiki', 'topics'), `资金计划${i}`,
+        `# 资金计划${i}\n\n> 现金流用于第${i}号计划。\n`)
+    }
+    const service = await serviceOver(root, [{ id: 'ncc', label: 'NCC', path: vault }])
+
+    // Five pages mention the term in their lead and none is about it. The mixed
+    // mode returns a sample; an explicit topic search still returns all five.
+    expect((await service.lookup('现金流')).hits.length).toBe(3)
+    expect((await service.lookup('现金流', undefined, 'topic')).hits.length).toBe(5)
+  })
+
+  it('answers a card for a topic page instead of a not-found', async () => {
+    const root = await scratch('yon-wiki-prose-')
+    const vault = join(root, 'ncc')
+    await mkdir(join(vault, 'wiki', 'entities'), { recursive: true })
+    await writePage(join(vault, 'wiki', 'topics'), '总账（NCC 2312）',
+      '# 总账（NCC 2312）\n\n> 核心核算。\n\n## 概述\n\n正文。\n')
+    const service = await serviceOver(root, [{ id: 'ncc', label: 'NCC', path: vault }])
+
+    // The panel search returns topic pages now; clicking one used to hit a card
+    // endpoint that only knew entity pages.
+    const card = await service.card('总账（NCC 2312）')
+    expect(card.kind).toBe('topic')
+    expect(card.path).toBe('wiki/topics/总账（NCC 2312）.md')
+    expect(card.uri).toBeNull()
+    expect(card.name).toBe('总账（NCC 2312）')
+    expect(card.summary).toBe('核心核算。')
+    expect(card.lacks[0]).toContain('主题页')
+  })
+
   it('counts topic and source pages on the vault view', async () => {
     const root = await scratch('yon-wiki-prose-')
     const vault = join(root, 'ncc')

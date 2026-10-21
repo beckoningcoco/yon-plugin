@@ -780,39 +780,60 @@ export function WikiManager({
         <button type="button" className={cn(css.cardClose)}
           onClick={() => { setCard(undefined) }}>{t('wiki.hideCiters')}</button>
       </div>
-      <div className={cn(css.cardFacts)}>
-        <span className={cn(base.tag, card.level === 'concept' ? base.tagMuted : undefined)}>
-          {t(LEVEL_KEY[card.level])}
-        </span>
-        {card.fieldCount !== undefined && (
-          <span className={cn(css.cardFact)}>{t('wiki.cardFields', { count: card.fieldCount })}</span>
+      {card.kind === 'topic' || card.kind === 'source'
+        ? (
+          /* A digested page has no table and no edges to draw: the card says what
+             kind it is, where it lives, and what it is about — the three things
+             that make it worth opening in an editor or reading by path. */
+          <>
+            <div className={cn(css.cardFacts)}>
+              <span className={cn(base.tag, base.tagMuted)}>
+                {card.kind === 'topic' ? t('wiki.topicPagesUnit') : t('wiki.sourcePagesUnit')}
+              </span>
+              {card.version !== undefined && <span className={cn(css.cardFact)}>{card.version}</span>}
+            </div>
+            {card.summary !== undefined && <p className={cn(base.note)}>{card.summary}</p>}
+            {card.path !== undefined && <p className={cn(css.mono)}>{card.path}</p>}
+            <p className={cn(base.note)}>{t('wiki.proseCardHint')}</p>
+          </>
+        )
+        : (
+          <>
+            <div className={cn(css.cardFacts)}>
+              <span className={cn(base.tag, card.level === 'concept' ? base.tagMuted : undefined)}>
+                {t(LEVEL_KEY[card.level])}
+              </span>
+              {card.fieldCount !== undefined && (
+                <span className={cn(css.cardFact)}>{t('wiki.cardFields', { count: card.fieldCount })}</span>
+              )}
+              <span className={cn(css.cardFact)}>
+                {card.table === undefined ? t('wiki.cardNoTable') : `${t('wiki.cardTable')} ${card.table}`}
+              </span>
+              {card.version !== undefined && <span className={cn(css.cardFact)}>{card.version}</span>}
+            </div>
+            {card.lacks.length > 0 && (
+              <ul className={cn(css.lacks)}>
+                {card.lacks.map(item => <li key={item}>{item}</li>)}
+              </ul>
+            )}
+            {card.outgoing.length > 0 && (
+              <>
+                <h5 className={cn(css.cardSub)}>{t('wiki.cardOutgoing')}</h5>
+                {card.outgoing.map(group => <RelationRow key={group.kind} group={group} t={t} />)}
+              </>
+            )}
+            {card.incomingGroups.length > 0 && (
+              <>
+                <h5 className={cn(css.cardSub)}>{t('wiki.cardIncoming')}</h5>
+                {card.incomingGroups.map(group => <RelationRow key={group.kind} group={group} t={t} />)}
+              </>
+            )}
+            {card.unresolved.total > 0 && (
+              <p className={cn(base.note)}>{t('wiki.cardUnresolved', { count: card.unresolved.total })}</p>
+            )}
+            <p className={cn(base.note)}>{card.page}</p>
+          </>
         )}
-        <span className={cn(css.cardFact)}>
-          {card.table === undefined ? t('wiki.cardNoTable') : `${t('wiki.cardTable')} ${card.table}`}
-        </span>
-        {card.version !== undefined && <span className={cn(css.cardFact)}>{card.version}</span>}
-      </div>
-      {card.lacks.length > 0 && (
-        <ul className={cn(css.lacks)}>
-          {card.lacks.map(item => <li key={item}>{item}</li>)}
-        </ul>
-      )}
-      {card.outgoing.length > 0 && (
-        <>
-          <h5 className={cn(css.cardSub)}>{t('wiki.cardOutgoing')}</h5>
-          {card.outgoing.map(group => <RelationRow key={group.kind} group={group} t={t} />)}
-        </>
-      )}
-      {card.incomingGroups.length > 0 && (
-        <>
-          <h5 className={cn(css.cardSub)}>{t('wiki.cardIncoming')}</h5>
-          {card.incomingGroups.map(group => <RelationRow key={group.kind} group={group} t={t} />)}
-        </>
-      )}
-      {card.unresolved.total > 0 && (
-        <p className={cn(base.note)}>{t('wiki.cardUnresolved', { count: card.unresolved.total })}</p>
-      )}
-      <p className={cn(base.note)}>{card.page}</p>
     </div>
   )
 

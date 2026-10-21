@@ -10,7 +10,7 @@ export declare class WikiError extends Error {
     constructor(code: 'not-found' | 'invalid-input' | 'not-configured', message: string);
 }
 /** How a term matched a page, strongest first. */
-export type WikiMatch = 'uri' | 'table' | 'page' | 'name' | 'tag' | 'heading' | 'summary' | 'contains';
+export type WikiMatch = 'uri' | 'table' | 'page' | 'name' | 'tag' | 'heading' | 'summary' | 'contains' | 'body';
 /** One page a lookup matched. */
 export interface WikiHit {
     /** Vault id the page belongs to. */

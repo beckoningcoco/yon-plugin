@@ -247,6 +247,7 @@ export declare const zh: {
     'wiki.searchSummary': string;
     'wiki.searchCardHint': string;
     'wiki.cardNoTable': string;
+    'wiki.proseCardHint': string;
     'wiki.cardTable': string;
     'wiki.citersMore': string;
     'wiki.cardFields': string;
@@ -1050,6 +1051,7 @@ export declare const en: {
     'wiki.searchSummary': string;
     'wiki.searchCardHint': string;
     'wiki.cardNoTable': string;
+    'wiki.proseCardHint': string;
     'wiki.cardTable': string;
     'wiki.citersMore': string;
     'wiki.cardFields': string;

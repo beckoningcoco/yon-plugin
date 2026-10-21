@@ -70,6 +70,15 @@ export interface WikiPage {
 /** One non-entity page, reduced to the facts a search and a list need. */
 export interface WikiProsePage extends WikiProseView {
     readonly kind: WikiProseKind;
+    /**
+     * The page's body without frontmatter or title — topic pages only.
+     *
+     * Kept so a full-text search can find a term that appears nowhere in the name,
+     * tags, headings or lead. Sources do not get one: the BIP vault holds 7636 of
+     * them (mostly API snapshots) and storing every body would multiply the index
+     * for pages nobody searches by content.
+     */
+    readonly body?: string;
 }
 /** A built index: every entity page a vault holds, as of one moment. */
 export interface WikiIndex {

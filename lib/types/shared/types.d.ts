@@ -745,6 +745,12 @@ export interface WikiCardView {
     readonly app?: string;
     readonly version?: string;
     readonly status?: string;
+    /** `topic` / `source` for a digested page; absent for an entity page. */
+    readonly kind?: 'entity' | 'topic' | 'source';
+    /** Vault-relative path, present for the prose kinds (read by path). */
+    readonly path?: string;
+    /** The page's lead paragraph, so a card answers without opening the body. */
+    readonly summary?: string;
     readonly level: WikiLevel;
     readonly fieldCount?: number;
     /** What the page lacks to answer more, in the host's own words. */

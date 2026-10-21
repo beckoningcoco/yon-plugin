@@ -100,6 +100,15 @@ export interface WikiPage {
 /** One non-entity page, reduced to the facts a search and a list need. */
 export interface WikiProsePage extends WikiProseView {
   readonly kind: WikiProseKind
+  /**
+   * The page's body without frontmatter or title — topic pages only.
+   *
+   * Kept so a full-text search can find a term that appears nowhere in the name,
+   * tags, headings or lead. Sources do not get one: the BIP vault holds 7636 of
+   * them (mostly API snapshots) and storing every body would multiply the index
+   * for pages nobody searches by content.
+   */
+  readonly body?: string
 }
 
 /** A built index: every entity page a vault holds, as of one moment. */
@@ -585,6 +594,24 @@ function headingsOf(text: string): string[] | undefined {
 }
 
 /**
+ * The page's body, without frontmatter or the title line.
+ *
+ * Kept verbatim rather than summarised: the point of storing it is to answer a
+ * search for a term the other fields do not carry, and a trimmed body would miss
+ * exactly the tail of the page.
+ * @param text - the page's full markdown.
+ * @returns the body, or undefined when the page is only a title and frontmatter.
+ */
+function bodyOf(text: string): string | undefined {
+  const stripped = text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '')
+  const lines = stripped.split(/\r?\n/)
+  while (lines.length > 0 && (lines[0] ?? '').trim() === '') lines.shift()
+  if (lines.length > 0 && /^#\s+/.test(lines[0] ?? '')) lines.shift()
+  const body = lines.join('\n').trim()
+  return body === '' ? undefined : body
+}
+
+/**
  * Read the facts one topic or source page carries.
  *
  * The body is deliberately not kept: a digested page runs 30–60 KB, and a vault
@@ -610,6 +637,9 @@ export function parseProsePage(
   const sources = frontmatterList(text, 'sources')
   const summary = leadOf(text)
   const headings = headingsOf(text)
+  // Topic bodies are stored for full-text search; a source page is an index of a
+  // document rather than the document, and there are thousands of them.
+  const body = kind === 'topic' ? bodyOf(text) : undefined
   return {
     kind,
     page,
@@ -622,6 +652,7 @@ export function parseProsePage(
     ...(updated === undefined ? {} : { updated }),
     ...(sources === undefined ? {} : { sources }),
     ...(headings === undefined ? {} : { headings }),
+    ...(body === undefined ? {} : { body }),
   }
 }
 

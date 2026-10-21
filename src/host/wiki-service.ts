@@ -71,7 +71,7 @@ export class WikiError extends Error {
 /** How a term matched a page, strongest first. */
 export type WikiMatch =
   | 'uri' | 'table' | 'page' | 'name'
-  | 'tag' | 'heading' | 'summary' | 'contains'
+  | 'tag' | 'heading' | 'summary' | 'contains' | 'body'
 
 /** One page a lookup matched. */
 export interface WikiHit {
@@ -459,7 +459,7 @@ function matchOf(page: WikiPage, needle: string): WikiMatch | undefined {
 
 /** How strongly a match ranks; lower sorts first. */
 const MATCH_RANK: Record<WikiMatch, number> = {
-  uri: 0, table: 1, page: 2, name: 3, tag: 4, heading: 5, contains: 6, summary: 7,
+  uri: 0, table: 1, page: 2, name: 3, tag: 4, heading: 5, contains: 6, summary: 7, body: 8,
 }
 
 /**
@@ -483,6 +483,9 @@ function proseMatchOf(page: WikiProsePage, needle: string): WikiMatch | undefine
   if (page.headings?.some(heading => heading.toLowerCase().includes(needle)) === true) return 'heading'
   if (name.includes(needle) || id.includes(needle)) return 'contains'
   if (page.summary?.toLowerCase().includes(needle) === true) return 'summary'
+  // Full text last: a topic body mentions its neighbours constantly, so a body
+  // hit is the weakest evidence that this is the page somebody wanted.
+  if (page.body?.toLowerCase().includes(needle) === true) return 'body'
   return undefined
 }
 
@@ -865,6 +868,18 @@ export function createYonWikiService(
         }
       }
 
+      // A hit on the lead or the body is a mention, not the subject. Three of them
+      // is enough to catch "the term is somewhere in this page"; more buries the
+      // pages that are actually about it. Only in the mixed mode — an explicit
+      // `kind=topic` asks for breadth and gets every hit.
+      if (kind === 'all') {
+        const weak = hits
+          .filter(hit => hit.matchedBy === 'summary' || hit.matchedBy === 'body')
+          .sort((a, b) => MATCH_RANK[a.matchedBy] - MATCH_RANK[b.matchedBy]
+            || a.page.localeCompare(b.page, 'zh'))
+        for (const extra of weak.slice(3)) hits.splice(hits.indexOf(extra), 1)
+      }
+
       hits.sort((a, b) => {
         // Entity pages first: a caller that asked by a name expects the page that
         // can answer with a table to be the one on top.
@@ -1176,9 +1191,48 @@ export function createYonWikiService(
         }
       }
 
+      // A topic or source page by its name. A card for one carries no table and no
+      // edges, so it says what it is and where to read it instead of pretending to
+      // grade a capability it does not have.
+      for (const vault of selected) {
+        const index = await indexFor(vault)
+        const found = index.prose.find(entry => entry.page === wanted)
+        if (found === undefined) continue
+        await usage.record({
+          tool: 'wiki_card',
+          term: wanted,
+          hits: 1,
+          ...(vaultId === undefined ? {} : { vault: vaultId }),
+          top: found.page,
+        })
+        return {
+          vault: vault.id,
+          vaultLabel: vault.label,
+          page: found.page,
+          uri: null,
+          name: found.name,
+          kind: found.kind,
+          path: found.file,
+          ...(found.version === undefined ? {} : { version: found.version }),
+          ...(found.status === undefined ? {} : { status: found.status }),
+          ...(found.summary === undefined ? {} : { summary: found.summary }),
+          level: 'concept' as const,
+          lacks: [
+            found.kind === 'topic'
+              ? '主题页：没有表名与字段，不能据此写 SQL'
+              : '来源页：是一份素材的索引，没有表名与字段',
+          ],
+          refs: 0,
+          incoming: 0,
+          outgoing: [],
+          incomingGroups: [],
+          unresolved: { total: 0, sample: [] },
+        }
+      }
+
       throw new WikiError(
         'not-found',
-        `没有名为「${wanted}」的页面。先用搜索按表名或中文名找到确切的页面名。`,
+        `没有名为「${wanted}」的实体页或主题页。先用搜索按表名、中文名或页面名找到确切的页面名。`,
       )
     },
 

@@ -284,6 +284,7 @@ const MATCH_TEXT: Record<WikiHit['matchedBy'], string> = {
   tag: '标签',
   heading: '章节标题',
   summary: '摘要包含',
+  body: '正文包含',
   contains: '包含',
 }
 
