@@ -903,6 +903,7 @@ async function handleWiki(
         level: hit.level,
         ...(hit.fieldCount === undefined ? {} : { fieldCount: hit.fieldCount }),
         matchedBy: hit.matchedBy,
+        vaultLabel: hit.vaultLabel,
         ...(hit.kind === undefined ? {} : { kind: hit.kind }),
         ...(hit.path === undefined ? {} : { path: hit.path }),
       })),

@@ -269,3 +269,37 @@ describe('GET /yon/api/wiki/prose', () => {
     expect(proseList).not.toHaveBeenCalled()
   })
 })
+
+describe('GET /yon/api/wiki/search', () => {
+  it('carries kind and the vault label through, so the panel can label a hit', async () => {
+    const lookup = vi.fn(async () => ({
+      term: '固定资产',
+      scanned: 0,
+      scannedProse: 2,
+      indexAge: '2026-10-21T00:00:00.000Z',
+      unindexed: [],
+      hits: [{
+        vault: 'ncc',
+        vaultLabel: 'NCC 知识库',
+        page: '固定资产（NCC 2312）',
+        uri: null,
+        name: '固定资产（NCC 2312）',
+        level: 'concept',
+        matchedBy: 'page',
+        kind: 'topic',
+        path: 'wiki/topics/固定资产（NCC 2312）.md',
+      }],
+    }))
+    const { handler } = mount({ lookup })
+    const { res, written } = fakeRes()
+
+    await handler(fakeReq('/yon/api/wiki/search?term=%E5%9B%BA%E5%AE%9A%E8%B5%84%E4%BA%A7', 'GET'), res)
+
+    expect(written.status).toBe(200)
+    const body = JSON.parse(written.body)
+    // Without these two a cross-vault hit list cannot be told apart: the panel
+    // would draw a BIP entity page and a NCC topic page as two identical rows.
+    expect(body.hits[0].kind).toBe('topic')
+    expect(body.hits[0].vaultLabel).toBe('NCC 知识库')
+  })
+})

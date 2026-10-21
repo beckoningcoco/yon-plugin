@@ -867,6 +867,10 @@ export interface WikiSearchHit {
   readonly fieldCount?: number
   /** How the term matched: `uri`, `table`, `page`, `name` or `contains`. */
   readonly matchedBy: string
+  /** `topic` / `source` for a digested page; absent (or `entity`) for an entity. */
+  readonly kind?: 'entity' | 'topic' | 'source'
+  /** Which knowledge base the hit came from; a cross-vault search mixes them. */
+  readonly vaultLabel?: string
 }
 
 /** Body of `GET /yon/api/wiki/search`. */

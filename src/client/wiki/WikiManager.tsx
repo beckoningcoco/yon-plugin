@@ -849,16 +849,30 @@ export function WikiManager({
           <>
             <ul className={cn(css.resultList)}>
               {found.hits.map(hit => (
-                <li key={hit.page}>
+                // The page name alone is not unique across vaults: a cross-vault
+                // search can return the same name from both, which React treats as
+                // one row and renders twice under one key.
+                <li key={`${hit.vaultLabel ?? ''}:${hit.page}`}>
                   <button type="button" className={cn(css.resultRow)}
                     disabled={cardBusy !== undefined}
                     onClick={() => { void openCard(hit.page) }}>
                     <span className={cn(css.resultName)}>{hit.name}</span>
                     <span className={cn(css.mono)}>{hit.uri ?? hit.page}</span>
                     <span className={cn(css.resultFacts)}>
-                      <span className={cn(base.tag, hit.level === 'concept' ? base.tagMuted : undefined)}>
-                        {t(LEVEL_KEY[hit.level])}
+                      {/* A cross-vault search mixes entity pages with digested
+                          topic/source pages; without these two tags the only way to
+                          tell them apart is reading the URI. Topic pages also have
+                          no capability level to show, so their tag replaces it. */}
+                      <span className={cn(base.tag, hit.kind === 'topic' || hit.kind === 'source'
+                        ? base.tagMuted
+                        : hit.level === 'concept' ? base.tagMuted : undefined)}>
+                        {hit.kind === 'topic'
+                          ? t('wiki.topicPagesUnit')
+                          : hit.kind === 'source'
+                            ? t('wiki.sourcePagesUnit')
+                            : t(LEVEL_KEY[hit.level])}
                       </span>
+                      {hit.vaultLabel !== undefined && <span>{hit.vaultLabel}</span>}
                       {hit.fieldCount !== undefined && <span>{t('wiki.cardFields', { count: hit.fieldCount })}</span>}
                       {hit.table !== undefined && <span className={cn(css.mono)}>{hit.table}</span>}
                     </span>
