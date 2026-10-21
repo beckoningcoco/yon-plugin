@@ -28,6 +28,7 @@ import { type YonIterationService } from './host/iteration-service.ts';
 import { type YonMemoryService } from './host/memory-service.ts';
 import { type YonRequirementsService } from './host/requirement-service.ts';
 import { type YonHomesService } from './host/home-service.ts';
+import { type YonFrontendsService } from './host/frontend-service.ts';
 import { type YonMetaService } from './host/meta-service.ts';
 export { DOMAIN_NAME, YON_DOMAIN } from './host/domain.ts';
 export { SKILL_DOMAIN_NAME, YON_SKILL_DOMAIN } from './host/skill-domain.ts';
@@ -74,6 +75,12 @@ export type { WikiIndex, WikiPage, WikiVault } from './host/wiki-index.ts';
 export { defaultStorePath } from './host/datasource-store.ts';
 export { createHomeStore, defaultHomeStorePath } from './host/home-store.ts';
 export type { HomeStore, StoredHome } from './host/home-store.ts';
+export { createFrontendStore, defaultFrontendStorePath } from './host/frontend-store.ts';
+export type { FrontendStore, StoredFrontend } from './host/frontend-store.ts';
+export { createYonFrontendsService, FrontendError, FRONTEND_SKIP_DIRS } from './host/frontend-service.ts';
+export type { YonFrontendsService, FrontendFindQuery, YonFrontendsHandle } from './host/frontend-service.ts';
+export { probeFrontend } from './host/frontend-probe.ts';
+export { FRONTEND_TOOL_NAMES } from './host/frontend-tools.ts';
 export { createArthasStore, defaultArthasStorePath, defaultArthasDistDir, defaultArthasWorkDir } from './host/arthas-store.ts';
 export type { ArthasStore, ArthasConfig, ArthasStoreRead, StoredArthas } from './host/arthas-store.ts';
 export { ARTHAS_TOOL_NAMES } from './host/arthas-tools.ts';
@@ -132,6 +139,8 @@ export { parseBmf } from './host/meta-bmf.ts';
 export type { BmfComponent, BmfEntity, BmfEnum, BmfField } from './host/meta-bmf.ts';
 export type { ClassBuildView, ClassIndexPayload, ClassIndexStatusView, HomeFileView, HomeFindPayload, HomeIndexView, HomeKeyView, HomeListPayload, HomeMetaIndexView, HomeProduct, HomeProfileView, HomeReadPayload, HomeShape, HomeView, MetaBuildView, MetaCountsView, MetaFreshnessView, MetaIndexPayload, MetaIndexStatusView, SaveHomeInput, } from './shared/types.ts';
 export { HOME_PRODUCTS } from './shared/types.ts';
+export { FRONTEND_PRODUCTS, FRONTEND_VERSIONS, frontendLabelOf } from './shared/types.ts';
+export type { FrontendDomainView, FrontendFileView, FrontendFindPayload, FrontendListPayload, FrontendProduct, FrontendProfileView, FrontendReadPayload, FrontendShape, FrontendView, SaveFrontendInput, } from './shared/types.ts';
 export { ITERATION_KINDS, ITERATION_SEVERITIES, ITERATION_STATUSES, MEMORY_TYPES, MEMORY_TYPE_TEXT, } from './shared/types.ts';
 export type { IterationCreatedPayload, IterationKind, IterationListPayload, IterationRowView, IterationSeverity, IterationStatus, SaveIterationInput, UpdateIterationInput, } from './shared/types.ts';
 export type { MemoryCreated, MemoryListPayload, MemoryListRow, MemorySummary, MemoryType, MemoryView, SaveMemoryInput, UpdateMemoryInput, } from './shared/types.ts';
@@ -149,6 +158,8 @@ declare module '@deepseek-ai/cordis' {
         yonWiki: YonWikiService;
         /** The NCC/BIP installation directories the operator registered. */
         yonHomes: YonHomesService;
+        /** The NCC front-end source projects the operator registered. */
+        yonFrontends: YonFrontendsService;
         /** The metadata index over those installations' `.bmf` files. */
         yonMeta: YonMetaService;
         /** The class index over the same installations, built and reported on here. */

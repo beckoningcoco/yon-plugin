@@ -2,7 +2,7 @@ import { type WikiRefKind, type WikiVault } from './wiki-index.ts';
 import { type WikiAssessment, type WikiGap, type WikiGraphSummary, type WikiLevel } from './wiki-graph.ts';
 import type { WikiStore } from './wiki-store.ts';
 import { type WikiUsageLog, type WikiUsageMiss } from './wiki-usage.ts';
-import type { SaveVaultInput, WikiLogEntry, WikiVaultView } from '../shared/types.ts';
+import type { SaveVaultInput, WikiLogEntry, WikiProseKind, WikiProseView, WikiVaultView } from '../shared/types.ts';
 import type { WikiCardView, WikiHealthReport, WikiUnindexedDir } from '../shared/types.ts';
 /** What a knowledge base call can fail with. */
 export declare class WikiError extends Error {
@@ -10,7 +10,7 @@ export declare class WikiError extends Error {
     constructor(code: 'not-found' | 'invalid-input' | 'not-configured', message: string);
 }
 /** How a term matched a page, strongest first. */
-export type WikiMatch = 'uri' | 'table' | 'page' | 'name' | 'contains';
+export type WikiMatch = 'uri' | 'table' | 'page' | 'name' | 'tag' | 'heading' | 'summary' | 'contains';
 /** One page a lookup matched. */
 export interface WikiHit {
     /** Vault id the page belongs to. */
@@ -36,6 +36,16 @@ export interface WikiHit {
     /** Fields the page claims to list, when it claims a number. */
     readonly fieldCount?: number;
     readonly matchedBy: WikiMatch;
+    /**
+     * Which kind of page this hit is.
+     *
+     * `topic` / `source` pages carry no table and no fields: they answer "what does
+     * the product do", never "which column". The field exists so a caller reading a
+     * hit list cannot mistake one for the other.
+     */
+    readonly kind?: 'entity' | 'topic' | 'source';
+    /** Vault-relative path, present for prose pages (which are read by path). */
+    readonly path?: string;
 }
 /** One kind of relation, with a sample of its targets and how many there are. */
 export interface WikiRelationGroup {
@@ -78,6 +88,8 @@ export interface WikiLookupResult {
     readonly indexAge: string;
     /** How many pages were searched — entity pages, which is all a search can read. */
     readonly scanned: number;
+    /** How many topic and source pages were searched beside them. */
+    readonly scannedProse: number;
     /**
      * Pages in the searched vaults that no search can reach.
      *
@@ -93,19 +105,31 @@ export interface WikiPageContent {
     readonly vaultLabel: string;
     readonly page: string;
     readonly uri: string | null;
+    /**
+     * Which kind of page was read.
+     *
+     * `topic` / `source` pages are read by vault-relative path; they carry no
+     * entity URI, no physical table and no field list, so a caller must not write
+     * SQL from one. Saying so here is what keeps that distinction visible after
+     * the page body has been printed.
+     */
+    readonly kind?: 'entity' | 'topic' | 'source';
+    /** Vault-relative path, present for pages read outside the entity index. */
+    readonly path?: string;
     readonly version?: string;
     readonly status?: string;
     readonly verified?: string;
-    /** What this page can answer, and what it lacks to answer more. */
-    readonly assessment: WikiAssessment;
+    /** What this page can answer, and what it lacks to answer more. Entity pages only. */
+    readonly assessment?: WikiAssessment;
     /**
-     * Where this page leads, and what leads here.
+     * Where this page leads, and what leads here. Entity pages only — a topic page
+     * has no entity edges to walk.
      *
      * Returned with the page rather than behind a separate tool because the moment
      * a caller wants it is the moment it has finished reading: the next question is
      * almost always "what else is built on this".
      */
-    readonly relations: WikiRelationView;
+    readonly relations?: WikiRelationView;
     readonly text: string;
 }
 /** One hole in the vault: an entity its pages cite and none of them covers. */
@@ -145,14 +169,31 @@ export interface YonWikiService {
      * Find the pages answering one term.
      * @param term - URI, table name, page name, display name, or a fragment of any.
      * @param vaultId - restrict to one vault; all of them when omitted.
+     * @param kind - which pages to search: entities only, topics only, sources only,
+     *   or both halves (`all`, the default).
      */
-    lookup(term: string, vaultId?: string): Promise<WikiLookupResult>;
+    lookup(term: string, vaultId?: string, kind?: 'all' | 'entity' | 'topic' | 'source'): Promise<WikiLookupResult>;
     /**
      * Read one page in full.
      * @param page - page name, with or without the `.md` suffix.
      * @param vaultId - which vault to read from; required when several could match.
      */
     read(page: string, vaultId?: string): Promise<WikiPageContent>;
+    /**
+     * The topic and source pages, for the panel's list and its search box.
+     *
+     * Separate from {@link lookup} because the panel lists rather than ranks: it
+     * wants the newest pages and a filter, not a hit list sorted by match strength.
+     * @param term - a filter on name, tags and headings; empty lists everything.
+     * @param vaultId - which vault; all of them when omitted.
+     * @param kind - topics, sources, or both when omitted.
+     * @param limit - how many to return; 200 when omitted, capped at 2000.
+     */
+    proseList(term: string, vaultId?: string, kind?: WikiProseKind, limit?: number): Promise<{
+        readonly term: string;
+        readonly count: number;
+        readonly hits: readonly WikiProseView[];
+    }>;
     /**
      * The vault's own history: the tail of its `log.md`.
      *

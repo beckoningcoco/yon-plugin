@@ -30,9 +30,14 @@ import { type MemoryHintLine } from './memory-session.ts';
 /** Every tool this module owns. */
 export declare const DATASOURCE_TOOL_NAMES: readonly ["datasource_list", "datasource_upsert", "datasource_query"];
 /**
- * Whether one statement could change data.
+ * Whether one statement is anything other than provably a read.
+ *
+ * "Provably" carries the meaning: true is the answer whenever this cannot show
+ * the statement is a read, so an unparseable or comment-only statement counts as
+ * a write and a person decides. The gate checks the arguments before calling
+ * this, so an empty string is refused for honesty rather than to raise a prompt.
  * @param sql - the statement a call wants to run.
- * @returns true when it carries a keyword that can write.
+ * @returns true when the statement must not run without an approval.
  */
 export declare function isDestructiveSql(sql: unknown): boolean;
 /**

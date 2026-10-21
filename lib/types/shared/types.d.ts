@@ -522,6 +522,18 @@ export interface WikiVaultView {
     readonly path: string;
     /** Entity pages in the cached index; 0 before one is built. */
     readonly pages: number;
+    /**
+     * Topic pages beside the entity pages (`wiki/topics`), counted directly from
+     * the directory.
+     *
+     * Not in the index — `wiki_lookup` still reads entity pages only — but a vault
+     * whose whole digested corpus lives in `wiki/topics` answered `0` to "how many
+     * pages", and that number, read alone, says the knowledge base is empty. The
+     * count is here so the panel can say what is actually there.
+     */
+    readonly topicPages?: number;
+    /** Source pages (`wiki/sources`), same reasoning as {@link topicPages}. */
+    readonly sourcePages?: number;
     /** When the cached index was built; absent until one is. */
     readonly indexedAt?: string;
     /** False when the registered path no longer holds a readable vault. */
@@ -544,6 +556,50 @@ export interface WikiListPayload {
  * convention silently finds nothing there.
  */
 export declare const WIKI_ENTITY_DIRS: readonly ["wiki/entities", "wiki/实体", "entities", "实体"];
+/**
+ * Where a vault's non-entity pages may live, relative to the vault root.
+ *
+ * Entity pages answer "which table and which columns"; these two answer "what
+ * does this document say". A digested PDF lands here — one index page per source
+ * under `sources/`, one page per chapter or module under `topics/` — and neither
+ * carries an entity URI, so neither can be an entity page.
+ *
+ * The Chinese spellings are live for the same reason as {@link WIKI_ENTITY_DIRS}:
+ * `yon-ncc-obsidian` was initialised with `wiki/模块` and `wiki/来源`.
+ */
+export declare const WIKI_PROSE_DIRS: readonly ["wiki/topics", "wiki/sources", "wiki/模块", "wiki/来源"];
+/** Which of the two non-entity kinds a page is. */
+export type WikiProseKind = 'topic' | 'source';
+/** One non-entity page as the index and the panel see it. */
+export interface WikiProseView {
+    readonly kind: WikiProseKind;
+    /** Vault id, filled in by a list that spans every registered vault. */
+    readonly vault?: string;
+    /** Page name without `.md`; this is what `[[links]]` and `wiki_read` use. */
+    readonly page: string;
+    /** Path relative to the vault root, forward-slashed. */
+    readonly file: string;
+    /** Title from the `#` line, falling back to the page name. */
+    readonly name: string;
+    /** First paragraph (or lead blockquote), truncated to 160 characters. */
+    readonly summary?: string;
+    readonly tags?: readonly string[];
+    /** `platform_version` from the page's frontmatter. */
+    readonly version?: string;
+    readonly status?: string;
+    readonly updated?: string;
+    /** Frontmatter `sources` — the extract text a digested page rests on. */
+    readonly sources?: readonly string[];
+    /** `##` headings, at most 12, for finding a page by its sections. */
+    readonly headings?: readonly string[];
+}
+/** Body of `GET /yon/api/wiki/prose`. */
+export interface WikiProseListPayload {
+    readonly term: string;
+    /** How many pages matched before the limit was applied. */
+    readonly count: number;
+    readonly hits: readonly WikiProseView[];
+}
 /**
  * Body of `POST /yon/api/wiki/vaults` and `PUT /yon/api/wiki/vaults/<id>`.
  *
@@ -654,6 +710,10 @@ export interface WikiHealthReport {
     readonly vaultLabel: string;
     /** Entity pages only — see {@link WikiUnindexedDir} for what this excludes. */
     readonly pages: number;
+    /** Topic pages in the same index (`wiki/topics`). */
+    readonly topicPages?: number;
+    /** Source pages in the same index (`wiki/sources`). */
+    readonly sourcePages?: number;
     /** Page directories the index skipped, so `pages` is never read as the vault's size. */
     readonly unindexed: readonly WikiUnindexedDir[];
     readonly indexedAt?: string;
@@ -727,6 +787,241 @@ export interface WikiSearchPayload {
 export interface WikiCitersPayload {
     readonly uri: string;
     readonly pages: readonly string[];
+}
+/**
+ * 一条前端源码工程所属的产品线。
+ *
+ * 目前只有 NCC。旗舰版的前端是另一套东西（MDF），与这里 `hotwebs/` 多页脚手架
+ * 的 `src/{领域}/{模块}/{节点}/{页面类型}/index.js` 没有共同约定，放进同一个
+ * 登记里会让探测规则互相矛盾——一条判定"没有 src/ 就不是源码工程"的规则，
+ * 对旗舰版就是错的。留成联合类型，是为了将来多一条产品线时只改这里。
+ */
+export type FrontendProduct = 'ncc';
+/** 每条产品线，按显示顺序（客户端把它们画成选项）。 */
+export declare const FRONTEND_PRODUCTS: readonly FrontendProduct[];
+/**
+ * 前端源码的版本列表，按产品线分。
+ *
+ * 与 {@link HOME_VERSIONS} 分开，而不是共用一张。两张表回答的不是同一个问题：
+ * 那边是"这台机器上装过哪些版本"，这边是"手里有哪些版本的前端源码"。实测本机
+ * 就有对不上的情况——2005、2505 有源码工程而安装目录未必登记，反过来也有只装了
+ * 运行态、没有源码的版本。合成一张，就得在其中一边说谎。
+ */
+export declare const FRONTEND_VERSIONS: Readonly<Record<FrontendProduct, readonly HomeVersionOption[]>>;
+/**
+ * 一个前端源码工程叫什么：产品线加版本。
+ *
+ * 和 {@link homeLabelOf} 同一条规则、同一份理由：一个版本只留一份源码，所以
+ * `(product, version)` 已经是这行的身份，再要一个名字只是让人多填一个字段、
+ * 并让两行描述同一件事时看起来不同。表里没有的版本（表单里的「其他」）按
+ * 同样的拼法起名，因为登记得上是它的前提，起得出名是它的结果。
+ * @param product - 哪条产品线。
+ * @param version - 存下来的版本号（`2005`）。
+ * @returns 显示名。
+ */
+export declare function frontendLabelOf(product: FrontendProduct, version: string): string;
+/**
+ * 探测对一个目录得出的结论。
+ *
+ * `deployed` 是这套登记里最值钱的判定：NCC 安装目录的 `hotwebs/` 和源码工程
+ * 长得像，里面却没有 `src/`——那是编译后的页面，不是能改的源码。把它当源码
+ * 登记，模型会读一堆压缩过的 js 还以为是工程本身。
+ *
+ * `not-a-project` 与 `not-found` 分开：一个是"目录在、但不像源码工程"，一个是
+ * "目录根本读不出来"。前者可能是选错了层级（选到了 `hotwebs` 的上一级），
+ * 后者是路径没了，面板要说的话不同。
+ */
+export type FrontendShape = 'scaffold' | 'deployed' | 'not-a-project' | 'not-found';
+/** 一个领域（`src/` 下的一级目录）在探测里留下的数。 */
+export interface FrontendDomainView {
+    readonly name: string;
+    /** 这个领域下识别出的页面入口数。 */
+    readonly pages: number;
+    /** 这个领域下文件的字节数，用来指出 `platform/` 这种"库而不是业务"的大块。 */
+    readonly bytes: number;
+}
+/** 一次探测，两半都读这一个结果。 */
+export interface FrontendProfileView {
+    readonly probedAt: string;
+    readonly shape: FrontendShape;
+    /**
+     * `src/{领域}/{模块}/{节点}` 去重后的数目——一页可能有 list、card、main 多个入口，
+     * 而人说的"一个功能/一个页面"是这一层。
+     */
+    readonly nodes: number;
+    /** `src/{领域}/{模块}/{节点}/{页面类型}/index.js` 的数目。 */
+    readonly pages: number;
+    /** 页面类型那一层的取值（`list`、`card`、`main`…），去重后按字母序。 */
+    readonly pageTypes: readonly string[];
+    readonly domains: readonly FrontendDomainView[];
+    /** 工程里的文件数，`node_modules/`、`dist/`、`.git/` 已排除。 */
+    readonly files: number;
+    readonly bytes: number;
+    /** 走过上限时为 true，此时 `files`/`bytes`/`pages` 都只是下限。 */
+    readonly capped: boolean;
+    readonly hasNodeModules: boolean;
+    readonly hasDist: boolean;
+    /** `config.json` 的 `buildEntryPath`，拍平成字符串数组。 */
+    readonly buildEntry: readonly string[];
+    readonly proxy?: string;
+    readonly devPort?: number;
+    /** `package.json` 的 name，用来提示这份源码属于哪个工程。 */
+    readonly packageName?: string;
+    readonly warnings: readonly string[];
+}
+/** 页面索引的一个摘要，挂在列表行上，好让模型知道它是否可用、是否过期。 */
+export interface FrontendPageIndexView {
+    readonly builtAt: string;
+    readonly nodes: number;
+    readonly pages: number;
+    /** 索引描述的目录与登记路径不一致，需要重建。 */
+    readonly stale: boolean;
+}
+/** 一条已登记的前端源码工程，面板与模型都读这个形状。 */
+export interface FrontendView {
+    /** 稳定的 id，登记时生成，编辑时不变。 */
+    readonly id: string;
+    /** 显示名，是 {@link frontendLabelOf} 作用于下面两个字段。 */
+    readonly label: string;
+    /** 正斜杠形式；输入时两种分隔符都收。 */
+    readonly path: string;
+    readonly product: FrontendProduct;
+    readonly version: string;
+    readonly isDefault: boolean;
+    /** 目录读不出来、或不再像源码工程时为 false；这一行仍然显示。 */
+    readonly ready: boolean;
+    readonly profile?: FrontendProfileView;
+    /** 页面索引，没有建过时缺省。 */
+    readonly pageIndex?: FrontendPageIndexView;
+}
+/** `GET /yon/api/frontends` 的载荷。 */
+export interface FrontendListPayload {
+    readonly frontends: readonly FrontendView[];
+    /** 登记文件本身的绝对路径，好让面板说出来。 */
+    readonly configPath: string;
+    /** 文件存在但解析不了时为 false。 */
+    readonly complete: boolean;
+    readonly error?: string;
+}
+/**
+ * `POST /yon/api/frontends` 与 `PUT /yon/api/frontends/<id>` 的请求体。
+ *
+ * 没有 `label`：名字由 {@link frontendLabelOf} 从这两个字段算出来，表单没有
+ * 可问的，服务也没有可相信的。
+ */
+export interface SaveFrontendInput {
+    readonly path: string;
+    readonly product: FrontendProduct;
+    readonly version: string;
+    readonly isDefault?: boolean;
+}
+/** `ncc_fe_find` 命中的一个文件，相对工程根。 */
+export interface FrontendFileView {
+    readonly rel: string;
+    readonly size: number;
+}
+/** `ncc_fe_find` 的答案。 */
+export interface FrontendFindPayload {
+    readonly frontend: string;
+    readonly matches: readonly FrontendFileView[];
+    /** 访问过的目录项数；走到上限时匹配数只是下限。 */
+    readonly scanned: number;
+    readonly capped: boolean;
+    /** 被跳过的目录，相对工程根；模型要知道 `platform/` 不在结果里。 */
+    readonly skipped: readonly string[];
+}
+/** `ncc_fe_read` 的答案。 */
+export interface FrontendReadPayload {
+    readonly frontend: string;
+    readonly rel: string;
+    /** 实际用来解码的编码。 */
+    readonly encoding: string;
+    readonly bytes: number;
+    readonly totalLines: number;
+    /** 1 起算、闭区间：返回的文本覆盖的范围。 */
+    readonly from: number;
+    readonly to: number;
+    readonly truncated: boolean;
+    /** 被遮住的键名，好让答案说出它遮过。 */
+    readonly masked: readonly string[];
+    readonly text: string;
+}
+/** 一个页面的一个构建入口（`list`、`card`、`main`…）。 */
+export interface FrontendPageEntryView {
+    readonly kind: string;
+    /** 相对工程根的入口文件路径。 */
+    readonly rel: string;
+    readonly bytes: number;
+}
+/**
+ * 一个页面节点：`src/{领域}/{模块}/{节点}`，也就是人说的"一个页面/一个功能"。
+ *
+ * 一个节点可以有多个入口（列表一个、卡片一个），所以节点数与入口数是两个数。
+ */
+export interface FrontendPageNodeView {
+    readonly domain: string;
+    readonly module: string;
+    readonly node: string;
+    /** 相对工程根的节点目录，例如 `src/cmp/bank/bankcontrast_tzwy`。 */
+    readonly dir: string;
+    readonly entries: readonly FrontendPageEntryView[];
+    readonly files: number;
+    readonly bytes: number;
+}
+/** `ncc_fe_pages` 的答案（索引没建时由服务惰性建一次）。 */
+export interface FrontendPagesPayload {
+    readonly frontend: string;
+    readonly builtAt: string;
+    /** 索引里的全量数，不受过滤影响。 */
+    readonly totalNodes: number;
+    readonly totalPages: number;
+    /** 过滤后命中的节点数；`nodes` 只是它的前 `limit` 个。 */
+    readonly matched: number;
+    readonly nodes: readonly FrontendPageNodeView[];
+}
+/** 面板的页面索引块读的状态。 */
+export interface FrontendPageStatusView {
+    readonly builtAt: string;
+    readonly nodes: number;
+    readonly pages: number;
+    /** 索引描述的目录与登记路径不一致——登记被改过，需要重建。 */
+    readonly stale: boolean;
+    /** 索引文件本身。 */
+    readonly path: string;
+}
+/** 一层目录的内容，供面板的页面树展开一个节点。 */
+export interface FrontendDirEntryView {
+    readonly name: string;
+    readonly rel: string;
+    readonly directory: boolean;
+    readonly bytes: number;
+}
+/** `GET /yon/api/frontends/<id>/dir?path=…` 的答案。 */
+export interface FrontendDirPayload {
+    readonly frontend: string;
+    readonly dir: string;
+    readonly entries: readonly FrontendDirEntryView[];
+}
+/** 内容搜索命中的一行。 */
+export interface FrontendGrepHit {
+    readonly rel: string;
+    /** 1 起算。 */
+    readonly line: number;
+    /** 这一行的开头，超长会截断。 */
+    readonly text: string;
+}
+/** `ncc_fe_grep` 的答案。 */
+export interface FrontendGrepPayload {
+    readonly frontend: string;
+    readonly pattern: string;
+    readonly matches: readonly FrontendGrepHit[];
+    readonly filesScanned: number;
+    readonly filesMatched: number;
+    /** 命中数或目录项走到上限。 */
+    readonly capped: boolean;
+    /** 时间预算用完了，返回的是前 N 条。 */
+    readonly timedOut: boolean;
+    readonly skipped: readonly string[];
 }
 /**
  * 一次检查的结局。

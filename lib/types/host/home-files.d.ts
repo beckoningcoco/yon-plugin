@@ -68,6 +68,16 @@ export interface FindQuery {
     /** A directory inside the Home to start from; the root when omitted. */
     readonly under?: string;
     readonly limit: number;
+    /**
+     * Directory prefixes to leave out entirely, relative to the root.
+     *
+     * A Home has no such thing — every file under it is part of the installation —
+     * but a front-end project does: `src/platform/` is the runtime library (measured
+     * 64.9 MB of the reference project's 151 MB), and `node_modules/` is not source
+     * either. Skipped here rather than filtered afterwards, so the walk spends no
+     * time stat-ing files nobody will see.
+     */
+    readonly skip?: readonly string[];
 }
 /** Clamp a caller's limit into the range one answer may carry. */
 export declare function clampFindLimit(limit: unknown): number;

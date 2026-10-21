@@ -1,4 +1,4 @@
-import { type WikiUnindexedDir } from '../shared/types.ts';
+import { type WikiProseKind, type WikiProseView, type WikiUnindexedDir } from '../shared/types.ts';
 /**
  * How one page points at another entity.
  *
@@ -67,12 +67,26 @@ export interface WikiPage {
      */
     readonly fieldCount?: number;
 }
+/** One non-entity page, reduced to the facts a search and a list need. */
+export interface WikiProsePage extends WikiProseView {
+    readonly kind: WikiProseKind;
+}
 /** A built index: every entity page a vault holds, as of one moment. */
 export interface WikiIndex {
-    readonly version: 2;
+    readonly version: 3;
     readonly vault: string;
     readonly builtAt: string;
     readonly entities: readonly WikiPage[];
+    /**
+     * Topic and source pages, beside the entity pages.
+     *
+     * Kept in their own array rather than merged into `entities`: every reader
+     * built on entity pages — the reference graph, the capability levels, the gap
+     * report — assumes a URI and a physical table, and a chapter of a digested PDF
+     * has neither. Absent in a version 2 index, which is why that version is read
+     * as "no index" and rebuilt.
+     */
+    readonly prose: readonly WikiProsePage[];
 }
 /** A vault the operator has registered, or one this module guessed at. */
 export interface WikiVault {
@@ -110,6 +124,20 @@ export declare function unindexedDirsOf(vault: WikiVault): Promise<WikiUnindexed
  */
 export declare function entityDirOf(root: string): string | undefined;
 /**
+ * The directories holding a vault's non-entity pages.
+ *
+ * Searched beside the entity directory rather than from the vault root, because
+ * that is where the layout puts them — `wiki/topics` next to `wiki/entities`.
+ * Both spellings of each kind are tried and a missing directory is simply not
+ * returned: an empty corpus is not an error.
+ * @param root - absolute vault root.
+ * @returns the directories found, each with the kind its pages are.
+ */
+export declare function proseDirsOf(root: string): readonly {
+    dir: string;
+    kind: WikiProseKind;
+}[];
+/**
  * The vaults present on this machine, in the order {@link GUESSED} lists them.
  *
  * Duplicates by path are dropped, so a vault reachable at two guessed locations
@@ -139,6 +167,19 @@ export declare function wikiIndexPath(root: string): string;
  * @returns the page, with absent facts simply absent.
  */
 export declare function parseEntityPage(text: string, file: string, page: string): WikiPage;
+/**
+ * Read the facts one topic or source page carries.
+ *
+ * The body is deliberately not kept: a digested page runs 30–60 KB, and a vault
+ * with 7775 of them would turn a 5 MB index into a hundred-megabyte one. What is
+ * kept is what a search needs to name the page and a list needs to describe it.
+ * @param text - the page's full markdown.
+ * @param file - vault-relative path, forward-slashed.
+ * @param page - name without the `.md` suffix.
+ * @param kind - topic or source.
+ * @returns the page, with absent facts simply absent.
+ */
+export declare function parseProsePage(text: string, file: string, page: string, kind: WikiProseKind): WikiProsePage;
 /**
  * Read every entity page in a vault and build a fresh index.
  *
