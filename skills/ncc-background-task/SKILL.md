@@ -119,6 +119,7 @@ boolean faStarted = InitGroupQuery.isEnabled(bgwc.getGroupId(), ModuleConst.FA_F
 
 - **后台任务示例代码**：读取 `ncc/ncc-background-task/references/examples.md` — 典型后台任务的完整代码和解读
 - **产品源码参考**：读取 `ncc/ncc-background-task/references/product-source-code.md` — NCC 产品中的真实后台任务实现，包含编码模式和 API 用法
+- **消息发送**：读取 `ncc/ncc-background-task/references/message-sending.md` — 发消息的完整链路（引擎→构造→落库→发送）、`PreAlertObject` 正确用法与常见错误、接收人来源，以及按钮/业务动作里直接调消息中心给某人发消息的做法
 
 ### 通用资料（来自 ncc-dev，按需读取）
 
@@ -285,7 +286,7 @@ return retObj;
 PreAlertObject retObj = new PreAlertObject();
 retObj.setReturnType(PreAlertReturnType.RETURNMESSAGE);
 retObj.setMsgTitle("任务执行结果");
-retObj.setMsgContent("处理完成，共处理 XX 条数据");
+retObj.setReturnObj("处理完成，共处理 XX 条数据");   // ⚠️ PreAlertObject 没有 setMsgContent，正文走 returnObj
 return retObj;
 
 // ===== 情况3：返回格式化表格消息（RETURNFORMATMSG + IAlertMessage）⭐ =====
@@ -329,7 +330,7 @@ return pao;
 | `RETURNNOTHING` | 无消息返回 | 仅设 returnType，无需其他设置 |
 | `RETURNOBJECT` | 对象类型 | `pao.setReturnObj(obj)` |
 | `RETURNFORMATMSG` | ⭐ 格式化表格消息 | `pao.setReturnObj(IAlertMessage实例)` + `setMsgTitle()` |
-| `RETURNMESSAGE` | 纯文本消息 | `pao.setMsgContent("文本")` + `setMsgTitle()` |
+| `RETURNMESSAGE` | 纯文本消息 | `pao.setReturnObj("文本")` + `setMsgTitle()`（**没有 setMsgContent**；returnObj 为空则引擎静默不发） |
 | `RETURNDATASOURCE` | 打印模板数据源 | 实现 `IDataSource` 接口 |
 | `RETURNDATASOURCE`（含元数据） | 元数据+自定义变量 | 实现 `IMetaDataDataSource` 接口 |
 | `RETURNMULTILANGTEXT` | 多语文本 | 返回多语言文本 |
