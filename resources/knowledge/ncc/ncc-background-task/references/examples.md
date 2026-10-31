@@ -48,9 +48,9 @@ public class SimpleSyncTask implements IBackgroundWorkPlugin {
 
             // 3. 构建返回对象
             PreAlertObject retObj = new PreAlertObject();
-            retObj.setReturnType(PreAlertReturnType.RETURNFORMATMSG);
+            retObj.setReturnType(PreAlertReturnType.RETURNMESSAGE);
             retObj.setMsgTitle("数据同步完成");
-            retObj.setMsgContent("组织[" + pkOrg + "]同步完成，共处理 " + count + " 条数据");
+            retObj.setReturnObj("组织[" + pkOrg + "]同步完成，共处理 " + count + " 条数据");
 
             Logger.info("数据同步任务执行完成，处理 " + count + " 条");
             return retObj;
@@ -148,7 +148,8 @@ public class ExpiredProjectUpdateTask implements IBackgroundWorkPlugin {
             if (projects == null || projects.length == 0) {
                 PreAlertObject retObj = new PreAlertObject();
                 retObj.setReturnType(PreAlertReturnType.RETURNMESSAGE);
-                retObj.setMsgContent("未找到需要更新的过期项目");
+                retObj.setMsgTitle("过期项目检查");
+                retObj.setReturnObj("未找到需要更新的过期项目");
                 return retObj;
             }
 
@@ -168,9 +169,9 @@ public class ExpiredProjectUpdateTask implements IBackgroundWorkPlugin {
 
             // 4. 构建返回
             PreAlertObject retObj = new PreAlertObject();
-            retObj.setReturnType(PreAlertReturnType.RETURNFORMATMSG);
+            retObj.setReturnType(PreAlertReturnType.RETURNMESSAGE);
             retObj.setMsgTitle("过期项目更新完成");
-            retObj.setMsgContent("共查询到 " + projects.length + " 个过期项目，成功更新 "
+            retObj.setReturnObj("共查询到 " + projects.length + " 个过期项目，成功更新 "
                     + updateCount + " 个");
 
             Logger.info("过期项目更新任务完成，成功 " + updateCount + "/" + projects.length);
@@ -293,7 +294,8 @@ public class ProjectDefdocSyncTask implements IBackgroundWorkPlugin {
             if (projects == null || projects.length == 0) {
                 PreAlertObject retObj = new PreAlertObject();
                 retObj.setReturnType(PreAlertReturnType.RETURNMESSAGE);
-                retObj.setMsgContent("无需同步的项目档案");
+                retObj.setMsgTitle("档案同步");
+                retObj.setReturnObj("无需同步的项目档案");
                 return retObj;
             }
 
@@ -334,9 +336,9 @@ public class ProjectDefdocSyncTask implements IBackgroundWorkPlugin {
             }
 
             PreAlertObject retObj = new PreAlertObject();
-            retObj.setReturnType(PreAlertReturnType.RETURNFORMATMSG);
+            retObj.setReturnType(PreAlertReturnType.RETURNMESSAGE);
             retObj.setMsgTitle("档案同步完成");
-            retObj.setMsgContent(msg.toString());
+            retObj.setReturnObj(msg.toString());
 
             Logger.info("档案同步任务完成，成功 " + addCount + "/" + projects.length);
             return retObj;

@@ -496,6 +496,20 @@ private void translateCreatorCode(JKBXHeaderVO headVo) {
 
 检查 NCC 管理后台是否已配置对应的集成规则（AggInteRuleVO）。规则的条件通过 `pk_billtype` 和 `srcsys` 匹配。
 
+> ⚠️ **查询接口例外**：`AbstractRestResource.getDocCondition()` 用的是 `srcsys`，
+> 但华科客开版 `AbstractRestResource`（覆盖在工程的 `opm/src/public/nccloud/api/`）
+> 额外提供了 `getDocConditionByDest(bdtype, valueMap)` → `getDocConditionByDestsys(...)`，
+> 它按 **`destsys`** 取规则：
+>
+> ```java
+> String condition = " destsys = '0001HAWK000000000001' and bdtype = '" + bdtype + "'";
+> ```
+>
+> 所以走 `getDocConditionByDest` 的 query 与 `PUB_INTERULE.SRCSYS` 的值**无关**——
+> `SRCSYS` 填的是外系统（如九恒星 `1001D61000000069ZS4N`）也能正常查询。
+> 判断某接口按哪个字段命中规则，要去看工程里那份 `AbstractRestResource`，
+> 不要只看安装目录 `modules/opm/classes` 下的平台原版。
+
 ### 11.2 NCLocator.lookup 返回 null？
 
 确认对应的接口在 NCC 服务注册中有实现。常见实现类命名：`XxxServiceImpl` → `nc.impl.xxx.XxxServiceImpl`。

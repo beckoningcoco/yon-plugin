@@ -227,7 +227,7 @@ return pao;
 ```
 
 > ⚡ **关键区别**：
-> - `RETURNMESSAGE`：只返回字符串 `pao.setMsgContent("文本")`
+> - `RETURNMESSAGE`：只返回字符串 `pao.setReturnObj("文本")`（`PreAlertObject` 没有 `setMsgContent`；`returnObj` 为 null 时引擎静默不发消息，只在 prealert 日志里留一行）
 > - `RETURNFORMATMSG`：返回格式化表格 `pao.setReturnObj(IAlertMessage实例)`，表格数据通过 `setBodyValue(Object[][])` 设置
 
 #### 2. IAlertMessage 接口实现参考
