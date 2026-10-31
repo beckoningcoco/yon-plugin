@@ -39,6 +39,7 @@ import { registerYonWikiTools, WIKI_TOOL_NAMES } from './host/wiki-tools.ts'
 import { GBK_TOOL_NAMES, registerYonGbkTools } from './host/gbk-tool.ts'
 import { DOC_PARSE_TOOL_NAMES, registerYonDocParseTools } from './host/doc-parse-tool.ts'
 import { KNOWLEDGE_TOOL_NAMES, registerYonKnowledgeTools } from './host/knowledge-tools.ts'
+import { registerYonNccApiTools } from './host/ncc-api-tools.ts'
 import { CLASS_TOOL_NAMES, registerYonClassTools } from './host/class-tools.ts'
 import { buildClassIndex, writeClassIndex } from './host/class-index.ts'
 import { createYonClassService, type YonClassService } from './host/class-service.ts'
@@ -407,6 +408,12 @@ export async function apply(ctx: Context): Promise<void> {
   // directories. A bundled skill body cannot name a runtime path, so without these
   // two tools the documents would ship and stay unreachable.
   ctx.effect(() => registerYonKnowledgeTools(ctx), 'yon-panel: knowledge tools')
+
+  // The NCC OpenAPI caller: token, signature and the HTTP call itself, so a machine
+  // that installs this plugin can call NCC without the Python tool being present.
+  // Its environment document lives beside the other config files and is written by
+  // the tool, never by hand-editing a path the model cannot see.
+  ctx.effect(() => registerYonNccApiTools(ctx), 'yon-panel: ncc api tools')
 
   // Where the installations are. The operator registers a Home once — path,
   // product line, version — and afterwards the model looks it up instead of

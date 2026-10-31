@@ -131,6 +131,10 @@ import { RequirementError, type YonRequirementsService } from './requirement-ser
 import { MAX_ATTACHMENT_BYTES, sizeOf } from './requirement-files.ts'
 import type { YonMetaService } from './meta-service.ts'
 import type { YonClassService } from './class-service.ts'
+import {
+  callNccApi, findNccApiEnv, loadNccApiConfig, nccApiConfigPath, saveNccApiConfig, NccApiError,
+  type NccApiEnv,
+} from './ncc-api.ts'
 
 /** Largest request body accepted, in bytes. */
 const MAX_BODY_BYTES = 1_000_000
@@ -357,6 +361,126 @@ async function handleDataSources(
   }
 
   sendFailure(res, 404, 'not-found', `no route for ${method} /yon/api/datasources/...`)
+}
+
+/**
+ * Serve the `/yon/api/ncc-api` branch.
+ *
+ * 三个端点：列环境、存/删环境、发一次调用。secret 只向内写，列表与调用结果都不回显它。
+ * @param req - the request; read for the body on writes.
+ * @param res - the response.
+ * @param method - HTTP method.
+ * @param segments - the decoded path segments after the API prefix.
+ */
+async function handleNccApi(
+  req: IncomingMessage,
+  res: ServerResponse,
+  method: string,
+  segments: readonly string[],
+): Promise<void> {
+  const tail = segments[1]
+  const name = segments[2]
+
+  // /yon/api/ncc-api/envs
+  if (tail === 'envs' && name === undefined) {
+    if (method !== 'GET') {
+      sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+      return
+    }
+    const config = loadNccApiConfig()
+    sendJson(res, 200, {
+      path: nccApiConfigPath(),
+      active: config.active,
+      envs: config.envs.map(env => ({
+        name: env.name,
+        host: env.host,
+        clientId: env.client_id,
+        bizCenter: env.biz_center,
+        dsname: env.dsname,
+        version: env.version === 'old' ? 'old' : 'new',
+        hasSecret: env.client_secret !== '',
+        pubkeyLength: env.pubkey.length,
+      })),
+    })
+    return
+  }
+
+  // /yon/api/ncc-api/envs/<name>
+  if (tail === 'envs' && name !== undefined) {
+    const config = loadNccApiConfig()
+    const existing = config.envs.find(env => env.name === name)
+    if (method === 'PUT') {
+      const body = await objectBody(req)
+      const secret = typeof body.clientSecret === 'string' && body.clientSecret !== ''
+        ? body.clientSecret
+        : existing?.client_secret ?? ''
+      const pubkey = typeof body.pubkey === 'string' && body.pubkey !== ''
+        ? body.pubkey
+        : existing?.pubkey ?? ''
+      if (secret === '' || pubkey === '') {
+        sendFailure(res, 400, 'invalid-input', '这个环境还没有 client_secret 或公钥')
+        return
+      }
+      const next: NccApiEnv = {
+        name,
+        host: typeof body.host === 'string' ? body.host : existing?.host ?? '',
+        client_id: typeof body.clientId === 'string' ? body.clientId : existing?.client_id ?? '',
+        client_secret: secret,
+        pubkey,
+        biz_center: typeof body.bizCenter === 'string' ? body.bizCenter : existing?.biz_center ?? '',
+        dsname: typeof body.dsname === 'string' ? body.dsname : existing?.dsname ?? '',
+        version: body.version === 'old' ? 'old' : 'new',
+      }
+      const envs = existing === undefined
+        ? [...config.envs, next]
+        : config.envs.map(env => env.name === name ? next : env)
+      const active = body.setActive === true || (existing === undefined && config.active === '')
+        ? name
+        : config.active
+      saveNccApiConfig({ active, envs })
+      sendJson(res, 200, { saved: name, created: existing === undefined, active })
+      return
+    }
+    if (method === 'DELETE') {
+      if (existing === undefined) {
+        sendFailure(res, 404, 'not-found', `没有名为「${name}」的环境`)
+        return
+      }
+      const envs = config.envs.filter(env => env.name !== name)
+      const active = config.active === name ? '' : config.active
+      saveNccApiConfig({ active, envs })
+      sendJson(res, 200, { removed: name })
+      return
+    }
+    sendFailure(res, 405, 'method-not-allowed', `${method} is not allowed here`)
+    return
+  }
+
+  // /yon/api/ncc-api/call
+  if (tail === 'call' && method === 'POST') {
+    const body = await objectBody(req)
+    const envName = typeof body.env === 'string' ? body.env : ''
+    const apiPath = typeof body.apiPath === 'string' ? body.apiPath : ''
+    const payload = typeof body.body === 'string' ? body.body : ''
+    const timeout = typeof body.timeoutMs === 'number' && body.timeoutMs > 0
+      ? Math.min(body.timeoutMs, 300_000)
+      : 120_000
+    if (envName === '' || apiPath === '') {
+      sendFailure(res, 400, 'invalid-input', 'env 与 apiPath 都必填')
+      return
+    }
+    const env = findNccApiEnv(loadNccApiConfig(), envName)
+    const result = await callNccApi(env, apiPath, payload, timeout)
+    sendJson(res, 200, {
+      status: result.status,
+      body: result.body,
+      tokenCostMs: result.tokenCostMs,
+      ok: result.status >= 200 && result.status < 300,
+    })
+    return
+  }
+
+  sendFailure(res, 404, 'not-found', `no route for ${method} /yon/api/ncc-api/...`)
 }
 
 /**
@@ -1860,6 +1984,10 @@ export function registerYonApi(
           await handleDataSources(req, res, method, segments, sources)
           return
         }
+        if (segments[0] === 'ncc-api') {
+          await handleNccApi(req, res, method, segments)
+          return
+        }
         if (segments[0] === 'wiki') {
           await handleWiki(req, res, method, segments, url, wiki)
           return
@@ -2019,6 +2147,7 @@ export function registerYonApi(
             || error instanceof BrowserError
             || error instanceof RequirementError
             || error instanceof MemoryError
+            || error instanceof NccApiError
           ) {
             sendFailure(res, error.code === 'not-found' ? 404 : 400, error.code, error.message)
           } else {

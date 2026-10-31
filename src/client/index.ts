@@ -36,11 +36,13 @@ import { createFrontendApi } from './frontend/api.ts'
 import { createIterationApi } from './iteration/api.ts'
 import { createArthasApi } from './arthas/api.ts'
 import { createMemoryApi } from './memory/api.ts'
+import { createNccApiApi } from './nccapi/api.ts'
 import { createProjectApi } from './project/api.ts'
 import { createRequirementApi } from './requirement/api.ts'
 import { createSkillApi } from './skill/api.ts'
 import { createWikiApi } from './wiki/api.ts'
 import { BrowserItem } from './BrowserItem.tsx'
+import { NccApiItem } from './NccApiItem.tsx'
 import { DataSourceItem } from './DataSourceItem.tsx'
 import { DigestItem } from './DigestItem.tsx'
 import { HomeItem } from './HomeItem.tsx'
@@ -105,6 +107,7 @@ export function apply(ctx: ClientContext): void {
   const requirementApi = createRequirementApi()
   const arthasApi = createArthasApi()
   const memoryApi = createMemoryApi()
+  const nccApiApi = createNccApiApi()
 
   // A fresh list id adds this action beside the shipped footer actions, above
   // the settings row; the children table declares (and thereby authorizes) the
@@ -318,4 +321,17 @@ export function apply(ctx: ClientContext): void {
     label: () => t('item.arthas'),
     inject: () => ({ ...arthasApi, pushOverlay: () => panel.pushOverlay() }),
   }, ArthasItem))
+
+  // The NCC OpenAPI caller, twelfth: pick an environment, keep it, and send one
+  // request from the panel. It exists because the model already has the same
+  // ability as a tool — a person who wants to see the raw response without asking
+  // the model needs a surface of their own.
+  ctx.slots.inject('yon.panel.item', () => ctx.slots.register({
+    name: 'yon.panel.item',
+    id: 'nccapi',
+    order: 120,
+    locale: NS,
+    label: () => t('item.nccApi'),
+    inject: () => ({ ...nccApiApi, pushOverlay: () => panel.pushOverlay() }),
+  }, NccApiItem))
 }

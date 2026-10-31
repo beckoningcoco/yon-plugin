@@ -7,6 +7,7 @@ import type { ArthasClientApi } from './arthas/api.ts'
 import type { BrowserApi } from './browser/api.ts'
 import type { RequirementApi } from './requirement/api.ts'
 import type { DataSourceApi } from './datasource/api.ts'
+import type { NccApiApi } from './nccapi/api.ts'
 import type { DigestApi } from './digest/api.ts'
 import type { HomeApi } from './home/api.ts'
 import type { FrontendApi } from './frontend/api.ts'
@@ -63,6 +64,19 @@ export type DataSourceItemFace = DataSourceApi & {
   listProjects: ProjectApi['listProjects']
   /**
    * Announce a layer standing above the panel (the datasource surface).
+   * @returns the release for that layer.
+   */
+  pushOverlay(): () => void
+}
+
+/**
+ * Data face the panel's NCC API entry receives: the NCC OpenAPI operations plus
+ * the same panel-level gesture. Nothing is borrowed from a sibling — an
+ * environment is its own list, addressed by its own name.
+ */
+export type NccApiItemFace = NccApiApi & {
+  /**
+   * Announce a layer standing above the panel (the API surface).
    * @returns the release for that layer.
    */
   pushOverlay(): () => void

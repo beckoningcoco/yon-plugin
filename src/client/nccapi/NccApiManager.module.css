@@ -1,0 +1,100 @@
+/* NCC API 面板只补几处 datasource 面没有的东西：小节标题、报文框、状态行、
+   响应区。布局（左右分栏、列表、属性表、表单行）来自共享对话框样式，
+   这里再画一套，两个页面就会长得像两个产品。 */
+
+/* The shared dialog is `min(380px, 100%)` — right for a confirm box, far too
+   narrow for a list beside a request/response pair. Beats the primitive by
+   specificity rather than by load order, which the style tags do not promise. */
+.dialog.dialog {
+  width: min(1060px, 94vw);
+}
+
+/* Taller than the shared 520px: the response block needs room under the body. */
+.body {
+  height: min(70vh, 620px);
+}
+
+/* 212px truncates every environment name ("机械院NCC21…"); the extra 40px
+   buys the whole name back and costs the detail pane nothing. */
+.listPane {
+  width: 252px;
+}
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.callTitle {
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 报文是代码，不是散文：等宽、可纵向拉高、横向不换行。 */
+.textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 132px;
+  max-height: 280px;
+  resize: vertical;
+  padding: 8px 10px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  tab-size: 2;
+}
+
+.textarea:focus-visible {
+  outline: none;
+  border-color: var(--dsw-alias-brand-primary);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.status {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.statusOk {
+  color: var(--dsw-alias-state-success-primary, #2e7d32);
+}
+
+.statusBad {
+  color: var(--dsw-alias-state-error-primary, #c62828);
+}
+
+.response {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-l1);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 300px;
+  overflow: auto;
+}
