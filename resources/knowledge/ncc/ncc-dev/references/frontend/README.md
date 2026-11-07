@@ -22,6 +22,7 @@
 | 新建/改写一个**卡片页**；理解保存、提交、公式校验流程 | `card-page-template.md` |
 | 忘了某个平台 API 的名字、参数或返回结构 | `api-cheatsheet.md` |
 | **新增/修改页面按钮**：按钮从哪来、要不要先在平台注册、注册完为什么不显示 | `app-register-and-buttons.md` |
+| **前端要调自己写的后端接口**：action 怎么注册成 URL、为什么报未授权（action + authorize 两个 xml） | `custom-action-register.md` |
 | 做**参照过滤**（客开高频）；判断要不要动后端 | `../scenarios/ref-model.md`（已提升为「参照」场景文档） |
 | 动手改文件前：GBK 编码陷阱、本机工具可用性、已知坑 | `encoding-and-tools.md` |
 | 判断某处代码是不是客户改的、升级会不会被覆盖 | `project-status.md` |
@@ -35,5 +36,5 @@
 
 ## 覆盖范围与边界
 
-- 已覆盖：**源码检索（`ncc_fe_*`：页面节点 / 按内容搜 / 按编码读）**、**启动与排障（装依赖 / 代理分流 / 白屏定位）**、**从编译产物还原源码**、工程与构建、三种页面范式、list/card 模板、平台 API 速查、参照过滤、编码与工具、本工程二开现状；
+- 已覆盖：**源码检索（`ncc_fe_*`：页面节点 / 按内容搜 / 按编码读）**、**启动与排障（装依赖 / 代理分流 / 白屏定位）**、**从编译产物还原源码**、工程与构建、三种页面范式、list/card 模板、平台 API 速查、参照过滤、**调用后端自定义 Action 的注册（action + authorize）**、编码与工具、本工程二开现状；
 - **尚未覆盖**（后续可补）：`transfer/` 转单页三件套、`widget/` 小部件、`verificationsheet/verifyap` 核销单、`card/events/initTemplate.js` 与列表版的差异。
